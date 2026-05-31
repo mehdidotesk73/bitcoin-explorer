@@ -103,6 +103,23 @@ function buildOption(): echarts.EChartsCoreOption {
         lineStyle: { opacity: 0 },
         areaStyle: { color: 'rgba(66, 184, 131, 0.18)' },
       },
+      // --- Bollinger band boundary lines ---
+      {
+        name: '__bb_upper',
+        type: 'line',
+        data: props.upper,
+        symbol: 'none',
+        lineStyle: { color: 'rgba(66, 184, 131, 0.6)', width: 1, type: 'dashed' },
+        silent: true,
+      },
+      {
+        name: '__bb_lower',
+        type: 'line',
+        data: props.lower,
+        symbol: 'none',
+        lineStyle: { color: 'rgba(66, 184, 131, 0.6)', width: 1, type: 'dashed' },
+        silent: true,
+      },
       {
         name: `MA (${props.maLabel})`,
         type: 'line',
