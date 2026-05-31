@@ -51,29 +51,33 @@ export interface LinFit {
 }
 
 /** Ordinary least-squares fit of y = slope·x + intercept, with R². */
-export function linregress(xs: number[], ys: number[]): LinFit {
+export function linregress(xs: number[], ys: number[], weights?: number[]): LinFit {
   const n = xs.length
   if (n < 2) return { slope: 0, intercept: ys[0] ?? 0, r2: 0 }
-  let sx = 0,
+  let sw = 0,
+    sx = 0,
     sy = 0,
     sxx = 0,
     sxy = 0
   for (let i = 0; i < n; i++) {
-    sx += xs[i]
-    sy += ys[i]
-    sxx += xs[i] * xs[i]
-    sxy += xs[i] * ys[i]
+    const w = weights ? weights[i] : 1
+    sw += w
+    sx += w * xs[i]
+    sy += w * ys[i]
+    sxx += w * xs[i] * xs[i]
+    sxy += w * xs[i] * ys[i]
   }
-  const denom = n * sxx - sx * sx
-  const slope = denom === 0 ? 0 : (n * sxy - sx * sy) / denom
-  const intercept = (sy - slope * sx) / n
-  const meanY = sy / n
+  const denom = sw * sxx - sx * sx
+  const slope = denom === 0 ? 0 : (sw * sxy - sx * sy) / denom
+  const intercept = (sy - slope * sx) / sw
+  const meanY = sy / sw
   let ssTot = 0,
     ssRes = 0
   for (let i = 0; i < n; i++) {
+    const w = weights ? weights[i] : 1
     const pred = slope * xs[i] + intercept
-    ssRes += (ys[i] - pred) ** 2
-    ssTot += (ys[i] - meanY) ** 2
+    ssRes += w * (ys[i] - pred) ** 2
+    ssTot += w * (ys[i] - meanY) ** 2
   }
   const r2 = ssTot === 0 ? 0 : 1 - ssRes / ssTot
   return { slope, intercept, r2 }
@@ -171,6 +175,7 @@ export function fitParams(
   dayZeroMs: number,
   peakDatesMs: number[],
   fitWindowDays = 0,
+  powFitGamma = 0,
 ): FittedParams {
   const lastTime = times[times.length - 1] ?? 0
   const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
@@ -179,6 +184,11 @@ export function fitParams(
   const yExp: number[] = []
   const xPow: number[] = []
   const yPow: number[] = []
+  // Daily samples are uniform in x but the power fit regresses on ln(x+1), so
+  // recent years are exponentially over-represented. Weighting each point by
+  // (x+1)^(−γ) counteracts that: γ=0 is plain per-sample OLS, γ=1 gives equal
+  // weight per log-time decade (lets early cycles steepen the slope).
+  const wPow: number[] = []
   for (let i = 0; i < times.length; i++) {
     const m = ma[i]
     if (m == null || m <= 0) continue
@@ -189,9 +199,10 @@ export function fitParams(
     yExp.push(Math.log(m)) // ln(MA) = ln C + α·x
     xPow.push(Math.log(x + 1))
     yPow.push(Math.log(m)) // ln(MA) = ln C + β·ln(x+1)
+    wPow.push(powFitGamma !== 0 ? Math.pow(x + 1, -powFitGamma) : 1)
   }
   const expFit = linregress(xExp, yExp)
-  const powFit = linregress(xPow, yPow)
+  const powFit = linregress(xPow, yPow, powFitGamma !== 0 ? wPow : undefined)
 
   // Envelope: at a cycle top, price/MA ≈ envelope, so price/MA − 1 ≈ C·e^(−λx).
   const xEnv: number[] = []

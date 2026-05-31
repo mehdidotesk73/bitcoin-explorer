@@ -33,6 +33,10 @@ const ma = computed(() => movingAverage(prices.value, maWindow.value))
 
 // Calibrate the value-growth fit to the last N days of data (0 = all history).
 const fitWindowDays = ref(0)
+// Power-fit weighting: weight each point by (x+1)^(−γ). γ=0 is plain per-sample
+// OLS; γ=1 weights equally per log-time decade, steepening β toward the early
+// cycles. Tune to reproduce a preferred fit.
+const powFitGamma = ref(1)
 
 const peakDatesMs = computed(() => DEFAULT_PEAK_DATES.map((d) => Date.parse(d)))
 
@@ -46,6 +50,7 @@ const fitted = computed(() =>
         dayZeroMs.value,
         peakDatesMs.value,
         fitWindowDays.value,
+        powFitGamma.value,
       )
     : null,
 )
@@ -64,8 +69,8 @@ const logX = ref(false)
 const p = reactive({
   expConstant: 12.456,
   expExponent: 0.001624,
-  powConstant: 2.06e-14,
-  powExponent: 4.914,
+  powConstant: 8e-14,
+  powExponent: 4.7,
   linRate: 0,
   envConstant: 48.77,
   envExponent: 0.000511,
@@ -111,7 +116,7 @@ watch(slopeVariant, () => {
 
 // Calibration inputs re-fit the growth curve so changes apply immediately.
 // (The C/α/β boxes remain manual overrides until the next recalibration.)
-watch([maWindow, dayZero, fitWindowDays], () => {
+watch([maWindow, dayZero, fitWindowDays, powFitGamma], () => {
   if (seeded) resetToFit()
 })
 
@@ -315,8 +320,19 @@ const fmtNum = (v: number) =>
             Power β
             <input type="number" v-model.number="p.powExponent" step="any" />
           </label>
+          <label>
+            Fit weighting γ
+            <input
+              type="number"
+              v-model.number="powFitGamma"
+              min="0"
+              max="2"
+              step="0.05"
+            />
+          </label>
+          <span class="fit-note">γ=0 per-sample · γ=1 per log-time decade</span>
         </div>
-        <p class="eq">MA = C · (x + 1)^β</p>
+        <p class="eq">MA = C · (x + 1)^β · &nbsp; fit weight ∝ (x + 1)^(−γ)</p>
       </template>
 
       <template v-else>
