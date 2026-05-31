@@ -6,6 +6,7 @@ import {
   type PricePoint,
   type FetchProgress,
 } from './api/bitcoin'
+import { loadSupplemental } from './api/supplemental'
 import { sma, bollinger } from './lib/indicators'
 import PriceChart from './components/PriceChart.vue'
 
@@ -19,7 +20,7 @@ const progress = ref<FetchProgress>({ bars: 0, pages: 0 })
 const lastUpdated = ref<number | null>(null)
 
 // --- Adjustable parameters --------------------------------------------------
-const startDate = ref(toDateInput(EARLIEST_MS)) // data range start
+const startDate = ref('') // data range start (empty = earliest available)
 const maPeriod = ref(20)
 const bbPeriod = ref(20)
 const bbK = ref(2)
@@ -28,11 +29,26 @@ const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
-const minDate = toDateInput(EARLIEST_MS)
+const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+// Earliest available date drives the "Data start" picker's minimum.
+const minDate = computed(() =>
+  raw.value.length ? toDateInput(raw.value[0].time) : toDateInput(EARLIEST_MS),
+)
+
+// Combine supplemental (pre-2017) with Binance, one point per UTC day. Binance
+// wins any overlapping day since it's the exchange source.
+function merge(supp: PricePoint[], binance: PricePoint[]): PricePoint[] {
+  const byDay = new Map<string, PricePoint>()
+  for (const p of supp) byDay.set(dayKey(p.time), p)
+  for (const p of binance) byDay.set(dayKey(p.time), p)
+  return [...byDay.values()].sort((a, b) => a.time - b.time)
+}
 
 // --- Derived series (recomputed instantly on parameter change) --------------
 const filtered = computed(() => {
-  const startMs = Date.parse(startDate.value)
+  if (!raw.value.length) return []
+  const startMs = startDate.value ? Date.parse(startDate.value) : raw.value[0].time
   return raw.value.filter((p) => p.time >= startMs)
 })
 const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
@@ -66,6 +82,7 @@ function loadCache() {
     if (Array.isArray(parsed.points) && parsed.points.length) {
       raw.value = parsed.points
       lastUpdated.value = parsed.ts
+      if (!startDate.value) startDate.value = minDate.value
     }
   } catch {
     /* ignore corrupt cache */
@@ -77,8 +94,13 @@ async function refresh() {
   error.value = ''
   progress.value = { bars: 0, pages: 0 }
   try {
-    const points = await fetchDailyPrices(EARLIEST_MS, (p) => (progress.value = p))
+    const [binance, supp] = await Promise.all([
+      fetchDailyPrices(EARLIEST_MS, (p) => (progress.value = p)),
+      loadSupplemental(),
+    ])
+    const points = merge(supp, binance)
     raw.value = points
+    if (!startDate.value) startDate.value = minDate.value
     lastUpdated.value = Date.now()
     localStorage.setItem(
       CACHE_KEY,
@@ -162,7 +184,8 @@ const fmtUSD = (v: number | null) =>
     />
     <p class="hint">
       Drag the slider under the chart (or pinch) to adjust the graphed range.
-      Source: Binance public market data (daily BTC/USDT closes since Aug 2017).
+      Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
+      market data (daily BTC/USDT closes from Aug 2017).
     </p>
   </main>
 </template>
