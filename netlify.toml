@@ -1,4 +1,5 @@
 # Netlify build config — used for per-branch/PR preview URLs.
+# Deploy Previews verified working from this branch.
 #
 # Production stays on GitHub Pages. Netlify only provides preview links:
 # every pull request gets a "Deploy Preview" URL and every branch gets a
