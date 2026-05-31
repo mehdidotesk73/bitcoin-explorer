@@ -10,12 +10,17 @@ import { loadSupplemental } from './api/supplemental'
 import { sma, bollinger } from './lib/indicators'
 import PriceChart from './components/PriceChart.vue'
 import { debugState, logDebug } from './debug'
+import { setupPWAUpdates } from './pwa'
 
 const CACHE_KEY = 'btc-daily-v1'
 
 const buildId = __BUILD_ID__
 const buildTime = __BUILD_TIME__
 const showDebug = ref(false)
+
+// Keep the installed PWA current: auto-reload on new deploys, plus a manual
+// button as a guaranteed way to escape a stale cache.
+const { reloadLatest } = setupPWAUpdates()
 
 // --- Raw data + fetch state -------------------------------------------------
 const raw = shallowRef<PricePoint[]>([])
@@ -205,6 +210,7 @@ const fmtUSD = (v: number | null) =>
         </span>
         <span class="chev">{{ showDebug ? '▲' : '▼' }}</span>
       </button>
+      <button class="reload-btn" @click="reloadLatest">Reload latest</button>
       <ul v-if="showDebug" class="debug-log">
         <li v-if="!debugState.logs.length" class="muted">No log entries yet.</li>
         <li v-for="(l, i) in debugState.logs" :key="i" :class="l.kind">
@@ -304,6 +310,11 @@ button:hover {
 .err-dot {
   color: #c0392b;
   margin-left: 0.4rem;
+}
+.reload-btn {
+  margin-left: 0.6rem;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
 }
 .chev {
   margin-left: 0.3rem;
