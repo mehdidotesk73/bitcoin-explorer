@@ -26,9 +26,14 @@ const props = defineProps<{
   actual: (number | null)[]
   modelMa: number[]
   projected: number[]
-  logScale: boolean
-  /** ISO date of "today", drawn as a vertical divider. */
-  nowDate: string
+  /** Numeric x for each point: days since the series start (always ≥ 1). */
+  x: number[]
+  /** Epoch ms of the first sample — origin for converting x back to a date. */
+  originMs: number
+  logX: boolean
+  logY: boolean
+  /** x value of "today", drawn as a vertical divider. */
+  nowX: number
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -44,6 +49,16 @@ const fmtUSD = (v: number | null) =>
 
 const AXIS = '#8b94ac'
 const SPLIT = 'rgba(54, 66, 95, 0.45)'
+
+const DAY_MS = 86_400_000
+
+/** Format an x value (days since start) as its calendar year. */
+const fmtXYear = (v: number) =>
+  new Date(props.originMs + (v - 1) * DAY_MS).getFullYear().toString()
+
+/** Zip a y-series against the numeric x into [x, y] pairs for the chart. */
+const pair = (ys: (number | null)[]): [number, number | null][] =>
+  ys.map((y, i) => [props.x[i], y])
 
 function buildOption(): echarts.EChartsCoreOption {
   return {
@@ -74,15 +89,16 @@ function buildOption(): echarts.EChartsCoreOption {
       },
     },
     xAxis: {
-      type: 'category',
-      data: props.dates,
-      boundaryGap: false,
+      type: props.logX ? 'log' : 'value',
+      scale: true,
+      min: 'dataMin',
+      max: 'dataMax',
       axisLine: { lineStyle: { color: AXIS } },
-      axisLabel: { color: AXIS },
+      axisLabel: { color: AXIS, formatter: fmtXYear },
       splitLine: { show: false },
     },
     yAxis: {
-      type: props.logScale ? 'log' : 'value',
+      type: props.logY ? 'log' : 'value',
       scale: true,
       axisLine: { lineStyle: { color: AXIS } },
       axisLabel: { color: AXIS, formatter: (v: number) => fmtUSD(v) },
@@ -104,14 +120,14 @@ function buildOption(): echarts.EChartsCoreOption {
       {
         name: 'Value baseline (4yr MA)',
         type: 'line',
-        data: props.modelMa,
+        data: pair(props.modelMa),
         symbol: 'none',
         lineStyle: { color: '#4f8ef7', width: 1.5 },
       },
       {
         name: 'Projected price',
         type: 'line',
-        data: props.projected,
+        data: pair(props.projected),
         symbol: 'none',
         lineStyle: { color: '#9b6dff', width: 1.5, type: 'dashed' },
         markLine: {
@@ -123,13 +139,13 @@ function buildOption(): echarts.EChartsCoreOption {
             position: 'insideEndTop',
           },
           lineStyle: { color: '#5a6480', type: 'dotted' },
-          data: [{ xAxis: props.nowDate }],
+          data: [{ xAxis: props.nowX }],
         },
       },
       {
         name: 'Actual',
         type: 'line',
-        data: props.actual,
+        data: pair(props.actual),
         symbol: 'none',
         connectNulls: false,
         lineStyle: { color: '#f7931a', width: 1.8 },
@@ -157,7 +173,15 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.dates, props.actual, props.modelMa, props.projected, props.logScale],
+  () => [
+    props.dates,
+    props.actual,
+    props.modelMa,
+    props.projected,
+    props.x,
+    props.logX,
+    props.logY,
+  ],
   render,
 )
 </script>

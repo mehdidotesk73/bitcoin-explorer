@@ -47,7 +47,8 @@ const envelopeType = ref<EnvelopeType>('exponential-decay')
 const distributionType = ref<DistributionType>('peaks')
 const peakSpread = ref(DEFAULT_PEAK_SPREAD)
 const horizonYear = ref(2050)
-const logScale = ref(true)
+const logY = ref(true)
+const logX = ref(false)
 
 // --- Editable parameters (seeded from the curve fit, user-overridable) ------
 const p = reactive({
@@ -134,6 +135,22 @@ const forecast = computed(() =>
 )
 
 const nowDate = new Date().toISOString().slice(0, 10)
+const DAY_MS = 86_400_000
+
+// Numeric x basis for the chart: days since the first plotted sample (≥ 1, so a
+// log x-axis is always valid). A log-log view renders the power-law fit as a
+// straight line.
+const chartOrigin = computed(() => {
+  const f = forecast.value
+  return f && f.dates.length ? Date.parse(f.dates[0]) : 0
+})
+const xDays = computed(() => {
+  const f = forecast.value
+  if (!f) return []
+  const t0 = chartOrigin.value
+  return f.dates.map((d) => (Date.parse(d) - t0) / DAY_MS + 1)
+})
+const nowX = computed(() => (Date.parse(nowDate) - chartOrigin.value) / DAY_MS + 1)
 
 // Headline: projected price at the horizon.
 const horizonPrice = computed(() => {
@@ -211,8 +228,12 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label class="checkbox">
-        <input type="checkbox" v-model="logScale" />
-        Log scale
+        <input type="checkbox" v-model="logX" />
+        Log X
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" v-model="logY" />
+        Log Y
       </label>
       <button class="reset" @click="resetToFit">↺ Reset to fit</button>
     </section>
@@ -360,8 +381,11 @@ const fmtNum = (v: number) =>
       :actual="forecast.actual"
       :model-ma="forecast.modelMa"
       :projected="forecast.projected"
-      :log-scale="logScale"
-      :now-date="nowDate"
+      :x="xDays"
+      :origin-ms="chartOrigin"
+      :now-x="nowX"
+      :log-x="logX"
+      :log-y="logY"
     />
   </div>
 </template>
