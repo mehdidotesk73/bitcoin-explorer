@@ -32,9 +32,18 @@ const lastUpdated = ref<number | null>(null)
 // --- Adjustable parameters --------------------------------------------------
 const startDate = ref('') // data range start (empty = earliest available)
 const maPeriod = ref(20)
+const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
+const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+// Data is daily, so week/month periods just scale the sample count.
+type PeriodUnit = 'day' | 'week' | 'month'
+const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
+const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
+const toDays = (period: number, unit: PeriodUnit) =>
+  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
 
 function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
@@ -63,10 +72,15 @@ const filtered = computed(() => {
 })
 const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
 const prices = computed(() => filtered.value.map((p) => p.price))
-const ma = computed(() => sma(prices.value, Math.max(1, maPeriod.value)))
-const bands = computed(() =>
-  bollinger(prices.value, Math.max(1, bbPeriod.value), bbK.value),
-)
+
+// Effective windows in days, and short labels for the chart legend/tooltip.
+const maDays = computed(() => toDays(maPeriod.value, maUnit.value))
+const bbDays = computed(() => toDays(bbPeriod.value, bbUnit.value))
+const maLabel = computed(() => `${maPeriod.value}${UNIT_ABBR[maUnit.value]}`)
+const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
+
+const ma = computed(() => sma(prices.value, maDays.value))
+const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -164,11 +178,25 @@ const fmtUSD = (v: number | null) =>
       </label>
       <label>
         MA period
-        <input type="number" v-model.number="maPeriod" min="1" max="400" />
+        <span class="period">
+          <input type="number" v-model.number="maPeriod" min="1" max="400" />
+          <select v-model="maUnit">
+            <option value="day">days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </span>
       </label>
       <label>
         Bollinger period
-        <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+        <span class="period">
+          <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+          <select v-model="bbUnit">
+            <option value="day">days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </span>
       </label>
       <label>
         Bollinger σ ×
@@ -192,8 +220,8 @@ const fmtUSD = (v: number | null) =>
       :ma="ma"
       :upper="bands.upper"
       :lower="bands.lower"
-      :ma-period="maPeriod"
-      :bb-period="bbPeriod"
+      :ma-label="maLabel"
+      :bb-label="bbLabel"
       v-model:zoom="zoom"
     />
     <p class="hint">
@@ -270,6 +298,19 @@ header h1 {
   border: 1px solid #ccc;
   border-radius: 0.4rem;
   width: 8rem;
+}
+.period {
+  display: flex;
+  gap: 0.3rem;
+}
+.period input {
+  width: 4rem;
+}
+.period select {
+  font: inherit;
+  padding: 0.35rem 0.3rem;
+  border: 1px solid #ccc;
+  border-radius: 0.4rem;
 }
 button {
   font: inherit;
