@@ -27,6 +27,9 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
+      // We register the SW ourselves (src/pwa.ts) to add periodic update
+      // checks and auto-reload, so don't also auto-inject a registration.
+      injectRegister: false,
       // Generate icons + favicons from a single source SVG.
       pwaAssets: {
         image: 'public/logo.svg',

@@ -25,8 +25,8 @@ const props = defineProps<{
   ma: (number | null)[]
   upper: (number | null)[]
   lower: (number | null)[]
-  maPeriod: number
-  bbPeriod: number
+  maLabel: string
+  bbLabel: string
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -52,7 +52,7 @@ function buildOption(): echarts.EChartsCoreOption {
     animation: false,
     grid: { left: 56, right: 16, top: 48, bottom: 72 },
     legend: {
-      data: ['Price', `MA (${props.maPeriod})`, `Bollinger (${props.bbPeriod})`],
+      data: ['Price', `MA (${props.maLabel})`, `Bollinger (${props.bbLabel})`],
       top: 8,
     },
     tooltip: {
@@ -62,7 +62,7 @@ function buildOption(): echarts.EChartsCoreOption {
         const rows = [
           `<strong>${props.dates[i]}</strong>`,
           `Price: ${fmtUSD(props.price[i])}`,
-          `MA (${props.maPeriod}): ${fmtUSD(props.ma[i])}`,
+          `MA (${props.maLabel}): ${fmtUSD(props.ma[i])}`,
           `Upper: ${fmtUSD(props.upper[i])}`,
           `Lower: ${fmtUSD(props.lower[i])}`,
         ]
@@ -95,7 +95,7 @@ function buildOption(): echarts.EChartsCoreOption {
         silent: true,
       },
       {
-        name: `Bollinger (${props.bbPeriod})`,
+        name: `Bollinger (${props.bbLabel})`,
         type: 'line',
         data: bandSpan,
         stack: 'bb',
@@ -104,7 +104,7 @@ function buildOption(): echarts.EChartsCoreOption {
         areaStyle: { color: 'rgba(66, 184, 131, 0.18)' },
       },
       {
-        name: `MA (${props.maPeriod})`,
+        name: `MA (${props.maLabel})`,
         type: 'line',
         data: props.ma,
         symbol: 'none',
