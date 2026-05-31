@@ -159,9 +159,10 @@ function rollingSlopes(
 }
 
 /**
- * Fit growth + envelope parameters to the loaded history. Growth fits use all
- * valid MA points; the envelope is fit only to the price/MA ratio observed on
- * historical cycle-top days (those within the data span).
+ * Fit growth + envelope parameters to the loaded history. Growth fits use the
+ * valid MA points within the last `fitWindowDays` of data (0 = all history);
+ * the envelope is fit only to the price/MA ratio observed on historical
+ * cycle-top days (those within the data span).
  */
 export function fitParams(
   times: number[],
@@ -169,7 +170,11 @@ export function fitParams(
   ma: (number | null)[],
   dayZeroMs: number,
   peakDatesMs: number[],
+  fitWindowDays = 0,
 ): FittedParams {
+  const lastTime = times[times.length - 1] ?? 0
+  const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
+
   const xExp: number[] = []
   const yExp: number[] = []
   const xPow: number[] = []
@@ -177,6 +182,7 @@ export function fitParams(
   for (let i = 0; i < times.length; i++) {
     const m = ma[i]
     if (m == null || m <= 0) continue
+    if (times[i] < fitCutoff) continue // outside the calibration window
     const x = daysSince(times[i], dayZeroMs)
     if (x <= 0) continue
     xExp.push(x)
@@ -190,7 +196,6 @@ export function fitParams(
   // Envelope: at a cycle top, price/MA ≈ envelope, so price/MA − 1 ≈ C·e^(−λx).
   const xEnv: number[] = []
   const yEnv: number[] = []
-  const lastTime = times[times.length - 1] ?? 0
   for (const pd of peakDatesMs) {
     if (pd > lastTime) continue // future top: not observable yet
     const i = nearestIndex(times, pd)

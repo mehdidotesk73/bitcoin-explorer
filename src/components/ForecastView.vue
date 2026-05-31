@@ -31,12 +31,22 @@ const dayZero = ref(DEFAULT_DAY_ZERO)
 const dayZeroMs = computed(() => Date.parse(dayZero.value))
 const ma = computed(() => movingAverage(prices.value, maWindow.value))
 
+// Calibrate the value-growth fit to the last N days of data (0 = all history).
+const fitWindowDays = ref(0)
+
 const peakDatesMs = computed(() => DEFAULT_PEAK_DATES.map((d) => Date.parse(d)))
 
 // --- Automatic curve fit (recomputed when data / window / day-zero change) ---
 const fitted = computed(() =>
   props.raw.length
-    ? fitParams(times.value, prices.value, ma.value, dayZeroMs.value, peakDatesMs.value)
+    ? fitParams(
+        times.value,
+        prices.value,
+        ma.value,
+        dayZeroMs.value,
+        peakDatesMs.value,
+        fitWindowDays.value,
+      )
     : null,
 )
 
@@ -99,6 +109,12 @@ watch(slopeVariant, () => {
   if (f) p.linRate = f.slopeStats[slopeVariant.value]
 })
 
+// Calibration inputs re-fit the growth curve so changes apply immediately.
+// (The C/α/β boxes remain manual overrides until the next recalibration.)
+watch([maWindow, dayZero, fitWindowDays], () => {
+  if (seeded) resetToFit()
+})
+
 // --- Forecast ---------------------------------------------------------------
 const config = computed<ForecastConfig>(() => ({
   dayZeroMs: dayZeroMs.value,
@@ -157,6 +173,14 @@ const horizonPrice = computed(() => {
   const f = forecast.value
   return f && f.projected.length ? f.projected[f.projected.length - 1] : null
 })
+
+// Human-readable hints for the calibration inputs.
+const maYears = computed(() => (maWindow.value / 365).toFixed(1))
+const fitWindowLabel = computed(() =>
+  fitWindowDays.value > 0
+    ? `last ${fitWindowDays.value} days (≈ ${(fitWindowDays.value / 365).toFixed(1)} yr)`
+    : 'all history',
+)
 
 const fmtUSD = (v: number | null) =>
   v == null
@@ -244,12 +268,19 @@ const fmtNum = (v: number) =>
       <div class="param-grid">
         <label>
           MA window (days)
-          <input type="number" v-model.number="maWindow" min="30" max="2000" step="10" />
+          <input type="number" v-model.number="maWindow" min="30" max="3000" step="5" />
+        </label>
+        <label>
+          Fit window (days, 0 = all)
+          <input type="number" v-model.number="fitWindowDays" min="0" max="6000" step="50" />
         </label>
         <label>
           Day zero
           <input type="date" v-model="dayZero" />
         </label>
+        <span class="fit-note">
+          MA ≈ {{ maYears }} yr · growth fit on {{ fitWindowLabel }}
+        </span>
       </div>
 
       <template v-if="growthType === 'exponential'">
