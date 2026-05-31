@@ -38,8 +38,8 @@ export default defineConfig({
         name: 'Bitcoin Price Explorer',
         short_name: 'BTC Explorer',
         description: 'Bitcoin price with moving average and Bollinger bands, adjustable.',
-        theme_color: '#42b883',
-        background_color: '#ffffff',
+        theme_color: '#0b0f18',
+        background_color: '#0b0f18',
         display: 'standalone',
       },
       workbox: {
