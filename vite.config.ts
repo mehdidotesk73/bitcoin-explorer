@@ -18,9 +18,9 @@ export default defineConfig({
         image: 'public/logo.svg',
       },
       manifest: {
-        name: 'Test Git Claude Project',
-        short_name: 'ClaudeApp',
-        description: 'An installable web app, Capacitor-ready for native builds.',
+        name: 'Bitcoin Price Explorer',
+        short_name: 'BTC Explorer',
+        description: 'Bitcoin price with moving average and Bollinger bands, adjustable.',
         theme_color: '#42b883',
         background_color: '#ffffff',
         display: 'standalone',
