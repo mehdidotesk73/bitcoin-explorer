@@ -9,8 +9,13 @@ import {
 import { loadSupplemental } from './api/supplemental'
 import { sma, bollinger } from './lib/indicators'
 import PriceChart from './components/PriceChart.vue'
+import { debugState, logDebug } from './debug'
 
 const CACHE_KEY = 'btc-daily-v1'
+
+const buildId = __BUILD_ID__
+const buildTime = __BUILD_TIME__
+const showDebug = ref(false)
 
 // --- Raw data + fetch state -------------------------------------------------
 const raw = shallowRef<PricePoint[]>([])
@@ -101,6 +106,9 @@ async function refresh() {
     const points = merge(supp, binance)
     raw.value = points
     if (!startDate.value) startDate.value = minDate.value
+    logDebug(
+      `loaded ${binance.length} Binance + ${supp.length} supplemental = ${points.length} points`,
+    )
     lastUpdated.value = Date.now()
     localStorage.setItem(
       CACHE_KEY,
@@ -109,6 +117,7 @@ async function refresh() {
   } catch (e) {
     error.value =
       e instanceof Error ? e.message : 'Failed to load price data. Check your connection.'
+    logDebug(`refresh failed: ${error.value}`, 'error')
   } finally {
     loading.value = false
   }
@@ -187,6 +196,22 @@ const fmtUSD = (v: number | null) =>
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
       market data (daily BTC/USDT closes from Aug 2017).
     </p>
+
+    <footer class="debug">
+      <button class="debug-toggle" @click="showDebug = !showDebug">
+        build {{ buildId }} · {{ buildTime }}
+        <span v-if="debugState.logs.some((l) => l.kind === 'error')" class="err-dot">
+          ● {{ debugState.logs.filter((l) => l.kind === 'error').length }} error(s)
+        </span>
+        <span class="chev">{{ showDebug ? '▲' : '▼' }}</span>
+      </button>
+      <ul v-if="showDebug" class="debug-log">
+        <li v-if="!debugState.logs.length" class="muted">No log entries yet.</li>
+        <li v-for="(l, i) in debugState.logs" :key="i" :class="l.kind">
+          <span class="muted">{{ l.time }}</span> {{ l.msg }}
+        </li>
+      </ul>
+    </footer>
   </main>
 </template>
 
@@ -258,5 +283,45 @@ button:hover {
   color: #888;
   font-size: 0.8rem;
   margin-top: 0.75rem;
+}
+.debug {
+  margin-top: 1.5rem;
+  border-top: 1px solid #eee;
+  padding-top: 0.5rem;
+}
+.debug-toggle {
+  border: none;
+  background: none;
+  color: #999;
+  font-size: 0.72rem;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+.debug-toggle:hover {
+  background: none;
+  color: #555;
+}
+.err-dot {
+  color: #c0392b;
+  margin-left: 0.4rem;
+}
+.chev {
+  margin-left: 0.3rem;
+}
+.debug-log {
+  list-style: none;
+  padding: 0.5rem;
+  margin: 0.4rem 0 0;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.4rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  max-height: 12rem;
+  overflow: auto;
+}
+.debug-log .error {
+  color: #fca5a5;
 }
 </style>

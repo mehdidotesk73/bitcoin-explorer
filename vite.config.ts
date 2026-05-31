@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -6,9 +7,22 @@ import { VitePWA } from 'vite-plugin-pwa'
 // In CI we set BASE_PATH; locally and for Capacitor we use '/'.
 const base = process.env.BASE_PATH ?? '/'
 
+// A build stamp so the running build is identifiable from a screenshot.
+let buildId = 'dev'
+try {
+  buildId = execSync('git rev-parse --short HEAD').toString().trim()
+} catch {
+  /* not a git checkout */
+}
+const buildTime = new Date().toISOString().slice(0, 16).replace('T', ' ')
+
 // https://vite.dev/config/
 export default defineConfig({
   base,
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+  },
   plugins: [
     vue(),
     VitePWA({
@@ -26,7 +40,7 @@ export default defineConfig({
         display: 'standalone',
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,csv}'],
       },
       devOptions: {
         // Enables the service worker in `vite dev` for testing.
