@@ -125,15 +125,28 @@ function render() {
   chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
 }
 
+// Guards against an infinite loop between the chart's `datazoom` event and the
+// prop-driven `dispatchAction` below: each can otherwise re-trigger the other.
+let suppressZoomEvent = false
+const near = (a: number, b: number) => Math.abs(a - b) < 0.05
+
+function currentZoom(): [number, number] {
+  const opt = chart.value?.getOption() as any
+  const dz = opt?.dataZoom?.[0]
+  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
+}
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   render()
-  // Keep the parent's zoom model in sync when the user drags/pinches.
+  // Keep the parent's zoom model in sync when the user drags/pinches, but only
+  // emit when the value actually changed (and not while we're applying one).
   chart.value.on('datazoom', () => {
-    const opt = chart.value!.getOption() as any
-    const dz = opt.dataZoom?.[0]
-    if (dz) emit('update:zoom', [dz.start, dz.end])
+    if (suppressZoomEvent) return
+    const [start, end] = currentZoom()
+    if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
+    emit('update:zoom', [start, end])
   })
   resizeObserver.observe(el.value)
 })
@@ -152,10 +165,16 @@ watch(
 )
 
 // Apply externally-driven zoom changes (preset range buttons) to the chart.
+// Skip if the chart is already there, and suppress the resulting event so it
+// doesn't echo back as another parent update.
 watch(
   () => props.zoom,
   ([start, end]) => {
+    const [cs, ce] = currentZoom()
+    if (near(cs, start) && near(ce, end)) return
+    suppressZoomEvent = true
     chart.value?.dispatchAction({ type: 'dataZoom', start, end })
+    suppressZoomEvent = false
   },
 )
 </script>
