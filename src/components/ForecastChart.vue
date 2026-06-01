@@ -27,6 +27,8 @@ export interface ChartSeries {
   color: string
   dashed?: boolean
   width?: number
+  /** If set, this series' values define the y-axis range for the x-window. */
+  bounds?: boolean
 }
 
 const props = defineProps<{
@@ -137,22 +139,23 @@ function buildOption(): echarts.EChartsCoreOption {
     },
     yAxis: {
       type: props.logY ? 'log' : 'value',
-      // Auto-scale to whatever data is in view; sub-floor points are dropped in
-      // `pair`, so the axis follows the visible (zoomed) range, not the global.
+      // min/max are set explicitly by applyYBounds() to the in-view observed
+      // data range; these are just the pre-bounds fallback.
       scale: true,
       min: null,
+      max: null,
       axisLine: { lineStyle: { color: AXIS } },
       axisLabel: { color: AXIS, formatter: (v: number) => fmtY(v) },
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
-      // filterMode 'filter' drops out-of-window points so the y-axis re-fits to
-      // the visible x-range as the user zooms.
-      { type: 'inside', xAxisIndex: 0, filterMode: 'filter', start: 0, end: 100 },
+      // filterMode 'none' keeps the x-window mapping linear (no compounding);
+      // the y-range is set explicitly from the in-view data by applyYBounds().
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none', start: 0, end: 100 },
       {
         type: 'slider',
         xAxisIndex: 0,
-        filterMode: 'filter',
+        filterMode: 'none',
         start: 0,
         end: 100,
         bottom: 16,
@@ -165,13 +168,76 @@ function buildOption(): echarts.EChartsCoreOption {
   }
 }
 
+/** Current visible x-window [x0, x1] in data units, from the dataZoom state. */
+function zoomWindow(): [number, number] {
+  const xs = props.x
+  const lo = xs[0]
+  const hi = xs[xs.length - 1]
+  let start = 0
+  let end = 100
+  const dz = (chart.value?.getOption() as any)?.dataZoom?.[0]
+  if (dz) {
+    start = dz.start ?? 0
+    end = dz.end ?? 100
+  }
+  // Zoom percentages map over the axis scale (log when logX is on).
+  if (props.logX && lo > 0 && hi > 0) {
+    const a = Math.log(lo)
+    const b = Math.log(hi)
+    return [Math.exp(a + ((b - a) * start) / 100), Math.exp(a + ((b - a) * end) / 100)]
+  }
+  return [lo + ((hi - lo) * start) / 100, lo + ((hi - lo) * end) / 100]
+}
+
+/** Min/max of the given series over points whose x falls in [x0, x1]. */
+function rangeOf(list: ChartSeries[], x0: number, x1: number): [number, number] | null {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const s of list) {
+    for (let i = 0; i < props.x.length; i++) {
+      const xv = props.x[i]
+      if (xv < x0 || xv > x1) continue
+      const y = s.data[i]
+      if (y == null) continue
+      if (props.logY && y <= 0) continue // log axis can't show ≤ 0
+      if (y < lo) lo = y
+      if (y > hi) hi = y
+    }
+  }
+  return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null
+}
+
+let applyingBounds = false
+/** Pin the y-axis to the min/max of the in-view observed data (`bounds` series),
+ *  falling back to all series where no observed data is in the window. */
+function applyYBounds() {
+  const c = chart.value
+  if (!c || applyingBounds || !props.x.length) return
+  const [x0, x1] = zoomWindow()
+  const flagged = props.series.filter((s) => s.bounds)
+  const range =
+    (flagged.length ? rangeOf(flagged, x0, x1) : null) ?? rangeOf(props.series, x0, x1)
+  if (!range) return
+  let [lo, hi] = range
+  if (lo === hi) {
+    const pad = lo === 0 ? 1 : Math.abs(lo) * 0.05
+    lo -= pad
+    hi += pad
+  }
+  applyingBounds = true
+  c.setOption({ yAxis: { min: lo, max: hi } })
+  applyingBounds = false
+}
+
 function render() {
   chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
+  applyYBounds()
 }
 
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
+  chart.value.on('datazoom', applyYBounds)
   render()
   resizeObserver.observe(el.value)
 })

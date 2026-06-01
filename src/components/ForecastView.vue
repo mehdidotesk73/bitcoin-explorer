@@ -215,24 +215,24 @@ const chartSeries = computed(() => {
   switch (chartTab.value) {
     case 'baseline':
       return [
-        { name: 'Actual 4yr MA', data: f.actualMa, color: C_ORANGE, width: 1.8 },
+        { name: 'Actual 4yr MA', data: f.actualMa, color: C_ORANGE, width: 1.8, bounds: true },
         { name: 'Model baseline (growth fit)', data: f.modelMa, color: C_BLUE },
       ]
     case 'ratio':
       return [
-        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.4 },
+        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.4, bounds: true },
         { name: 'Model price ÷ MA', data: f.priceOverMa, color: C_VIOLET, dashed: true },
       ]
     case 'envelope':
       return [
-        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2 },
-        { name: 'Volatility envelope (max)', data: f.envelope, color: C_TEAL, width: 1.8 },
+        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2, bounds: true },
+        { name: 'Volatility envelope (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
       ]
     default:
       return [
         { name: 'Value baseline (4yr MA)', data: f.modelMa, color: C_BLUE },
         { name: 'Projected price', data: f.projected, color: C_VIOLET, dashed: true },
-        { name: 'Actual', data: f.actual, color: C_ORANGE, width: 1.8 },
+        { name: 'Actual', data: f.actual, color: C_ORANGE, width: 1.8, bounds: true },
       ]
   }
 })
