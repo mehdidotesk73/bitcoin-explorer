@@ -34,6 +34,7 @@ const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 const dcaDaysBack = ref(1460) // X: look-back horizon (days)
 const dcaCenter = ref(0.5) // heat-band centre
 const dcaWindow = ref(0.5) // heat-band half-width
+const showDcaHelp = ref(false)
 
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
@@ -214,7 +215,10 @@ const fmtUSD = (v: number | null) =>
     />
     <!-- DCA exploration: does buying the blue (W/low) zones beat uniform DCA? -->
     <section class="dca" v-if="dca">
-      <h2>DCA exploration</h2>
+      <h2>
+        DCA exploration
+        <span class="help" @click="showDcaHelp = !showDcaHelp">ⓘ</span>
+      </h2>
       <p class="dca-sub">
         For every day t we look back X days and ask: if you'd bought on the days
         whose M/W heat was in the band (heat runs +1 cool/W-low … −1 hot/M-top),
@@ -222,6 +226,35 @@ const fmtUSD = (v: number | null) =>
         <strong>score</strong> averages that method-vs-uniform growth over all
         days — score &gt; 1 means the band beats uniform DCA. Heuristic, not advice.
       </p>
+
+      <div v-if="showDcaHelp" class="dca-help">
+        <p>
+          <strong>Coverage</strong> = the share of look-back days that fall in
+          your heat band (band-days ÷ all days in the window). A wide band near
+          heat 0 covers most days; a narrow band at the extremes covers very few.
+          Low coverage means the score rests on a tiny, cherry-picked sample —
+          treat big scores with &lt;5% coverage as overfit noise, not a real edge.
+        </p>
+        <p>
+          <strong>Sweep chart.</strong> The blue line is the score (×, left
+          axis) as the band centre slides across every heat value (x-axis:
+          −hot/M … +cool/W). The dotted <em>parity</em> line is 1.0 — blue above
+          it means that band beat buying every day. The grey curve (right axis,
+          %) is coverage — it's bell-shaped because heat clusters near 0, so a
+          band captures the most days in the middle and few at the edges. Read
+          the two together: a trustworthy edge needs blue above parity
+          <em>and</em> grey coverage that isn't on the floor. The violet line
+          marks your current centre.
+        </p>
+        <p>
+          <strong>Timeline chart.</strong> Two competing curves over time:
+          “days like this one” (blue — the trailing-window growth of buys whose
+          heat matched that day, ± window) vs “every day” (grey dashed). Where
+          blue sits above grey (green shading), days like that were a
+          cheaper-than-average entry — an attractive buy signal. Where they
+          overlap, the heat band adds nothing over plain daily buying.
+        </p>
+      </div>
 
       <div class="controls">
         <label>
@@ -359,6 +392,25 @@ const fmtUSD = (v: number | null) =>
   font-size: 0.78rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+.dca-help {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.dca-help p {
+  margin: 0 0 0.6rem;
+}
+.dca-help p:last-child {
+  margin-bottom: 0;
+}
+.dca-help strong {
+  color: var(--text);
 }
 .period {
   display: flex;
