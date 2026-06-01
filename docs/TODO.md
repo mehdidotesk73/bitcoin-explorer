@@ -21,11 +21,13 @@
     exponential), so the option is labelled "Laplacian" / "None".
   - "Horizon" left as-is (already clear).
 
-- [x] Linear slope as nth-percentile over a past D-day window. Replaced the
-      fixed min/median/mean/max variant with a `percentile()` helper +
-      `slopeWindowDays` / `slopePercentile` params on `fitParams`; dropped the
-      `SlopeVariant`/`slopeStats` API. UI: "Slope percentile" (0–100) and
-      "Slope lookback (days, 0 = all)" inputs in the Calibration section.
+- [x] Linear slope as an Nth-percentile trailing slope. Replaced the fixed
+      min/median/mean/max variant with a `percentile()` helper + three params on
+      `fitParams`: `slopeRangeDays` (how far back to gather samples),
+      `slopeWindowDays` (span each slope is measured over — daily/weekly/
+      monthly/yearly preset), and `slopePercentile` (0–100); dropped the
+      `SlopeVariant`/`slopeStats` API. UI: "Slope range (days)", "Slope window"
+      preset, and "Slope percentile" inputs in the Calibration section.
 
 ## Next branch
 

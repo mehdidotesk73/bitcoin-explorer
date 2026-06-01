@@ -10,6 +10,7 @@ import {
   DEFAULT_MA_WINDOW,
   DEFAULT_PEAK_DATES,
   DEFAULT_PEAK_SPREAD,
+  DEFAULT_SLOPE_RANGE_DAYS,
   DEFAULT_SLOPE_WINDOW_DAYS,
   DEFAULT_SLOPE_PERCENTILE,
   type GrowthType,
@@ -53,6 +54,7 @@ const fitted = computed(() =>
         peakDatesMs.value,
         fitWindowDays.value,
         powFitGamma.value,
+        slopeRangeDays.value,
         slopeWindowDays.value,
         slopePercentile.value,
       )
@@ -61,9 +63,18 @@ const fitted = computed(() =>
 
 // --- Model selections -------------------------------------------------------
 const growthType = ref<GrowthType>('power')
-// Linear growth: Nth-percentile of the trailing MA slopes over the last D days.
+// Linear growth: Nth-percentile of the trailing MA slopes. `slopeRangeDays` is
+// how far back to gather samples; `slopeWindowDays` is the span each slope is
+// measured over (daily/weekly/monthly/yearly preset).
+const slopeRangeDays = ref(DEFAULT_SLOPE_RANGE_DAYS)
 const slopeWindowDays = ref(DEFAULT_SLOPE_WINDOW_DAYS)
 const slopePercentile = ref(DEFAULT_SLOPE_PERCENTILE)
+const SLOPE_WINDOW_PRESETS = [
+  { label: 'Daily', days: 1 },
+  { label: 'Weekly', days: 7 },
+  { label: 'Monthly', days: 30 },
+  { label: 'Yearly', days: 365 },
+]
 const envelopeType = ref<EnvelopeType>('value-exponential-decay')
 const distributionType = ref<DistributionType>('peaks')
 const peakSpread = ref(DEFAULT_PEAK_SPREAD)
@@ -117,7 +128,15 @@ watch(
 // Calibration inputs re-fit the growth curve so changes apply immediately.
 // (The C/α/β boxes remain manual overrides until the next recalibration.)
 watch(
-  [maWindow, dayZero, fitWindowDays, powFitGamma, slopeWindowDays, slopePercentile],
+  [
+    maWindow,
+    dayZero,
+    fitWindowDays,
+    powFitGamma,
+    slopeRangeDays,
+    slopeWindowDays,
+    slopePercentile,
+  ],
   () => {
     if (seeded) resetToFit()
   },
@@ -295,11 +314,15 @@ const fitWindowLabel = computed(() =>
     ? `last ${fitWindowDays.value} days (≈ ${(fitWindowDays.value / 365).toFixed(1)} yr)`
     : 'all history',
 )
-const slopeWindowLabel = computed(() =>
-  slopeWindowDays.value > 0
-    ? `the last ${slopeWindowDays.value} days (≈ ${(slopeWindowDays.value / 365).toFixed(1)} yr)`
+const slopeRangeLabel = computed(() =>
+  slopeRangeDays.value > 0
+    ? `the last ${slopeRangeDays.value} days (≈ ${(slopeRangeDays.value / 365).toFixed(1)} yr)`
     : 'all history',
 )
+const slopeWindowLabel = computed(() => {
+  const preset = SLOPE_WINDOW_PRESETS.find((p) => p.days === slopeWindowDays.value)
+  return preset ? preset.label.toLowerCase() : `${slopeWindowDays.value}-day`
+})
 
 const fmtUSD = (v: number | null) =>
   v == null
@@ -396,6 +419,24 @@ const fmtNum = (v: number) =>
           <input type="number" v-model.number="powFitGamma" min="0" max="2" step="0.05" />
         </label>
         <label v-if="growthType === 'linear'">
+          Slope range (days, 0 = all)
+          <input
+            type="number"
+            v-model.number="slopeRangeDays"
+            min="0"
+            max="6000"
+            step="30"
+          />
+        </label>
+        <label v-if="growthType === 'linear'">
+          Slope window
+          <select v-model.number="slopeWindowDays">
+            <option v-for="w in SLOPE_WINDOW_PRESETS" :key="w.days" :value="w.days">
+              {{ w.label }}
+            </option>
+          </select>
+        </label>
+        <label v-if="growthType === 'linear'">
           Slope percentile
           <input
             type="number"
@@ -403,16 +444,6 @@ const fmtNum = (v: number) =>
             min="0"
             max="100"
             step="1"
-          />
-        </label>
-        <label v-if="growthType === 'linear'">
-          Slope lookback (days, 0 = all)
-          <input
-            type="number"
-            v-model.number="slopeWindowDays"
-            min="0"
-            max="6000"
-            step="30"
           />
         </label>
         <button class="reset" @click="resetToFit">↺ Reset to fit</button>
@@ -423,8 +454,8 @@ const fmtNum = (v: number) =>
           γ=0 weights every sample equally · γ=1 every log-time decade.
         </template>
         <template v-if="growthType === 'linear'">
-          Linear rate = {{ slopePercentile }}ᵗʰ-percentile trailing slope over
-          {{ slopeWindowLabel }}.
+          Linear rate = {{ slopePercentile }}ᵗʰ-percentile {{ slopeWindowLabel }}
+          slope over {{ slopeRangeLabel }}.
         </template>
         Changing any calibration knob re-fits the model and overwrites the
         parameter boxes below — hand-edits persist only until the next re-fit.

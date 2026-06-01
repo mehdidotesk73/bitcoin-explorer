@@ -28,13 +28,14 @@ export const DEFAULT_PEAK_DATES = [
   '2039-09-24',
 ]
 export const DEFAULT_PEAK_SPREAD = 0.008
-// Linear growth: take the Nth-percentile of the trailing MA slopes observed over
-// the last `slopeWindowDays` of history (0 = all history). 50 ≈ the median.
-export const DEFAULT_SLOPE_WINDOW_DAYS = 365
+// Linear growth: take the Nth-percentile of the trailing MA slopes.
+//   slopeRangeDays  — how far back to gather slope samples (0 = all history).
+//   slopeWindowDays — the span each individual slope is measured over
+//                     (daily/weekly/monthly/yearly preset).
+// e.g. "20th percentile of the past 4 years' weekly slopes".
+export const DEFAULT_SLOPE_RANGE_DAYS = 1460 // ~4 years
+export const DEFAULT_SLOPE_WINDOW_DAYS = 7 // weekly
 export const DEFAULT_SLOPE_PERCENTILE = 50
-// Inner regression window for each rolling slope sample. Short relative to the
-// 4yr MA so the per-sample slopes vary enough for the percentile to matter.
-export const SLOPE_INNER_WINDOW_DAYS = 90
 
 export type GrowthType = 'exponential' | 'power' | 'linear'
 export type EnvelopeType =
@@ -198,6 +199,7 @@ export function fitParams(
   peakDatesMs: number[],
   fitWindowDays = 0,
   powFitGamma = 0,
+  slopeRangeDays = DEFAULT_SLOPE_RANGE_DAYS,
   slopeWindowDays = DEFAULT_SLOPE_WINDOW_DAYS,
   slopePercentile = DEFAULT_SLOPE_PERCENTILE,
 ): FittedParams {
@@ -249,14 +251,14 @@ export function fitParams(
       ? linregress(xEnv, yEnv)
       : { slope: -0.000511, intercept: Math.log(48.77), r2: 0 }
 
-  // Linear rate: the chosen percentile of the trailing MA slopes observed
-  // across the last `slopeWindowDays` of history (0 = all history). The inner
-  // regression window is kept short (SLOPE_INNER_WINDOW_DAYS) so the slope
-  // distribution has real spread — a year-long inner window over the already
-  // very smooth 4yr MA collapses every percentile onto the same value.
+  // Linear rate: the chosen percentile of the trailing MA slopes. Each slope is
+  // measured over a `slopeWindowDays` window (daily/weekly/monthly/yearly), and
+  // samples are gathered across the last `slopeRangeDays` of history (0 = all).
+  // A short window relative to the very smooth 4yr MA gives the slope
+  // distribution real spread, so the percentile meaningfully changes the rate.
   const slopeCutoff =
-    slopeWindowDays > 0 ? lastTime - slopeWindowDays * DAY_MS : -Infinity
-  const slopes = rollingSlopes(times, ma, SLOPE_INNER_WINDOW_DAYS)
+    slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
+  const slopes = rollingSlopes(times, ma, Math.max(slopeWindowDays, 2))
     .filter((s, i) => Number.isFinite(s) && times[i] >= slopeCutoff)
     .sort((a, b) => a - b)
   const linRate = percentile(slopes, slopePercentile)
