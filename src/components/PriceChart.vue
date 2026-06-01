@@ -7,6 +7,7 @@ import {
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  VisualMapComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
@@ -16,6 +17,7 @@ echarts.use([
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  VisualMapComponent,
   CanvasRenderer,
 ])
 
@@ -27,6 +29,10 @@ const props = defineProps<{
   lower: (number | null)[]
   maLabel: string
   bbLabel: string
+  /** Signed M/W heat per sample in [-1, +1] (+cool W … -hot M). */
+  heat?: number[]
+  /** Tint the price line by `heat` when true. */
+  showHeat?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -50,6 +56,14 @@ function buildOption(): echarts.EChartsCoreOption {
 
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
+
+  // When heat tinting is on, give the Price series a 3rd "heat" dimension and
+  // colour it with a continuous visualMap: +1 cool (W) … 0 neutral … -1 hot (M).
+  const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
+  const priceSeriesIndex = 5 // position of the Price series in the array below
+  const priceData = heatOn
+    ? props.price.map((v, i) => [i, v, props.heat![i]])
+    : props.price
 
   return {
     animation: false,
@@ -76,6 +90,11 @@ function buildOption(): echarts.EChartsCoreOption {
           `Upper: ${fmtUSD(props.upper[i])}`,
           `Lower: ${fmtUSD(props.lower[i])}`,
         ]
+        if (props.showHeat && props.heat && props.heat[i] != null) {
+          const h = props.heat[i]
+          const label = h > 0.05 ? 'cool / W' : h < -0.05 ? 'hot / M' : 'neutral'
+          rows.push(`M/W heat: ${h.toFixed(2)} (${label})`)
+        }
         return rows.join('<br/>')
       },
     },
@@ -153,16 +172,31 @@ function buildOption(): echarts.EChartsCoreOption {
       {
         name: 'Price',
         type: 'line',
-        data: props.price,
+        data: priceData,
         symbol: 'none',
+        // When heat is off, encode is harmless; when on, y comes from dim 1.
+        ...(heatOn ? { encode: { x: 0, y: 1 } } : {}),
         lineStyle: { color: '#f7931a', width: 1.5 },
       },
     ],
+    visualMap: heatOn
+      ? {
+          show: false,
+          type: 'continuous',
+          seriesIndex: priceSeriesIndex,
+          dimension: 2,
+          min: -1,
+          max: 1,
+          // -1 (hot/M) → red, 0 → neutral amber, +1 (cool/W) → blue.
+          inRange: { color: ['#ff4d4d', '#f7931a', '#4f8ef7'] },
+        }
+      : undefined,
   }
 }
 
 function render() {
-  chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
+  // replaceMerge visualMap too, so toggling heat off fully removes the mapping.
+  chart.value?.setOption(buildOption(), { replaceMerge: ['series', 'visualMap'] })
 }
 
 // Guards against an infinite loop between the chart's `datazoom` event and the
@@ -200,7 +234,7 @@ onBeforeUnmount(() => {
 
 // Re-render when data or indicator parameters change.
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower],
+  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat],
   render,
 )
 
