@@ -38,7 +38,8 @@ const fitWindowDays = ref(2920)
 // cycles. Tune to reproduce a preferred fit.
 const powFitGamma = ref(1)
 
-const peakDatesMs = computed(() => DEFAULT_PEAK_DATES.map((d) => Date.parse(d)))
+const peakDates = ref<string[]>([...DEFAULT_PEAK_DATES])
+const peakDatesMs = computed(() => peakDates.value.map((d) => Date.parse(d)))
 
 // --- Automatic curve fit (recomputed when data / window / day-zero change) ---
 const fitted = computed(() =>
@@ -141,7 +142,7 @@ const config = computed<ForecastConfig>(() => ({
   distributionType: distributionType.value,
   peakDatesMs: peakDatesMs.value,
   peakSpread: peakSpread.value,
-  horizonMs: Date.parse(`${horizonYear.value}-12-31`),
+  horizonMs: horizonMs.value,
   resolutionDays: 7,
 }))
 
@@ -157,6 +158,42 @@ const forecast = computed(() =>
 
 const nowDate = new Date().toISOString().slice(0, 10)
 const DAY_MS = 86_400_000
+
+// --- Cycle-peak editing -----------------------------------------------------
+const horizonMs = computed(() => Date.parse(`${horizonYear.value}-12-31`))
+const toISODate = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+// Sliders span from the first data point to the projection horizon.
+const peakMin = computed(() => times.value[0] ?? dayZeroMs.value)
+const peakMax = computed(() => horizonMs.value)
+
+const peakMs = (i: number) => Date.parse(peakDates.value[i])
+
+function onPeakInput(i: number, ev: Event) {
+  const ms = Number((ev.target as HTMLInputElement).value)
+  const clamped = Math.min(Math.max(ms, peakMin.value), peakMax.value)
+  peakDates.value[i] = toISODate(clamped)
+}
+
+function addPeak() {
+  // Place the new top ~one halving cycle (≈3.84 yr) past the last one.
+  const last = peakDatesMs.value[peakDatesMs.value.length - 1]
+  const base = last != null ? last + 1402 * DAY_MS : Date.parse(nowDate)
+  const ms = Math.min(Math.max(base, peakMin.value), peakMax.value)
+  peakDates.value = [...peakDates.value, toISODate(ms)].sort()
+}
+
+function removePeak(i: number) {
+  peakDates.value = peakDates.value.filter((_, j) => j !== i)
+}
+
+function clearPeaks() {
+  peakDates.value = []
+}
+
+function resetPeaks() {
+  peakDates.value = [...DEFAULT_PEAK_DATES]
+}
 
 // Numeric x basis for the chart: days since the first plotted sample (≥ 1, so a
 // log x-axis is always valid). A log-log view renders the power-law fit as a
@@ -609,6 +646,50 @@ const fmtNum = (v: number) =>
   font-size: 0.74rem;
   color: var(--text-muted);
   margin: 0.5rem 0 0;
+}
+.peak-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-self: center;
+}
+.peak-actions button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+}
+.peak-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.peak-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.peak-date {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text);
+  width: 6.2rem;
+  flex: none;
+}
+.peak-slider {
+  flex: 1;
+  min-width: 8rem;
+  accent-color: var(--accent-violet);
+}
+.peak-remove {
+  flex: none;
+  line-height: 1;
+  padding: 0.1rem 0.45rem;
+  color: var(--text-muted);
+}
+.peak-remove:hover {
+  color: #fff;
+  border-color: var(--accent-violet);
 }
 .chart-tabs {
   display: flex;
