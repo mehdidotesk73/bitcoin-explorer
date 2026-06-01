@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat, dcaBandExplore, dcaSweep } from '../lib/indicators'
+import { sma, bollinger, mwHeat, dcaScore, dcaSweep } from '../lib/indicators'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 import DcaSweepChart from './DcaSweepChart.vue'
@@ -27,8 +27,10 @@ const showHeatHelp = ref(false)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // --- DCA exploration --------------------------------------------------------
-// Buy on days whose M/W heat falls in a band [center ± window]. Heat is
-// +cool (W/low) … −hot (M/top), so a positive centre targets the blue days.
+// Buy on days whose M/W heat falls in a band [center ± window], scored over a
+// rolling X-day horizon. Heat is +cool (W/low) … −hot (M/top), so a positive
+// centre targets the blue days.
+const dcaDaysBack = ref(1460) // X: look-back horizon (days)
 const dcaCenter = ref(0.5) // heat-band centre
 const dcaWindow = ref(0.5) // heat-band half-width
 
@@ -94,15 +96,17 @@ const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
 
-// Heat-band DCA vs buy-every-day, scored by average ROI over all start days.
+// Heat-band method scored vs uniform DCA over the rolling X-day horizon.
 const dca = computed(() =>
   prices.value.length
-    ? dcaBandExplore(prices.value, heat.value, dcaCenter.value, dcaWindow.value)
+    ? dcaScore(prices.value, heat.value, dcaDaysBack.value, dcaCenter.value, dcaWindow.value)
     : null,
 )
 // Sweep the band centre across [-1, 1] so the whole space is visible at once.
 const sweep = computed(() =>
-  prices.value.length ? dcaSweep(prices.value, heat.value, dcaWindow.value) : null,
+  prices.value.length
+    ? dcaSweep(prices.value, heat.value, dcaDaysBack.value, dcaWindow.value)
+    : null,
 )
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
 const edgeClass = (v: number) => (v >= 0 ? 'pos' : 'neg')
@@ -205,14 +209,18 @@ const fmtUSD = (v: number | null) =>
     <section class="dca" v-if="dca">
       <h2>DCA exploration</h2>
       <p class="dca-sub">
-        Buy only on days whose M/W heat sits inside the band below (heat runs
-        +1 cool/W-low … −1 hot/M-top). Effectiveness = the average ROI across
-        every possible start day, splitting the budget equally over the
-        buy-days from that start to today — so it doesn't hinge on one lucky
-        start date. Heuristic, not advice.
+        For every day t we look back X days and ask: if you'd bought on the days
+        whose M/W heat was in the band (heat runs +1 cool/W-low … −1 hot/M-top),
+        how much more would those buys be worth at t than buying every day? The
+        <strong>score</strong> averages that method-vs-uniform growth over all
+        days — score &gt; 1 means the band beats uniform DCA. Heuristic, not advice.
       </p>
 
       <div class="controls">
+        <label>
+          Look-back X (days)
+          <input type="number" v-model.number="dcaDaysBack" min="30" max="6000" step="30" />
+        </label>
         <label>
           Buy-band centre
           <input type="range" v-model.number="dcaCenter" min="-1" max="1" step="0.05" />
@@ -226,35 +234,36 @@ const fmtUSD = (v: number | null) =>
       </div>
 
       <p class="dca-sweep-label muted">
-        Avg start-day ROI vs buy-every-day, swept across every band centre (blue);
-        coverage shaded grey. Above the parity line = the band beats buying daily.
+        Score vs uniform DCA, swept across every band centre (blue); coverage
+        shaded grey. Above the parity line = the band beats buying every day.
       </p>
       <DcaSweepChart v-if="sweep" :points="sweep.points" :center="dcaCenter" />
 
       <div class="dca-grid">
         <div class="dca-card heat">
-          <h3>Heat-band plan</h3>
+          <h3>Selected band</h3>
           <dl>
-            <div><dt>Avg ROI</dt><dd>{{ fmtPct(dca.band.avgRoi) }}</dd></div>
-            <div><dt>Buy-days</dt><dd>{{ dca.band.buyDays }}</dd></div>
-            <div><dt>Coverage</dt><dd>{{ fmtPct(dca.band.coverage) }}</dd></div>
+            <div><dt>Score vs uniform</dt><dd>{{ dca.score.toFixed(3) }}×</dd></div>
+            <div><dt>Beat rate</dt><dd>{{ fmtPct(dca.beatRate) }}</dd></div>
+            <div><dt>Coverage</dt><dd>{{ fmtPct(dca.coverage) }}</dd></div>
           </dl>
         </div>
         <div class="dca-card">
-          <h3>Buy every day</h3>
+          <h3>Growth multiples</h3>
           <dl>
-            <div><dt>Avg ROI</dt><dd>{{ fmtPct(dca.uniform.avgRoi) }}</dd></div>
-            <div><dt>Buy-days</dt><dd>{{ dca.uniform.buyDays }}</dd></div>
-            <div><dt>Coverage</dt><dd>{{ fmtPct(dca.uniform.coverage) }}</dd></div>
+            <div><dt>Band buys</dt><dd>{{ dca.methodGrowth.toFixed(2) }}×</dd></div>
+            <div><dt>Every-day buys</dt><dd>{{ dca.uniformGrowth.toFixed(2) }}×</dd></div>
+            <div><dt>Eval days</dt><dd>{{ dca.evalDays }}</dd></div>
           </dl>
         </div>
       </div>
 
       <p class="dca-edge">
-        Heat-band beats buy-every-day by
-        <strong :class="edgeClass(dca.edge)">{{ fmtPct(dca.edge) }}</strong>
-        in average start-day ROI
-        <template v-if="dca.band.buyDays === 0"> — no days fall in this band.</template>
+        Selected band scores
+        <strong :class="edgeClass(dca.score - 1)">{{ dca.score.toFixed(3) }}×</strong>
+        vs uniform DCA over a {{ dcaDaysBack }}-day look-back, beating it on
+        {{ fmtPct(dca.beatRate) }} of days
+        <template v-if="dca.evalDays === 0"> — no days qualify for this band.</template>
       </p>
     </section>
 

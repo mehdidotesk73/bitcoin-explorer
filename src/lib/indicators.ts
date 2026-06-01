@@ -236,139 +236,127 @@ export function mwHeat(
 }
 
 // ---------------------------------------------------------------------------
-// DCA exploration: heat-band buy-days vs buy-every-day, averaged over all
-// possible start days
+// DCA exploration: heat-band method vs uniform, scored over a rolling horizon
 // ---------------------------------------------------------------------------
 //
-// A plan buys on every day whose M/W heat falls inside a band [center ± window]
-// (no fixed schedule — the band defines the buy-days). For a plan *started* on
-// day s, the budget is split equally across the buy-days in [s, today], so its
-// return is scale-free:
+// For each evaluation day t, look back `daysBack` (X) to the window [t−X, t].
+// A "method" buys on the days in that window whose M/W heat falls in the band
+// [center − window, center + window]; uniform buys on every day in the window.
+// We measure how much each set of buys would be worth at day t, scale-free:
 //
-//   ROI(s) = mean over buy-days j ≥ s of (lastPrice / price[j])  −  1
+//   growth_method(t) = mean over band-days j in [t−X, t] of price[t]/price[j]
+//   growth_uniform(t) = mean over all days j in [t−X, t] of price[t]/price[j]
 //
-// Averaging ROI(s) over every start day s gives a robust effectiveness metric
-// that doesn't depend on a single lucky start date.
+// Scoring each day over a *finite* X-day horizon (not all the way to today)
+// keeps a few ancient cheap days from dominating. The method's score is the
+// average of growth_method(t)/growth_uniform(t) over all evaluation days — a
+// value >1 means the method beats uniform DCA on average.
 
-export interface DcaBandResult {
-  avgRoi: number // mean ROI across all start days
-  buyDays: number // days whose heat is in the band
-  coverage: number // buyDays / total valid days
-}
-
-export interface DcaBandCompare {
-  band: DcaBandResult // heat-band strategy
-  uniform: DcaBandResult // buy every day (baseline)
-  edge: number // band.avgRoi − uniform.avgRoi
+export interface DcaScore {
+  score: number // mean(method growth / uniform growth) over eval days; >1 beats uniform
+  beatRate: number // fraction of eval days where method ≥ uniform
+  methodGrowth: number // mean method growth multiple (price[t]/price[j])
+  uniformGrowth: number // mean uniform growth multiple
+  coverage: number // mean band-days / window-days across eval days
+  evalDays: number // number of evaluation days scored
 }
 
 /**
- * Average-over-all-start-days ROI for a plan that buys only on days where
- * `isBuyDay[i]` is true, splitting its budget equally across the buy-days from
- * each start day to the end. Scale-free, so no budget argument is needed.
+ * Score a heat-band buy method against uniform DCA over a rolling `daysBack`
+ * horizon. `center`/`window` define the heat band (heat is +cool/W-low …
+ * −hot/M-top, so a positive centre targets blue days). Returns NaN-safe zeros
+ * if nothing qualifies.
  */
-function avgStartRoi(prices: number[], isBuyDay: boolean[]): DcaBandResult {
-  const n = prices.length
-  const lastPrice = n ? prices[n - 1] : 0
-  let buyDays = 0
-  let validDays = 0
-  for (let i = 0; i < n; i++) {
-    if (prices[i] > 0) validDays++
-    if (isBuyDay[i]) buyDays++
-  }
-  if (buyDays === 0 || lastPrice <= 0) {
-    return { avgRoi: 0, buyDays, coverage: validDays ? buyDays / validDays : 0 }
-  }
-  // Sweep start day s from the end: maintain suffix sum/count of the buy-day
-  // price ratios (lastPrice/price[j]) for j ≥ s, accumulating ROI(s).
-  let suffixSum = 0
-  let suffixCount = 0
-  let totalRoi = 0
-  let starts = 0
-  for (let s = n - 1; s >= 0; s--) {
-    if (isBuyDay[s] && prices[s] > 0) {
-      suffixSum += lastPrice / prices[s]
-      suffixCount++
-    }
-    if (suffixCount > 0) {
-      totalRoi += suffixSum / suffixCount - 1
-      starts++
-    }
-  }
-  return {
-    avgRoi: starts ? totalRoi / starts : 0,
-    buyDays,
-    coverage: validDays ? buyDays / validDays : 0,
-  }
-}
-
-/**
- * Compare a heat-band DCA plan (buy when heat ∈ [center − window, center +
- * window]) against buying every day, each scored by the average-over-all-
- * start-days ROI. Heat is +cool (W/low) … −hot (M/top), so a positive `center`
- * targets the blue/low days.
- */
-export function dcaBandExplore(
+export function dcaScore(
   prices: number[],
   heat: number[],
+  daysBack: number,
   center: number,
   window: number,
-): DcaBandCompare {
+): DcaScore {
   const n = prices.length
+  const X = Math.max(1, Math.round(daysBack))
   const lo = center - window
   const hi = center + window
-  const inBand: boolean[] = new Array(n)
-  const everyDay: boolean[] = new Array(n)
-  for (let i = 0; i < n; i++) {
-    const h = heat[i] ?? 0
-    inBand[i] = prices[i] > 0 && h >= lo && h <= hi
-    everyDay[i] = prices[i] > 0
+
+  let scoreSum = 0
+  let beat = 0
+  let mGrowthSum = 0
+  let uGrowthSum = 0
+  let covSum = 0
+  let evalDays = 0
+
+  for (let t = 0; t < n; t++) {
+    const pt = prices[t]
+    if (pt <= 0) continue
+    const start = Math.max(0, t - X)
+    let mSum = 0
+    let mCount = 0
+    let uSum = 0
+    let uCount = 0
+    for (let j = start; j <= t; j++) {
+      const pj = prices[j]
+      if (pj <= 0) continue
+      const ratio = pt / pj
+      uSum += ratio
+      uCount++
+      const h = heat[j] ?? 0
+      if (h >= lo && h <= hi) {
+        mSum += ratio
+        mCount++
+      }
+    }
+    if (uCount === 0 || mCount === 0) continue // need both to compare
+    const mGrowth = mSum / mCount
+    const uGrowth = uSum / uCount
+    scoreSum += mGrowth / uGrowth
+    if (mGrowth >= uGrowth) beat++
+    mGrowthSum += mGrowth
+    uGrowthSum += uGrowth
+    covSum += mCount / uCount
+    evalDays++
   }
-  const band = avgStartRoi(prices, inBand)
-  const uniform = avgStartRoi(prices, everyDay)
-  return { band, uniform, edge: band.avgRoi - uniform.avgRoi }
+
+  if (evalDays === 0) {
+    return { score: 1, beatRate: 0, methodGrowth: 0, uniformGrowth: 0, coverage: 0, evalDays: 0 }
+  }
+  return {
+    score: scoreSum / evalDays,
+    beatRate: beat / evalDays,
+    methodGrowth: mGrowthSum / evalDays,
+    uniformGrowth: uGrowthSum / evalDays,
+    coverage: covSum / evalDays,
+    evalDays,
+  }
 }
 
 export interface DcaSweepPoint {
   center: number // band centre
-  avgRoi: number // band plan's average start-day ROI
-  ratio: number // (1 + band ROI) / (1 + uniform ROI): >1 = beats buy-every-day
-  coverage: number // fraction of days captured by the band
+  score: number // method growth / uniform growth, averaged over eval days
+  coverage: number // mean fraction of window-days captured by the band
 }
 
 export interface DcaSweep {
   points: DcaSweepPoint[]
-  uniformRoi: number // buy-every-day baseline ROI (for reference)
 }
 
 /**
- * Sweep the buy-band centre across [-1, 1] at a fixed `window`, returning the
- * average start-day ROI curve so the whole space of "which heat band to buy"
- * can be compared at a glance. `ratio` = growth-multiple vs buy-every-day
- * (>1 means the band beats buying every day), which is readable even when the
- * absolute ROIs are huge.
+ * Sweep the band centre across [-1, 1] at fixed `daysBack`/`window`, returning
+ * the score curve so the whole space of "which heat band to buy" is comparable
+ * at a glance. score > 1 = the band beats uniform DCA.
  */
 export function dcaSweep(
   prices: number[],
   heat: number[],
+  daysBack: number,
   window: number,
   steps = 41,
 ): DcaSweep {
-  const everyDay = prices.map((p) => p > 0)
-  const uniformRoi = avgStartRoi(prices, everyDay).avgRoi
   const points: DcaSweepPoint[] = []
   for (let s = 0; s < steps; s++) {
     const center = -1 + (2 * s) / (steps - 1)
-    const lo = center - window
-    const hi = center + window
-    const inBand = heat.map((h, i) => prices[i] > 0 && (h ?? 0) >= lo && (h ?? 0) <= hi)
-    const r = avgStartRoi(prices, inBand)
-    points.push({
-      center,
-      avgRoi: r.avgRoi,
-      ratio: (1 + r.avgRoi) / (1 + uniformRoi || 1),
-      coverage: r.coverage,
-    })
+    const r = dcaScore(prices, heat, daysBack, center, window)
+    points.push({ center, score: r.score, coverage: r.coverage })
   }
-  return { points, uniformRoi }
+  return { points }
 }

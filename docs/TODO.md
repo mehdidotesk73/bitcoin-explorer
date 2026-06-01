@@ -38,14 +38,15 @@
       (visualMap/line-segment colouring don't bind on a category axis), with a
       "M/W heat" toggle and an explainer tooltip.
 
-- [x] **Heat-band DCA exploration** (Price Explorer). Buy only on days whose
-      M/W heat falls in a band [centre ± window] (no fixed schedule — the band
-      defines buy-days). Effectiveness = average ROI over *every* possible start
-      day: from each start, split the budget equally across the buy-days to
-      today, so ROI(s) = mean of (lastPrice/price[j]) − 1; average over all s
-      to remove start-date luck. Compares the band plan vs buy-every-day.
-      `dcaBandExplore()` / `avgStartRoi()` in `indicators.ts`; UI controls are
-      buy-band centre + window sliders.
+- [x] **Heat-band DCA exploration** (Price Explorer). For every day t, look
+      back X days and score a buy method: buy the days whose M/W heat is in the
+      band [centre ± window], measure mean(price[t]/price[j]) over those days vs
+      over all days in the window. The method **score** = average of method/
+      uniform growth across all eval days (>1 beats uniform DCA); also reports
+      beat-rate and coverage. Scoring over a finite X-day horizon (not to today)
+      avoids a few ancient cheap days dominating. `dcaScore()` / `dcaSweep()` in
+      `indicators.ts`; UI: look-back X (default 1460), band centre + window, and
+      a sweep curve of score vs centre with a parity line + coverage shading.
 
 ## Next branch
 

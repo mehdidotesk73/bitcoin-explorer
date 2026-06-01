@@ -20,8 +20,8 @@ const AXIS = '#8b94ac'
 const SPLIT = 'rgba(54, 66, 95, 0.45)'
 
 function buildOption(): echarts.EChartsCoreOption {
-  // Plot the growth-multiple vs buy-every-day (ratio); 1.0 = parity.
-  const ratio = props.points.map((p) => [p.center, p.ratio])
+  // Plot the score vs uniform DCA; 1.0 = parity.
+  const ratio = props.points.map((p) => [p.center, p.score])
   const coverage = props.points.map((p) => [p.center, p.coverage])
   return {
     animation: false,
@@ -39,8 +39,7 @@ function buildOption(): echarts.EChartsCoreOption {
         if (!p) return ''
         return (
           `centre ${p.center.toFixed(2)}<br/>` +
-          `vs buy-every-day: <strong>${p.ratio.toFixed(2)}×</strong><br/>` +
-          `avg ROI: ${(p.avgRoi * 100).toFixed(0)}%<br/>` +
+          `score vs uniform: <strong>${p.score.toFixed(3)}×</strong><br/>` +
           `coverage: ${(p.coverage * 100).toFixed(1)}%`
         )
       },
