@@ -5,6 +5,7 @@ import { sma, bollinger } from '../lib/indicators'
 import { mwHeat } from '../lib/mwheat'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
+import MwHeatDiagnostic from './MwHeatDiagnostic.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -24,6 +25,7 @@ const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 const showHeat = ref(true) // tint the price line by the M/W heat score
 const showHeatHelp = ref(false)
+const showDiag = ref(false) // show the heat-components diagnostic chart
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 const MW_HEAT_HELP =
@@ -61,10 +63,11 @@ const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 // Multi-scale M/W price-heat: blends daily/weekly/monthly lenses via atanh
 // pooling. +1 = M (hot/top), −1 = W (cool/bottom). The Bollinger period (in
 // days) drives N — every horizon scales its own window from it.
+const mwResult = computed(() => mwHeat(prices.value, { N: Math.max(5, bbPeriod.value) }))
 const heat = computed(() => {
-  const res = mwHeat(prices.value, { N: Math.max(5, bbPeriod.value) })
+  const res = mwResult.value
   const h = res.heat
-  // Diagnostic: surface the heat distribution to the on-screen log.
+  // Diagnostic: distribution + per-horizon + a spot-check at the latest day.
   let min = Infinity
   let max = -Infinity
   let nonZero = 0
@@ -76,9 +79,34 @@ const heat = computed(() => {
     absSum += Math.abs(v)
   }
   logDebug(
-    `heat(multiscale): n=${h.length} min=${min.toFixed(2)} max=${max.toFixed(2)} ` +
+    `heat: n=${h.length} min=${min.toFixed(2)} max=${max.toFixed(2)} ` +
       `mean|h|=${(absSum / (h.length || 1)).toFixed(2)} nonZero=${nonZero}`,
   )
+  const t = h.length - 1
+  if (t >= 0) {
+    const per = res.horizons
+      .map((hz) => `${hz.horizon[0]}=${(hz.heat[t] ?? 0).toFixed(2)}`)
+      .join(' ')
+    logDebug(`heat@last: composite=${h[t].toFixed(2)} [${per}]`)
+    for (const hz of res.horizons) {
+      logDebug(
+        `  ${hz.horizon}: b=${(hz.b[t] ?? 0).toFixed(2)} ` +
+          `tau=${hz.tau[t].toFixed(2)} vote=${hz.vote[t].toFixed(2)} H=${hz.heat[t].toFixed(2)}`,
+      )
+    }
+    // Where do the strongest M (hot) and W (cool) signals land? Compare these
+    // dates against the hand-annotated patterns.
+    let iMax = 0
+    let iMin = 0
+    for (let i = 0; i < h.length; i++) {
+      if (h[i] > h[iMax]) iMax = i
+      if (h[i] < h[iMin]) iMin = i
+    }
+    logDebug(
+      `heat extremes: strongest M ${h[iMax].toFixed(2)} @ ${dates.value[iMax]} · ` +
+        `strongest W ${h[iMin].toFixed(2)} @ ${dates.value[iMin]}`,
+    )
+  }
   return h
 })
 
@@ -154,6 +182,10 @@ const fmtUSD = (v: number | null) =>
           @click="showHeatHelp = !showHeatHelp"
         >ⓘ</span>
       </label>
+      <label class="checkbox">
+        <input type="checkbox" v-model="showDiag" />
+        Components
+      </label>
     </section>
 
     <p v-if="showHeatHelp" class="heat-help">{{ MW_HEAT_HELP }}</p>
@@ -180,6 +212,13 @@ const fmtUSD = (v: number | null) =>
       :show-heat="showHeat"
       v-model:zoom="zoom"
     />
+
+    <MwHeatDiagnostic
+      v-if="showDiag && dates.length"
+      :dates="dates"
+      :result="mwResult"
+    />
+
     <p class="hint">
       Drag the slider under the chart (or pinch) to adjust the graphed range.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
