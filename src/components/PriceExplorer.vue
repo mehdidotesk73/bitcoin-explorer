@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat, dcaBandExplore } from '../lib/indicators'
+import { sma, bollinger, mwHeat, dcaBandExplore, dcaSweep } from '../lib/indicators'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
+import DcaSweepChart from './DcaSweepChart.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -98,6 +99,10 @@ const dca = computed(() =>
   prices.value.length
     ? dcaBandExplore(prices.value, heat.value, dcaCenter.value, dcaWindow.value)
     : null,
+)
+// Sweep the band centre across [-1, 1] so the whole space is visible at once.
+const sweep = computed(() =>
+  prices.value.length ? dcaSweep(prices.value, heat.value, dcaWindow.value) : null,
 )
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
 const edgeClass = (v: number) => (v >= 0 ? 'pos' : 'neg')
@@ -219,6 +224,12 @@ const fmtUSD = (v: number | null) =>
           <span class="muted">{{ dcaWindow.toFixed(2) }}</span>
         </label>
       </div>
+
+      <p class="dca-sweep-label muted">
+        Avg start-day ROI vs buy-every-day, swept across every band centre (blue);
+        coverage shaded grey. Above the parity line = the band beats buying daily.
+      </p>
+      <DcaSweepChart v-if="sweep" :points="sweep.points" :center="dcaCenter" />
 
       <div class="dca-grid">
         <div class="dca-card heat">
@@ -356,6 +367,11 @@ const fmtUSD = (v: number | null) =>
 }
 .dca .controls label {
   gap: 0.3rem;
+}
+.dca-sweep-label {
+  font-size: 0.75rem;
+  margin: 0.25rem 0 0.25rem;
+  line-height: 1.4;
 }
 .dca-grid {
   display: grid;

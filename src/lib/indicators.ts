@@ -328,3 +328,47 @@ export function dcaBandExplore(
   const uniform = avgStartRoi(prices, everyDay)
   return { band, uniform, edge: band.avgRoi - uniform.avgRoi }
 }
+
+export interface DcaSweepPoint {
+  center: number // band centre
+  avgRoi: number // band plan's average start-day ROI
+  ratio: number // (1 + band ROI) / (1 + uniform ROI): >1 = beats buy-every-day
+  coverage: number // fraction of days captured by the band
+}
+
+export interface DcaSweep {
+  points: DcaSweepPoint[]
+  uniformRoi: number // buy-every-day baseline ROI (for reference)
+}
+
+/**
+ * Sweep the buy-band centre across [-1, 1] at a fixed `window`, returning the
+ * average start-day ROI curve so the whole space of "which heat band to buy"
+ * can be compared at a glance. `ratio` = growth-multiple vs buy-every-day
+ * (>1 means the band beats buying every day), which is readable even when the
+ * absolute ROIs are huge.
+ */
+export function dcaSweep(
+  prices: number[],
+  heat: number[],
+  window: number,
+  steps = 41,
+): DcaSweep {
+  const everyDay = prices.map((p) => p > 0)
+  const uniformRoi = avgStartRoi(prices, everyDay).avgRoi
+  const points: DcaSweepPoint[] = []
+  for (let s = 0; s < steps; s++) {
+    const center = -1 + (2 * s) / (steps - 1)
+    const lo = center - window
+    const hi = center + window
+    const inBand = heat.map((h, i) => prices[i] > 0 && (h ?? 0) >= lo && (h ?? 0) <= hi)
+    const r = avgStartRoi(prices, inBand)
+    points.push({
+      center,
+      avgRoi: r.avgRoi,
+      ratio: (1 + r.avgRoi) / (1 + uniformRoi || 1),
+      coverage: r.coverage,
+    })
+  }
+  return { points, uniformRoi }
+}
