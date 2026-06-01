@@ -10,30 +10,16 @@
       section for the fitting knobs that overwrite the params (MA window, fit
       window, day zero, recency weighting γ, Reset to fit), separated from the
       hand-tunable model-parameter sections, with clearer labels.
+- [x] Clearer model-selection naming (display labels only; underlying type
+      values unchanged):
+  - "Envelope" → "Volatility projection"; options → "Shrinks over time",
+    "Shrinks as price grows (power/exp)", "Fixed".
+  - "Value growth" → "Baseline growth model".
+  - "Peaks" → "Cycle peaks"; the kernel is `e^(−spread·|x−dᵢ|)` (double
+    exponential), so the option is labelled "Laplacian" / "None".
+  - "Horizon" left as-is (already clear).
 
 ## Next branch
-
-### 1. Clearer model-selection naming
-
-The top-row selectors and their dropdown options use jargon ("Envelope") that
-doesn't convey meaning. Rework labels + option names to be self-explanatory.
-
-- [ ] **"Envelope"** → **"Volatility projection"** (decided). It's the
-      volatility multiplier on top of the value baseline. Rename the option
-      names too:
-  - `Time exp-decay`, `Value power-decay`, `Value exp-decay`, `Constant` —
-    make these describe behavior (e.g. "Shrinks over time", "Shrinks as price
-    grows", "Fixed").
-- [ ] **"Value growth"** → confirm/clarify (e.g. "Baseline growth model"); the
-      options `Power-law / Exponential / Linear` are okay but review wording.
-- [ ] **"Peaks"** → clarify (e.g. "Cycle-top bumps"); options `Cycle peaks /
-      None`.
-- [ ] **"Horizon"** → clarify it's the projection end year (e.g. "Project
-      until").
-- [ ] Keep the underlying type values (`exponential-decay`, etc.) unchanged —
-      only change display labels — to avoid touching the engine/config.
-
-### 2. Linear slope as nth-percentile over a past D-day window
 
 Replace the fixed slope-variant set (min/median/mean/max) with a tunable
 "nth-percentile slope over the past D days" control for the linear growth model.

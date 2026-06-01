@@ -217,7 +217,7 @@ const CHART_TABS: { id: ChartTab; label: string }[] = [
   { id: 'price', label: 'Price' },
   { id: 'baseline', label: 'Value baseline' },
   { id: 'ratio', label: 'Price ÷ MA' },
-  { id: 'envelope', label: 'Envelope' },
+  { id: 'envelope', label: 'Volatility' },
 ]
 
 const C_ORANGE = '#f7931a'
@@ -252,7 +252,7 @@ const chartSeries = computed(() => {
     case 'envelope':
       return [
         { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2, bounds: true },
-        { name: 'Volatility envelope (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
+        { name: 'Volatility projection (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
       ]
     default:
       return [
@@ -309,7 +309,7 @@ const fmtNum = (v: number) =>
     <p class="headline" v-if="horizonPrice != null">
       Projected {{ horizonYear }} close:
       <strong>{{ fmtUSD(horizonPrice) }}</strong>
-      <span class="muted"> · {{ growthType }} growth · {{ envelopeType }} envelope</span>
+      <span class="muted"> · {{ growthType }} growth · {{ envelopeType }} volatility</span>
     </p>
     <section class="status" v-else-if="loading">Loading price history…</section>
 
@@ -322,7 +322,7 @@ const fmtNum = (v: number) =>
     <!-- Model selection -->
     <section class="controls">
       <label>
-        Value growth
+        Baseline growth model
         <select v-model="growthType">
           <option value="power">Power-law</option>
           <option value="exponential">Exponential</option>
@@ -339,18 +339,18 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Envelope
+        Volatility projection
         <select v-model="envelopeType">
-          <option value="exponential-decay">Time exp-decay</option>
-          <option value="value-power-decay">Value power-decay</option>
-          <option value="value-exponential-decay">Value exp-decay</option>
-          <option value="constant">Constant</option>
+          <option value="exponential-decay">Shrinks over time</option>
+          <option value="value-power-decay">Shrinks as price grows (power)</option>
+          <option value="value-exponential-decay">Shrinks as price grows (exp)</option>
+          <option value="constant">Fixed</option>
         </select>
       </label>
       <label>
-        Peaks
+        Cycle peaks
         <select v-model="distributionType">
-          <option value="peaks">Cycle peaks</option>
+          <option value="peaks">Laplacian</option>
           <option value="none">None</option>
         </select>
       </label>
@@ -471,7 +471,7 @@ const fmtNum = (v: number) =>
     <!-- Model parameters: volatility -->
     <section class="params">
       <h3>
-        Volatility envelope
+        Volatility projection
         <span class="fit-note">
           {{ envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual' }}
         </span>
@@ -570,7 +570,7 @@ const fmtNum = (v: number) =>
             </button>
           </li>
           <li v-if="!peakDates.length" class="fit-note">
-            No peaks — projection follows the baseline envelope only.
+            No peaks — projection follows the baseline volatility only.
           </li>
         </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
