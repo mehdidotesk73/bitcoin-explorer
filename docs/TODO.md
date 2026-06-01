@@ -29,9 +29,30 @@
       `SlopeVariant`/`slopeStats` API. UI: "Slope range (days)", "Slope window"
       preset, and "Slope percentile" inputs in the Calibration section.
 
+- [x] M/W price-heat indicator (Price Explorer). Colours the price by how it
+      oscillates around its moving average: a smoothed (price−MA)/MA oscillator
+      is cross-correlated against an idealised W/M template, giving a signed
+      heat in [−1, +1]. Blue = W-bottom (two dips below the MA, bullish), red =
+      M-top (two pushes above, bearish), neutral on flat/choppy stretches.
+      Rendered as per-point coloured scatter dots over a faint price line
+      (visualMap/line-segment colouring don't bind on a category axis), with a
+      "M/W heat" toggle and an explainer tooltip.
+
 ## Next branch
 
-(nothing queued yet)
+- [ ] **Heat-driven DCA backtest / calculator.** Quantify whether buying the
+      blue (W/oversold) zones beats naive DCA, and let the user tune it:
+  - Uniform DCA vs heat-weighted DCA over the same total budget, so the
+    comparison is purely *timing* (weight each buy by `max(0, 1 + k·heat)`,
+    renormalised to spend the same total).
+  - User-controlled **reactiveness `k`** slider (0 = uniform), plus an
+    auto-scan for the value-maximising `k`.
+  - Report per strategy: BTC accumulated, avg cost basis, final value, ROI.
+  - A `dcaCompare()` helper was prototyped in this branch and discarded; rebuild
+    it fresh (≈90 lines in `indicators.ts`) on the new branch.
+  - Stretch: forward-return analysis conditioned on heat at entry (avg N-day
+    return after deep-blue vs neutral vs deep-red) to measure the correlation
+    directly rather than by eye.
 
 ## Housekeeping / ideas
 

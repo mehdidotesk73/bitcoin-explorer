@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger } from '../lib/indicators'
+import { sma, bollinger, mwHeat } from '../lib/indicators'
+import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 
 const props = defineProps<{
@@ -20,7 +21,18 @@ const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
+const showHeat = ref(true) // tint the price line by the M/W heat score
+const showHeatHelp = ref(false)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+const MW_HEAT_HELP =
+  'M/W heat colours the price by how it oscillates around its moving average. ' +
+  'It builds a smoothed price-vs-MA oscillator (taming sharp zigzags), then ' +
+  'matches each window against the W / M shape: blue = W-bottom (two dips ' +
+  'below the MA with a recovery between → bullish), red = M-top (two pushes ' +
+  'above the MA, second weaker → bearish). Stronger, cleaner oscillations ' +
+  'colour more boldly; flat or choppy stretches stay neutral. Heuristic only — ' +
+  'not financial advice.'
 
 // Data is daily, so week/month periods just scale the sample count.
 type PeriodUnit = 'day' | 'week' | 'month'
@@ -45,6 +57,31 @@ const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 
 const ma = computed(() => sma(prices.value, maDays.value))
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
+// Signed M/W price-heat: +cool where W-bottoms dominate, -hot for M-tops.
+const heat = computed(() => {
+  const h = mwHeat(prices.value, bands.value, {
+    pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5,
+  }).heat
+  // Diagnostic: surface the heat distribution to the on-screen log so we can
+  // see whether it's actually varying (and by how much) on a phone.
+  let min = Infinity
+  let max = -Infinity
+  let nonZero = 0
+  let absSum = 0
+  for (const v of h) {
+    if (v < min) min = v
+    if (v > max) max = v
+    if (Math.abs(v) > 0.02) nonZero++
+    absSum += Math.abs(v)
+  }
+  const bandsValid = bands.value.upper.filter((u) => u != null).length
+  logDebug(
+    `heat: n=${h.length} bandsValid=${bandsValid} min=${min.toFixed(2)} ` +
+      `max=${max.toFixed(2)} mean|h|=${(absSum / (h.length || 1)).toFixed(2)} ` +
+      `nonZero=${nonZero}`,
+  )
+  return h
+})
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -109,7 +146,18 @@ const fmtUSD = (v: number | null) =>
         Bollinger σ ×
         <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
       </label>
+      <label class="checkbox">
+        <input type="checkbox" v-model="showHeat" />
+        M/W heat
+        <span
+          class="help"
+          :title="MW_HEAT_HELP"
+          @click="showHeatHelp = !showHeatHelp"
+        >ⓘ</span>
+      </label>
     </section>
+
+    <p v-if="showHeatHelp" class="heat-help">{{ MW_HEAT_HELP }}</p>
 
     <section class="ranges">
       <span class="muted">Graphed range:</span>
@@ -129,6 +177,8 @@ const fmtUSD = (v: number | null) =>
       :lower="bands.lower"
       :ma-label="maLabel"
       :bb-label="bbLabel"
+      :heat="heat"
+      :show-heat="showHeat"
       v-model:zoom="zoom"
     />
     <p class="hint">
@@ -177,6 +227,39 @@ const fmtUSD = (v: number | null) =>
 }
 .controls input {
   width: 8rem;
+}
+.controls .checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  align-self: flex-end;
+}
+.controls .checkbox input {
+  width: auto;
+}
+.help {
+  cursor: help;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+}
+.heat-help {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 .period {
   display: flex;

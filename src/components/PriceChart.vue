@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { LineChart, ScatterChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -9,9 +9,11 @@ import {
   DataZoomComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { logDebug } from '../debug'
 
 echarts.use([
   LineChart,
+  ScatterChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
@@ -27,6 +29,10 @@ const props = defineProps<{
   lower: (number | null)[]
   maLabel: string
   bbLabel: string
+  /** Signed M/W heat per sample in [-1, +1] (+cool W … -hot M). */
+  heat?: number[]
+  /** Tint the price line by `heat` when true. */
+  showHeat?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -39,6 +45,23 @@ const chart = shallowRef<echarts.ECharts>()
 const fmtUSD = (v: number | null) =>
   v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
+// Map a signed heat value in [-1, +1] to a diverging colour: -1 hot red …
+// 0 neutral grey … +1 cool blue. Used for per-point line colouring (more
+// robust than a visualMap, which needs series dimension tracking).
+function heatColor(h: number): string {
+  const t = Math.max(-1, Math.min(1, h))
+  // Vivid endpoints with a pale midpoint so even small heat departs visibly
+  // from neutral; a sqrt ramp makes mid-range values saturate quickly.
+  const mid = [225, 230, 240] // near-white neutral
+  const end =
+    t >= 0
+      ? [0, 122, 255] // cool: bright blue
+      : [255, 45, 45] // hot: bright red
+  const f = Math.sqrt(Math.abs(t))
+  const mix = (i: number) => Math.round(mid[i] + (end[i] - mid[i]) * f)
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
+}
+
 function buildOption(): echarts.EChartsCoreOption {
   // The shaded band is drawn with two stacked series: an invisible baseline at
   // the lower band, plus the band thickness (upper − lower) rendered as an area.
@@ -50,6 +73,18 @@ function buildOption(): echarts.EChartsCoreOption {
 
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
+
+  // When heat tinting is on, overlay one coloured dot per sample on top of a
+  // faint neutral price line. Per-point itemStyle on a scatter series reliably
+  // honours colour (unlike line-segment lineStyle / visualMap on a category
+  // axis here), so this is the robust way to tint by heat.
+  const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
+  const heatPoints = heatOn
+    ? props.price.map((v, i) => ({
+        value: [i, v],
+        itemStyle: { color: heatColor(props.heat![i]) },
+      }))
+    : []
 
   return {
     animation: false,
@@ -76,6 +111,11 @@ function buildOption(): echarts.EChartsCoreOption {
           `Upper: ${fmtUSD(props.upper[i])}`,
           `Lower: ${fmtUSD(props.lower[i])}`,
         ]
+        if (props.showHeat && props.heat && props.heat[i] != null) {
+          const h = props.heat[i]
+          const label = h > 0.05 ? 'cool / W' : h < -0.05 ? 'hot / M' : 'neutral'
+          rows.push(`M/W heat: ${h.toFixed(2)} (${label})`)
+        }
         return rows.join('<br/>')
       },
     },
@@ -155,8 +195,25 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: props.price,
         symbol: 'none',
-        lineStyle: { color: '#f7931a', width: 1.5 },
+        // When heat is on, the line is a faint neutral guide and the colour is
+        // carried by the heat-dot series below (per-point itemStyle always
+        // honours colour, unlike line-segment lineStyle / visualMap here).
+        lineStyle: heatOn
+          ? { color: 'rgba(160,170,190,0.2)', width: 1 }
+          : { color: '#f7931a', width: 1.5 },
       },
+      // Heat overlay: one coloured dot per sample, tinted by the heat score.
+      ...(heatOn
+        ? [
+            {
+              name: '__heat',
+              type: 'scatter' as const,
+              data: heatPoints,
+              symbolSize: 5,
+              silent: true,
+            },
+          ]
+        : []),
     ],
   }
 }
@@ -180,6 +237,21 @@ onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   render()
+  // One-shot diagnostic (runs once, fully guarded — cannot loop or throw):
+  // confirm the per-point colours made it onto the Price series data.
+  try {
+    const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
+    const opt = chart.value.getOption() as any
+    const heatSeries = (opt?.series ?? []).find((s: any) => s.name === '__heat')
+    const d0 = heatSeries?.data?.[heatSeries.data.length - 1]
+    logDebug(
+      `chart: heatOn=${heatOn} series=${opt?.series?.length} ` +
+        `heatPts=${heatSeries?.data?.length ?? 0} ` +
+        `lastColor=${d0?.itemStyle?.color ?? 'none'}`,
+    )
+  } catch (e) {
+    logDebug(`chart diag failed: ${e}`, 'error')
+  }
   // Keep the parent's zoom model in sync when the user drags/pinches, but only
   // emit when the value actually changed (and not while we're applying one).
   chart.value.on('datazoom', () => {
@@ -200,7 +272,7 @@ onBeforeUnmount(() => {
 
 // Re-render when data or indicator parameters change.
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower],
+  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat],
   render,
 )
 
