@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat } from '../lib/indicators'
+import { sma, bollinger } from '../lib/indicators'
+import { mwHeat } from '../lib/mwheat'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 
@@ -57,13 +58,13 @@ const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 
 const ma = computed(() => sma(prices.value, maDays.value))
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
-// Signed M/W price-heat: +cool where W-bottoms dominate, -hot for M-tops.
+// Multi-scale M/W price-heat: blends daily/weekly/monthly lenses via atanh
+// pooling. +1 = M (hot/top), −1 = W (cool/bottom). The Bollinger period (in
+// days) drives N — every horizon scales its own window from it.
 const heat = computed(() => {
-  const h = mwHeat(prices.value, bands.value, {
-    pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5,
-  }).heat
-  // Diagnostic: surface the heat distribution to the on-screen log so we can
-  // see whether it's actually varying (and by how much) on a phone.
+  const res = mwHeat(prices.value, { N: Math.max(5, bbPeriod.value) })
+  const h = res.heat
+  // Diagnostic: surface the heat distribution to the on-screen log.
   let min = Infinity
   let max = -Infinity
   let nonZero = 0
@@ -74,11 +75,9 @@ const heat = computed(() => {
     if (Math.abs(v) > 0.02) nonZero++
     absSum += Math.abs(v)
   }
-  const bandsValid = bands.value.upper.filter((u) => u != null).length
   logDebug(
-    `heat: n=${h.length} bandsValid=${bandsValid} min=${min.toFixed(2)} ` +
-      `max=${max.toFixed(2)} mean|h|=${(absSum / (h.length || 1)).toFixed(2)} ` +
-      `nonZero=${nonZero}`,
+    `heat(multiscale): n=${h.length} min=${min.toFixed(2)} max=${max.toFixed(2)} ` +
+      `mean|h|=${(absSum / (h.length || 1)).toFixed(2)} nonZero=${nonZero}`,
   )
   return h
 })
