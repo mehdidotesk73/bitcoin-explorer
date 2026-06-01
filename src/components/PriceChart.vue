@@ -10,6 +10,7 @@ import {
   VisualMapComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { logDebug } from '../debug'
 
 echarts.use([
   LineChart,
@@ -174,8 +175,11 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: priceData,
         symbol: 'none',
-        // When heat is off, encode is harmless; when on, y comes from dim 1.
-        ...(heatOn ? { encode: { x: 0, y: 1 } } : {}),
+        // A line series tracks only 2 dims by default; declare the 3rd ("heat")
+        // explicitly so visualMap.dimension:2 can read it and colour the line.
+        ...(heatOn
+          ? { dimensions: ['x', 'price', 'heat'], encode: { x: 0, y: 1 } }
+          : {}),
         // Omit an explicit colour when heat is on so the visualMap drives it
         // (an explicit lineStyle.color overrides the visualMap mapping).
         lineStyle: heatOn ? { width: 2 } : { color: '#f7931a', width: 1.5 },
@@ -203,6 +207,18 @@ function buildOption(): echarts.EChartsCoreOption {
 function render() {
   // replaceMerge visualMap too, so toggling heat off fully removes the mapping.
   chart.value?.setOption(buildOption(), { replaceMerge: ['series', 'visualMap'] })
+  // Diagnostic: confirm whether the visualMap actually landed in the live chart.
+  const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
+  if (heatOn) {
+    const opt = chart.value?.getOption() as any
+    const vm = opt?.visualMap
+    const sample = (props.heat ?? []).slice(-3).map((v) => v.toFixed(2)).join(',')
+    logDebug(
+      `chart: heatOn=true visualMaps=${vm ? vm.length : 0} ` +
+        `dim=${vm?.[0]?.dimension} seriesIdx=${vm?.[0]?.seriesIndex} ` +
+        `lastHeat=[${sample}]`,
+    )
+  }
 }
 
 // Guards against an infinite loop between the chart's `datazoom` event and the
