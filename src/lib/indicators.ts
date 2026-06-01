@@ -155,8 +155,9 @@ export function mwHeat(
   }
   const osc = gaussianSmoothNaN(raw, Math.max(2, Math.round(w / 2)))
 
-  // 2. Idealised M template over a ±w window: two humps (cos over 2 periods)
-  //    that sit above the MA, dipping between — a centred, zero-mean profile.
+  // 2. Idealised W template over a ±w window: cos(4π·t) → high ends, two
+  //    interior dips with a central bump. This is the W (double-bottom) profile;
+  //    its inverse (negative correlation) is the M (double-top). Zero-mean.
   const half = w
   const span = 2 * half + 1
   const tmpl: number[] = []
@@ -205,26 +206,30 @@ export function mwHeat(
       wnorm += x * x
     }
     wnorm = Math.sqrt(wnorm) || 1e-9
-    const corr = dot / (wnorm * tnorm) // -1..1: +1 = M shape, -1 = W shape
+    const corr = dot / (wnorm * tnorm) // -1..1: +1 = W shape, -1 = M shape
 
     // Amplitude weight: flat/noisy windows (small oscillation) stay neutral.
     const amp = Math.tanh(Math.sqrt(wnorm / span) / ampScale)
 
-    // corr>0 → window matches the two-hump template (M-top) → hot/negative.
-    // corr<0 → inverted template (two dips, W-bottom) → cool/positive.
-    // A small mean-position factor reinforces when humps sit above / dips below
-    // the MA, but corr alone already separates M from W.
-    const posBias = 0.5 + 0.5 * Math.tanh(2 * Math.sign(corr) * (wmean / ampScale))
-    match[i] = clamp(-corr * amp * posBias, -1, 1)
+    // corr>0 → matches the W template (two dips) → cool/positive (blue).
+    // corr<0 → inverted template (two humps, M-top) → hot/negative (red).
+    // Reinforce when the dips sit below the MA (W) / humps above it (M): for a
+    // W (corr>0) a negative window-mean strengthens it, and vice-versa.
+    const posBias = 0.5 + 0.5 * Math.tanh(-2 * Math.sign(corr) * (wmean / ampScale))
+    match[i] = clamp(corr * amp * posBias, -1, 1)
   }
 
-  // 3. Smooth the match field so the heat reads as coherent zones, not specks.
+  // 3. Smooth the match field so the heat reads as coherent zones, not specks,
+  //    then apply a punchy nonlinear gain so moderate matches saturate to a
+  //    clearly visible colour (the chained weights above keep values small).
   const smoothed = gaussianSmoothNaN(
     match.map((v) => (Number.isNaN(v) ? 0 : v)),
     w,
   )
   for (let i = 0; i < n; i++) {
-    heat[i] = clamp(1.6 * (Number.isNaN(smoothed[i]) ? 0 : smoothed[i]), -1, 1)
+    const s = Number.isNaN(smoothed[i]) ? 0 : smoothed[i]
+    // tanh(6·s) maps even a modest |s|≈0.25 to ~|0.9|, so colours read boldly.
+    heat[i] = clamp(Math.tanh(6 * s), -1, 1)
   }
 
   return { heat, patterns }
