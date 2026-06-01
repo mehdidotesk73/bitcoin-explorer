@@ -38,13 +38,14 @@
       (visualMap/line-segment colouring don't bind on a category axis), with a
       "M/W heat" toggle and an explainer tooltip.
 
-- [x] **Heat-driven DCA exploration** (Price Explorer). Uniform DCA vs
-      heat-weighted DCA over the same total budget, so the comparison is pure
-      *timing* (each buy weighted by `max(0, 1 + k·heat)`, renormalised to the
-      same total). User controls: total budget, buy interval, reactiveness `k`
-      slider (0 = uniform) + a "use best k" button from a `k ∈ [0,3]` scan.
-      Reports BTC, avg cost, final value, ROI per strategy and the heat-vs-
-      uniform edge. `simulateDca()` / `dcaCompare()` in `indicators.ts`.
+- [x] **Heat-band DCA exploration** (Price Explorer). Buy only on days whose
+      M/W heat falls in a band [centre ± window] (no fixed schedule — the band
+      defines buy-days). Effectiveness = average ROI over *every* possible start
+      day: from each start, split the budget equally across the buy-days to
+      today, so ROI(s) = mean of (lastPrice/price[j]) − 1; average over all s
+      to remove start-date luck. Compares the band plan vs buy-every-day.
+      `dcaBandExplore()` / `avgStartRoi()` in `indicators.ts`; UI controls are
+      buy-band centre + window sliders.
 
 ## Next branch
 

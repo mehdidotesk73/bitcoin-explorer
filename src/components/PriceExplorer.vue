@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat, dcaCompare } from '../lib/indicators'
+import { sma, bollinger, mwHeat, dcaBandExplore } from '../lib/indicators'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 
@@ -26,9 +26,10 @@ const showHeatHelp = ref(false)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // --- DCA exploration --------------------------------------------------------
-const dcaBudget = ref(10000) // total $ deployed over the period
-const dcaIntervalDays = ref(7) // buy cadence (days)
-const dcaK = ref(1) // heat reactiveness (0 = uniform)
+// Buy on days whose M/W heat falls in a band [center ± window]. Heat is
+// +cool (W/low) … −hot (M/top), so a positive centre targets the blue days.
+const dcaCenter = ref(0.5) // heat-band centre
+const dcaWindow = ref(0.5) // heat-band half-width
 
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
@@ -92,24 +93,13 @@ const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
 
-// Uniform vs heat-driven DCA over the loaded history (same total budget).
+// Heat-band DCA vs buy-every-day, scored by average ROI over all start days.
 const dca = computed(() =>
   prices.value.length
-    ? dcaCompare(prices.value, heat.value, dcaIntervalDays.value, dcaBudget.value, dcaK.value)
+    ? dcaBandExplore(prices.value, heat.value, dcaCenter.value, dcaWindow.value)
     : null,
 )
-const dcaEdge = computed(() => {
-  const d = dca.value
-  if (!d || d.uniform.finalValue <= 0) return null
-  return d.heat.finalValue / d.uniform.finalValue - 1 // heat vs uniform, fractional
-})
-const dcaBestEdge = computed(() => {
-  const d = dca.value
-  if (!d || d.uniform.finalValue <= 0) return null
-  return d.bestValue / d.uniform.finalValue - 1
-})
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
-const fmtBtc = (v: number) => v.toFixed(4) + ' ₿'
 const edgeClass = (v: number) => (v >= 0 ? 'pos' : 'neg')
 
 // --- Graphed-range presets --------------------------------------------------
@@ -210,63 +200,50 @@ const fmtUSD = (v: number | null) =>
     <section class="dca" v-if="dca">
       <h2>DCA exploration</h2>
       <p class="dca-sub">
-        Same total budget deployed two ways over the loaded history — uniform
-        vs. weighted by M/W heat (buy more on blue/lows). Difference is pure
-        timing, not extra capital. Heuristic, not advice.
+        Buy only on days whose M/W heat sits inside the band below (heat runs
+        +1 cool/W-low … −1 hot/M-top). Effectiveness = the average ROI across
+        every possible start day, splitting the budget equally over the
+        buy-days from that start to today — so it doesn't hinge on one lucky
+        start date. Heuristic, not advice.
       </p>
 
       <div class="controls">
         <label>
-          Total budget ($)
-          <input type="number" v-model.number="dcaBudget" min="100" step="100" />
+          Buy-band centre
+          <input type="range" v-model.number="dcaCenter" min="-1" max="1" step="0.05" />
+          <span class="muted">{{ dcaCenter.toFixed(2) }}</span>
         </label>
         <label>
-          Buy every (days)
-          <input type="number" v-model.number="dcaIntervalDays" min="1" max="90" />
+          Buy-band ± window
+          <input type="range" v-model.number="dcaWindow" min="0.05" max="2" step="0.05" />
+          <span class="muted">{{ dcaWindow.toFixed(2) }}</span>
         </label>
-        <label>
-          Heat reactiveness k
-          <input type="range" v-model.number="dcaK" min="0" max="3" step="0.1" />
-          <span class="muted">{{ dcaK.toFixed(1) }} (0 = uniform)</span>
-        </label>
-        <button
-          v-if="dca.bestK !== dcaK"
-          class="best-k"
-          @click="dcaK = dca.bestK"
-        >
-          Use best k = {{ dca.bestK.toFixed(1) }}
-        </button>
       </div>
 
       <div class="dca-grid">
-        <div class="dca-card">
-          <h3>Uniform DCA</h3>
+        <div class="dca-card heat">
+          <h3>Heat-band plan</h3>
           <dl>
-            <div><dt>BTC</dt><dd>{{ fmtBtc(dca.uniform.btc) }}</dd></div>
-            <div><dt>Avg cost</dt><dd>{{ fmtUSD(dca.uniform.avgCost) }}</dd></div>
-            <div><dt>Value</dt><dd>{{ fmtUSD(dca.uniform.finalValue) }}</dd></div>
-            <div><dt>ROI</dt><dd>{{ fmtPct(dca.uniform.roi) }}</dd></div>
+            <div><dt>Avg ROI</dt><dd>{{ fmtPct(dca.band.avgRoi) }}</dd></div>
+            <div><dt>Buy-days</dt><dd>{{ dca.band.buyDays }}</dd></div>
+            <div><dt>Coverage</dt><dd>{{ fmtPct(dca.band.coverage) }}</dd></div>
           </dl>
         </div>
-        <div class="dca-card heat">
-          <h3>Heat-driven DCA</h3>
+        <div class="dca-card">
+          <h3>Buy every day</h3>
           <dl>
-            <div><dt>BTC</dt><dd>{{ fmtBtc(dca.heat.btc) }}</dd></div>
-            <div><dt>Avg cost</dt><dd>{{ fmtUSD(dca.heat.avgCost) }}</dd></div>
-            <div><dt>Value</dt><dd>{{ fmtUSD(dca.heat.finalValue) }}</dd></div>
-            <div><dt>ROI</dt><dd>{{ fmtPct(dca.heat.roi) }}</dd></div>
+            <div><dt>Avg ROI</dt><dd>{{ fmtPct(dca.uniform.avgRoi) }}</dd></div>
+            <div><dt>Buy-days</dt><dd>{{ dca.uniform.buyDays }}</dd></div>
+            <div><dt>Coverage</dt><dd>{{ fmtPct(dca.uniform.coverage) }}</dd></div>
           </dl>
         </div>
       </div>
 
-      <p class="dca-edge" v-if="dcaEdge != null">
-        Heat-driven ends
-        <strong :class="edgeClass(dcaEdge)">{{ fmtPct(dcaEdge) }}</strong>
-        vs. uniform at k = {{ dcaK.toFixed(1) }}.
-        Best over the scan: k = {{ dca.bestK.toFixed(1) }} →
-        {{ fmtUSD(dca.bestValue) }}
-        <span v-if="dcaBestEdge != null" :class="edgeClass(dcaBestEdge)">
-          ({{ fmtPct(dcaBestEdge) }})</span>.
+      <p class="dca-edge">
+        Heat-band beats buy-every-day by
+        <strong :class="edgeClass(dca.edge)">{{ fmtPct(dca.edge) }}</strong>
+        in average start-day ROI
+        <template v-if="dca.band.buyDays === 0"> — no days fall in this band.</template>
       </p>
     </section>
 

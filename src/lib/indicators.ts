@@ -236,87 +236,95 @@ export function mwHeat(
 }
 
 // ---------------------------------------------------------------------------
-// DCA exploration: uniform vs heat-driven dollar-cost averaging
+// DCA exploration: heat-band buy-days vs buy-every-day, averaged over all
+// possible start days
 // ---------------------------------------------------------------------------
+//
+// A plan buys on every day whose M/W heat falls inside a band [center ± window]
+// (no fixed schedule — the band defines the buy-days). For a plan *started* on
+// day s, the budget is split equally across the buy-days in [s, today], so its
+// return is scale-free:
+//
+//   ROI(s) = mean over buy-days j ≥ s of (lastPrice / price[j])  −  1
+//
+// Averaging ROI(s) over every start day s gives a robust effectiveness metric
+// that doesn't depend on a single lucky start date.
 
-export interface DcaResult {
-  invested: number // total cash deployed
-  btc: number // total BTC accumulated
-  avgCost: number // average cost basis ($/BTC)
-  finalValue: number // btc × last price
-  roi: number // finalValue / invested − 1
-  buys: number // number of buy events
+export interface DcaBandResult {
+  avgRoi: number // mean ROI across all start days
+  buyDays: number // days whose heat is in the band
+  coverage: number // buyDays / total valid days
 }
 
-export interface DcaCompare {
-  uniform: DcaResult
-  heat: DcaResult
-  /** Reactiveness `k` that maximised the heat strategy's final value. */
-  bestK: number
-  /** Heat-strategy final value at `bestK` (the optimised upside). */
-  bestValue: number
+export interface DcaBandCompare {
+  band: DcaBandResult // heat-band strategy
+  uniform: DcaBandResult // buy every day (baseline)
+  edge: number // band.avgRoi − uniform.avgRoi
 }
 
 /**
- * Simulate DCA buying every `intervalDays`-th sample, deploying `totalBudget`
- * in total. The heat strategy scales each buy by `max(0, 1 + k·heat)` — more
- * when cool/blue (a W/low), less when hot/red — then renormalises so it spends
- * exactly the same total as the uniform strategy. Any difference is therefore
- * pure *timing*, not deploying more capital.
+ * Average-over-all-start-days ROI for a plan that buys only on days where
+ * `isBuyDay[i]` is true, splitting its budget equally across the buy-days from
+ * each start day to the end. Scale-free, so no budget argument is needed.
  */
-export function simulateDca(
-  prices: number[],
-  heat: number[],
-  intervalDays: number,
-  totalBudget: number,
-  k: number,
-): DcaResult {
+function avgStartRoi(prices: number[], isBuyDay: boolean[]): DcaBandResult {
   const n = prices.length
-  const step = Math.max(1, Math.round(intervalDays))
-  const idx: number[] = []
-  for (let i = 0; i < n; i++) if (i % step === 0 && prices[i] > 0) idx.push(i)
-  if (idx.length === 0) {
-    return { invested: 0, btc: 0, avgCost: 0, finalValue: 0, roi: 0, buys: 0 }
+  const lastPrice = n ? prices[n - 1] : 0
+  let buyDays = 0
+  let validDays = 0
+  for (let i = 0; i < n; i++) {
+    if (prices[i] > 0) validDays++
+    if (isBuyDay[i]) buyDays++
   }
-  const weights = idx.map((i) => Math.max(0, 1 + k * (heat[i] ?? 0)))
-  const wsum = weights.reduce((a, b) => a + b, 0) || 1
-  let btc = 0
-  let invested = 0
-  for (let j = 0; j < idx.length; j++) {
-    const spend = (totalBudget * weights[j]) / wsum
-    btc += spend / prices[idx[j]]
-    invested += spend
+  if (buyDays === 0 || lastPrice <= 0) {
+    return { avgRoi: 0, buyDays, coverage: validDays ? buyDays / validDays : 0 }
   }
-  const lastPrice = prices[n - 1]
-  const finalValue = btc * lastPrice
+  // Sweep start day s from the end: maintain suffix sum/count of the buy-day
+  // price ratios (lastPrice/price[j]) for j ≥ s, accumulating ROI(s).
+  let suffixSum = 0
+  let suffixCount = 0
+  let totalRoi = 0
+  let starts = 0
+  for (let s = n - 1; s >= 0; s--) {
+    if (isBuyDay[s] && prices[s] > 0) {
+      suffixSum += lastPrice / prices[s]
+      suffixCount++
+    }
+    if (suffixCount > 0) {
+      totalRoi += suffixSum / suffixCount - 1
+      starts++
+    }
+  }
   return {
-    invested,
-    btc,
-    avgCost: btc > 0 ? invested / btc : 0,
-    finalValue,
-    roi: invested > 0 ? finalValue / invested - 1 : 0,
-    buys: idx.length,
+    avgRoi: starts ? totalRoi / starts : 0,
+    buyDays,
+    coverage: validDays ? buyDays / validDays : 0,
   }
 }
 
-/** Compare uniform vs heat-driven DCA, and scan k ∈ [0, 3] for the best value. */
-export function dcaCompare(
+/**
+ * Compare a heat-band DCA plan (buy when heat ∈ [center − window, center +
+ * window]) against buying every day, each scored by the average-over-all-
+ * start-days ROI. Heat is +cool (W/low) … −hot (M/top), so a positive `center`
+ * targets the blue/low days.
+ */
+export function dcaBandExplore(
   prices: number[],
   heat: number[],
-  intervalDays: number,
-  totalBudget: number,
-  k: number,
-): DcaCompare {
-  const uniform = simulateDca(prices, heat, intervalDays, totalBudget, 0)
-  const heatRes = simulateDca(prices, heat, intervalDays, totalBudget, k)
-  let bestK = 0
-  let bestValue = uniform.finalValue
-  for (let kk = 0; kk <= 3.0001; kk += 0.1) {
-    const v = simulateDca(prices, heat, intervalDays, totalBudget, kk).finalValue
-    if (v > bestValue) {
-      bestValue = v
-      bestK = Math.round(kk * 10) / 10
-    }
+  center: number,
+  window: number,
+): DcaBandCompare {
+  const n = prices.length
+  const lo = center - window
+  const hi = center + window
+  const inBand: boolean[] = new Array(n)
+  const everyDay: boolean[] = new Array(n)
+  for (let i = 0; i < n; i++) {
+    const h = heat[i] ?? 0
+    inBand[i] = prices[i] > 0 && h >= lo && h <= hi
+    everyDay[i] = prices[i] > 0
   }
-  return { uniform, heat: heatRes, bestK, bestValue }
+  const band = avgStartRoi(prices, inBand)
+  const uniform = avgStartRoi(prices, everyDay)
+  return { band, uniform, edge: band.avgRoi - uniform.avgRoi }
 }
