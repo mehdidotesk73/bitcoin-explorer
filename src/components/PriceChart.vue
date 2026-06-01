@@ -187,8 +187,12 @@ function buildOption(): echarts.EChartsCoreOption {
           dimension: 2,
           min: -1,
           max: 1,
-          // -1 (hot/M) → red, 0 → neutral amber, +1 (cool/W) → blue.
-          inRange: { color: ['#ff4d4d', '#f7931a', '#4f8ef7'] },
+          // Diverging scale: -1 (hot/M) deep red … 0 neutral grey … +1 (cool/W)
+          // deep blue. A grey midpoint (not amber) makes any tint clearly read
+          // as "heat" rather than the plain orange price line.
+          inRange: {
+            color: ['#e23b3b', '#e88f5a', '#9aa3b8', '#5aa9e8', '#2f6fe0'],
+          },
         }
       : undefined,
   }

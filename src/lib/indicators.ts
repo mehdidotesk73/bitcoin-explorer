@@ -123,61 +123,73 @@ export function mwHeat(
   opts: MWHeatOptions = {},
 ): MWHeatResult {
   const n = price.length
-  const w = Math.max(1, opts.pivotWindow ?? 5)
-  const tol = opts.levelTolerance ?? 0.05
+  const w = Math.max(1, opts.pivotWindow ?? 6)
+  const tol = opts.levelTolerance ?? 0.15
   const heat = new Array(n).fill(0)
   const patterns: MWPattern[] = []
   if (n === 0) return { heat, patterns }
 
+  // %B band position per sample: 0 at the lower band, 1 at the upper band.
+  const pctB: (number | null)[] = new Array(n).fill(null)
+  for (let i = 0; i < n; i++) {
+    const u = bands.upper[i]
+    const l = bands.lower[i]
+    if (u == null || l == null || u <= l) continue
+    pctB[i] = (price[i] - l) / (u - l)
+  }
+
+  // Continuous base heat: near the lower band → +1 (cool / W side), near the
+  // upper band → -1 (hot / M side). This always varies, so the tint can't
+  // silently collapse to neutral when no discrete pattern is found.
+  for (let i = 0; i < n; i++) {
+    if (pctB[i] != null) heat[i] = clamp(1 - 2 * (pctB[i] as number), -1, 1)
+  }
+
   const lows = findPivots(price, w, -1)
   const highs = findPivots(price, w, 1)
 
-  // --- W-bottoms: consecutive low pivots, first below lower band ---
+  // --- W-bottoms: two similar swing lows, at least one near the lower band ---
   for (let a = 0; a < lows.length - 1; a++) {
     const i1 = lows[a]
     const i2 = lows[a + 1]
-    const lo1 = bands.lower[i1]
-    const lo2 = bands.lower[i2]
-    if (lo1 == null || lo2 == null) continue
-    // Similar lows, within tolerance of each other.
+    const b1 = pctB[i1]
+    const b2 = pctB[i2]
+    if (b1 == null || b2 == null) continue
     const rel = Math.abs(price[i2] - price[i1]) / Math.max(price[i1], 1e-9)
     if (rel > tol) continue
-    // Bollinger W: first pierces the lower band, second holds inside it.
-    if (!(price[i1] < lo1 && price[i2] >= lo2)) continue
-    // Neckline: highest point between the two lows.
+    // At least one low must sit in the lower third of the band envelope.
+    const lowB = Math.min(b1, b2)
+    if (lowB > 0.33) continue
     let neck = i1
     for (let j = i1 + 1; j < i2; j++) if (price[j] > price[neck]) neck = j
-    // Strength: depth of the first pierce (relative) × tightness of the pair.
-    const pierce = (lo1 - price[i1]) / Math.max(lo1, 1e-9)
-    const score = clamp(pierce * 6, 0, 1) * (1 - rel / tol)
+    const score = clamp((0.33 - lowB) / 0.33, 0, 1) * (1 - rel / tol)
     if (score <= 0) continue
     patterns.push({ type: 'W', first: i1, neck, second: i2, score })
   }
 
-  // --- M-tops: consecutive high pivots, first above upper band ---
+  // --- M-tops: two similar swing highs, at least one near the upper band ---
   for (let a = 0; a < highs.length - 1; a++) {
     const i1 = highs[a]
     const i2 = highs[a + 1]
-    const up1 = bands.upper[i1]
-    const up2 = bands.upper[i2]
-    if (up1 == null || up2 == null) continue
+    const b1 = pctB[i1]
+    const b2 = pctB[i2]
+    if (b1 == null || b2 == null) continue
     const rel = Math.abs(price[i2] - price[i1]) / Math.max(price[i1], 1e-9)
     if (rel > tol) continue
-    if (!(price[i1] > up1 && price[i2] <= up2)) continue
+    const highB = Math.max(b1, b2)
+    if (highB < 0.67) continue
     let neck = i1
     for (let j = i1 + 1; j < i2; j++) if (price[j] < price[neck]) neck = j
-    const pierce = (price[i1] - up1) / Math.max(up1, 1e-9)
-    const score = clamp(pierce * 6, 0, 1) * (1 - rel / tol)
+    const score = clamp((highB - 0.67) / 0.33, 0, 1) * (1 - rel / tol)
     if (score <= 0) continue
     patterns.push({ type: 'M', first: i1, neck, second: i2, score })
   }
 
-  // Spread each pattern's signed strength across its span and accumulate.
+  // Detected patterns amplify the base heat across their span (toward ±1).
   for (const p of patterns) {
-    const signed = p.type === 'W' ? p.score : -p.score
-    for (let j = p.first; j <= p.second; j++) heat[j] += signed
+    const signed = (p.type === 'W' ? 1 : -1) * p.score
+    for (let j = p.first; j <= p.second; j++) heat[j] = clamp(heat[j] + signed * 0.5, -1, 1)
   }
-  for (let i = 0; i < n; i++) heat[i] = clamp(heat[i], -1, 1)
 
   return { heat, patterns }
 }
