@@ -1,7 +1,27 @@
 :root {
+  /* Dark finance/tech dashboard palette: deep slate grays + blue / orange /
+     violet accents (Bitcoin orange reserved for price). */
+  --bg: #0b0f18;
+  --bg-elev: #141b2a;
+  --bg-elev-2: #1b2334;
+  --bg-input: #1f2940;
+  --border: #28324a;
+  --border-strong: #36425f;
+  --text: #e7eaf3;
+  --text-muted: #8b94ac;
+  --accent-blue: #4f8ef7;
+  --accent-orange: #f7931a;
+  --accent-violet: #9b6dff;
+  --accent-green: #3ad29f;
+  --danger: #f87171;
+  --danger-bg: #3a1d24;
+  --radius: 0.55rem;
+
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #213547;
-  background-color: #ffffff;
+  color: var(--text);
+  background-color: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -11,4 +31,57 @@
 body {
   margin: 0;
   min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(79, 142, 247, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 110% 0%, rgba(155, 109, 255, 0.08), transparent 55%),
+    var(--bg);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text);
+}
+
+/* Shared form-control styling so every tab inherits the dark theme. */
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.45rem;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+select option {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.38rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+button:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
 }

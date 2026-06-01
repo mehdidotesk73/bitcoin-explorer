@@ -48,15 +48,25 @@ function buildOption(): echarts.EChartsCoreOption {
     return u == null || l == null ? null : u - l
   })
 
+  const AXIS = '#8b94ac'
+  const SPLIT = 'rgba(54, 66, 95, 0.45)'
+
   return {
     animation: false,
+    backgroundColor: 'transparent',
+    textStyle: { color: '#e7eaf3' },
     grid: { left: 56, right: 16, top: 48, bottom: 72 },
     legend: {
       data: ['Price', `MA (${props.maLabel})`, `Bollinger (${props.bbLabel})`],
       top: 8,
+      textStyle: { color: '#e7eaf3' },
+      inactiveColor: '#5a6480',
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: 'rgba(20, 27, 42, 0.95)',
+      borderColor: '#36425f',
+      textStyle: { color: '#e7eaf3' },
       formatter: (params: any) => {
         const i = params[0].dataIndex
         const rows = [
@@ -73,15 +83,28 @@ function buildOption(): echarts.EChartsCoreOption {
       type: 'category',
       data: props.dates,
       boundaryGap: false,
+      axisLine: { lineStyle: { color: AXIS } },
+      axisLabel: { color: AXIS },
+      splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      axisLabel: { formatter: (v: number) => fmtUSD(v) },
+      axisLine: { lineStyle: { color: AXIS } },
+      axisLabel: { color: AXIS, formatter: (v: number) => fmtUSD(v) },
+      splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
       { type: 'inside', start: props.zoom[0], end: props.zoom[1] },
-      { type: 'slider', start: props.zoom[0], end: props.zoom[1], bottom: 16 },
+      {
+        type: 'slider',
+        start: props.zoom[0],
+        end: props.zoom[1],
+        bottom: 16,
+        borderColor: '#36425f',
+        fillerColor: 'rgba(79, 142, 247, 0.18)',
+        textStyle: { color: AXIS },
+      },
     ],
     series: [
       // --- Bollinger band fill (drawn first, under everything) ---
@@ -101,7 +124,7 @@ function buildOption(): echarts.EChartsCoreOption {
         stack: 'bb',
         symbol: 'none',
         lineStyle: { opacity: 0 },
-        areaStyle: { color: 'rgba(66, 184, 131, 0.18)' },
+        areaStyle: { color: 'rgba(155, 109, 255, 0.16)' },
       },
       // --- Bollinger band boundary lines ---
       {
@@ -109,7 +132,7 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: props.upper,
         symbol: 'none',
-        lineStyle: { color: 'rgba(66, 184, 131, 0.6)', width: 1, type: 'dashed' },
+        lineStyle: { color: 'rgba(155, 109, 255, 0.55)', width: 1, type: 'dashed' },
         silent: true,
       },
       {
@@ -117,7 +140,7 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: props.lower,
         symbol: 'none',
-        lineStyle: { color: 'rgba(66, 184, 131, 0.6)', width: 1, type: 'dashed' },
+        lineStyle: { color: 'rgba(155, 109, 255, 0.55)', width: 1, type: 'dashed' },
         silent: true,
       },
       {
@@ -125,14 +148,14 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: props.ma,
         symbol: 'none',
-        lineStyle: { color: '#f0a020', width: 1.5 },
+        lineStyle: { color: '#4f8ef7', width: 1.5 },
       },
       {
         name: 'Price',
         type: 'line',
         data: props.price,
         symbol: 'none',
-        lineStyle: { color: '#42b883', width: 1.5 },
+        lineStyle: { color: '#f7931a', width: 1.5 },
       },
     ],
   }

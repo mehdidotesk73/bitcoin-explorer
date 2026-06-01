@@ -1,0 +1,207 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { EARLIEST_MS, type PricePoint, type FetchProgress } from '../api/bitcoin'
+import { sma, bollinger } from '../lib/indicators'
+import PriceChart from './PriceChart.vue'
+
+const props = defineProps<{
+  raw: PricePoint[]
+  loading: boolean
+  error: string
+  progress: FetchProgress
+  lastUpdated: number | null
+}>()
+
+const emit = defineEmits<{ refresh: [] }>()
+
+// --- Adjustable parameters --------------------------------------------------
+const startDate = ref('') // data range start (empty = earliest available)
+const maPeriod = ref(20)
+const maUnit = ref<PeriodUnit>('day')
+const bbPeriod = ref(20)
+const bbUnit = ref<PeriodUnit>('day')
+const bbK = ref(2)
+const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+// Data is daily, so week/month periods just scale the sample count.
+type PeriodUnit = 'day' | 'week' | 'month'
+const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
+const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
+const toDays = (period: number, unit: PeriodUnit) =>
+  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
+
+function toDateInput(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+// Earliest available date drives the "Data start" picker's minimum.
+const minDate = computed(() =>
+  props.raw.length ? toDateInput(props.raw[0].time) : toDateInput(EARLIEST_MS),
+)
+
+// --- Derived series (recomputed instantly on parameter change) --------------
+const filtered = computed(() => {
+  if (!props.raw.length) return []
+  const startMs = startDate.value ? Date.parse(startDate.value) : props.raw[0].time
+  return props.raw.filter((p) => p.time >= startMs)
+})
+const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
+const prices = computed(() => filtered.value.map((p) => p.price))
+
+const maDays = computed(() => toDays(maPeriod.value, maUnit.value))
+const bbDays = computed(() => toDays(bbPeriod.value, bbUnit.value))
+const maLabel = computed(() => `${maPeriod.value}${UNIT_ABBR[maUnit.value]}`)
+const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
+
+const ma = computed(() => sma(prices.value, maDays.value))
+const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
+
+const latestPrice = computed(() =>
+  prices.value.length ? prices.value[prices.value.length - 1] : null,
+)
+
+// --- Graphed-range presets --------------------------------------------------
+function setRange(days: number | 'all') {
+  const n = filtered.value.length
+  if (!n || days === 'all') {
+    zoom.value = [0, 100]
+    return
+  }
+  const start = Math.max(0, ((n - days) / n) * 100)
+  zoom.value = [start, 100]
+}
+
+const fmtUSD = (v: number | null) =>
+  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+</script>
+
+<template>
+  <div>
+    <p class="latest" v-if="latestPrice">
+      Latest close: <strong>{{ fmtUSD(latestPrice) }}</strong>
+      <span class="muted" v-if="lastUpdated">
+        · updated {{ new Date(lastUpdated).toLocaleString() }}
+      </span>
+    </p>
+
+    <section class="status" v-if="loading">
+      Loading daily prices… {{ progress.bars }} bars over {{ progress.pages }} page(s)
+    </section>
+    <section class="status error" v-else-if="error">
+      ⚠️ {{ error }}
+      <button @click="emit('refresh')">Retry</button>
+    </section>
+
+    <section class="controls">
+      <label>
+        Data start
+        <input type="date" v-model="startDate" :min="minDate" :max="toDateInput(Date.now())" />
+      </label>
+      <label>
+        MA period
+        <span class="period">
+          <input type="number" v-model.number="maPeriod" min="1" max="400" />
+          <select v-model="maUnit">
+            <option value="day">days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </span>
+      </label>
+      <label>
+        Bollinger period
+        <span class="period">
+          <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+          <select v-model="bbUnit">
+            <option value="day">days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </span>
+      </label>
+      <label>
+        Bollinger σ ×
+        <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
+      </label>
+    </section>
+
+    <section class="ranges">
+      <span class="muted">Graphed range:</span>
+      <button @click="setRange(30)">1M</button>
+      <button @click="setRange(90)">3M</button>
+      <button @click="setRange(365)">1Y</button>
+      <button @click="setRange(365 * 3)">3Y</button>
+      <button @click="setRange('all')">All</button>
+    </section>
+
+    <PriceChart
+      v-if="dates.length"
+      :dates="dates"
+      :price="prices"
+      :ma="ma"
+      :upper="bands.upper"
+      :lower="bands.lower"
+      :ma-label="maLabel"
+      :bb-label="bbLabel"
+      v-model:zoom="zoom"
+    />
+    <p class="hint">
+      Drag the slider under the chart (or pinch) to adjust the graphed range.
+      Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
+      market data (daily BTC/USDT closes from Aug 2017).
+    </p>
+  </div>
+</template>
+
+<style scoped>
+.latest {
+  margin: 0 0 0.75rem;
+}
+.muted {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+.status {
+  padding: 0.6rem 0.8rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+.status.error {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+.controls,
+.ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  gap: 0.2rem;
+}
+.controls input {
+  width: 8rem;
+}
+.period {
+  display: flex;
+  gap: 0.3rem;
+}
+.period input {
+  width: 4rem;
+}
+.hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+}
+</style>
