@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger, mwHeat } from '../lib/indicators'
+import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 
 const props = defineProps<{
@@ -47,7 +48,30 @@ const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 const ma = computed(() => sma(prices.value, maDays.value))
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 // Signed M/W price-heat: +cool where W-bottoms dominate, -hot for M-tops.
-const heat = computed(() => mwHeat(prices.value, bands.value, { pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5 }).heat)
+const heat = computed(() => {
+  const h = mwHeat(prices.value, bands.value, {
+    pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5,
+  }).heat
+  // Diagnostic: surface the heat distribution to the on-screen log so we can
+  // see whether it's actually varying (and by how much) on a phone.
+  let min = Infinity
+  let max = -Infinity
+  let nonZero = 0
+  let absSum = 0
+  for (const v of h) {
+    if (v < min) min = v
+    if (v > max) max = v
+    if (Math.abs(v) > 0.02) nonZero++
+    absSum += Math.abs(v)
+  }
+  const bandsValid = bands.value.upper.filter((u) => u != null).length
+  logDebug(
+    `heat: n=${h.length} bandsValid=${bandsValid} min=${min.toFixed(2)} ` +
+      `max=${max.toFixed(2)} mean|h|=${(absSum / (h.length || 1)).toFixed(2)} ` +
+      `nonZero=${nonZero}`,
+  )
+  return h
+})
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,

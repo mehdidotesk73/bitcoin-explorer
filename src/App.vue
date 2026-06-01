@@ -3,12 +3,28 @@ import { ref, onMounted } from 'vue'
 import PriceExplorer from './components/PriceExplorer.vue'
 import ForecastView from './components/ForecastView.vue'
 import { useBitcoinData } from './lib/useBitcoinData'
-import { debugState } from './debug'
+import { debugState, logDebug } from './debug'
 import { setupPWAUpdates } from './pwa'
 
 const buildId = __BUILD_ID__
 const buildTime = __BUILD_TIME__
 const showDebug = ref(false)
+const copied = ref(false)
+
+// Copy the whole log buffer (plus build stamp) so it can be pasted back here.
+async function copyLog() {
+  const text = [
+    `build ${buildId} · ${buildTime}`,
+    ...debugState.logs.map((l) => `${l.time} [${l.kind}] ${l.msg}`),
+  ].join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 1500)
+  } catch {
+    logDebug('clipboard copy failed — select the text manually', 'error')
+  }
+}
 
 // Keep the installed PWA current: auto-reload on new deploys, plus a manual
 // button as a guaranteed way to escape a stale cache.
@@ -56,6 +72,9 @@ const tab = ref<Tab>('explorer')
         <span class="chev">{{ showDebug ? '▲' : '▼' }}</span>
       </button>
       <button class="reload-btn" @click="reloadLatest">Reload latest</button>
+      <button v-if="showDebug" class="reload-btn" @click="copyLog">
+        {{ copied ? 'Copied ✓' : 'Copy log' }}
+      </button>
       <ul v-if="showDebug" class="debug-log">
         <li v-if="!debugState.logs.length" class="muted">No log entries yet.</li>
         <li v-for="(l, i) in debugState.logs" :key="i" :class="l.kind">
