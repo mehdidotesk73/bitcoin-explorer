@@ -47,6 +47,14 @@
       avoids a few ancient cheap days dominating. `dcaScore()` / `dcaSweep()` in
       `indicators.ts`; UI: look-back X (default 1460), band centre + window, and
       a sweep curve of score vs centre with a parity line + coverage shading.
+- [x] **DCA "days like today" timeline** (Price Explorer). Per-day signal: for
+      each day t the band auto-centres on that day's own heat (±window), and we
+      plot the trailing-X-day growth multiple of those band-days (blue) vs all
+      days (grey) over time — price[t] cancels, so it reduces to "were days like
+      today cheaper than average," a real-time relative-value signal. Attractive
+      stretches (blue ≥ grey) shaded green. `dcaTimeline()` in `indicators.ts`,
+      `DcaTimelineChart.vue`. Note: empirically the broad-coverage edge is ~1.0×
+      (parity); only near-zero-coverage bands show big scores (overfit).
 
 ## Next branch
 

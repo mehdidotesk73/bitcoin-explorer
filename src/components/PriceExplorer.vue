@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat, dcaScore, dcaSweep } from '../lib/indicators'
+import { sma, bollinger, mwHeat, dcaScore, dcaSweep, dcaTimeline } from '../lib/indicators'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 import DcaSweepChart from './DcaSweepChart.vue'
+import DcaTimelineChart from './DcaTimelineChart.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -106,6 +107,12 @@ const dca = computed(() =>
 const sweep = computed(() =>
   prices.value.length
     ? dcaSweep(prices.value, heat.value, dcaDaysBack.value, dcaWindow.value)
+    : null,
+)
+// Per-day "days like today" vs "every day" trailing-growth timeline.
+const timeline = computed(() =>
+  prices.value.length
+    ? dcaTimeline(prices.value, heat.value, dcaDaysBack.value, dcaWindow.value)
     : null,
 )
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
@@ -265,6 +272,14 @@ const fmtUSD = (v: number | null) =>
         {{ fmtPct(dca.beatRate) }} of days
         <template v-if="dca.evalDays === 0"> — no days qualify for this band.</template>
       </p>
+
+      <p class="dca-sweep-label muted">
+        Over time: how much the trailing-{{ dcaDaysBack }}-day buys of
+        <em>days like this one</em> (same heat ± window) have grown (blue) vs.
+        buying every day (grey dashed). Blue above grey (green shading) = days
+        like that were a cheaper-than-average entry — an attractive buy signal.
+      </p>
+      <DcaTimelineChart v-if="timeline" :dates="dates" :points="timeline" />
     </section>
 
     <p class="hint">

@@ -360,3 +360,66 @@ export function dcaSweep(
   }
   return { points }
 }
+
+export interface DcaTimelinePoint {
+  index: number // sample index (for the chart's category axis)
+  methodGrowth: number // mean price[t]/price[j] over band-days in [t−X, t]
+  uniformGrowth: number // mean price[t]/price[j] over all days in [t−X, t]
+  ratio: number // methodGrowth / uniformGrowth (>1 = band-days were cheaper)
+  coverage: number // band-days / window-days
+}
+
+/**
+ * Per-day "buy attractiveness" timeline. For each day t, the band is centred on
+ * *that day's own heat* (±`window`) — i.e. "how have days like today performed?"
+ * — and we compute the trailing-window growth multiple of the band-days vs all
+ * days over [t−X, t]. Because price[t] cancels in the ratio, this reduces to
+ * whether days like today have been *cheaper than average* in the window — a
+ * real-time relative-value signal (no future data). ratio > 1 = attractive.
+ */
+export function dcaTimeline(
+  prices: number[],
+  heat: number[],
+  daysBack: number,
+  window: number,
+): DcaTimelinePoint[] {
+  const n = prices.length
+  const X = Math.max(1, Math.round(daysBack))
+  const out: DcaTimelinePoint[] = []
+  for (let t = 0; t < n; t++) {
+    const pt = prices[t]
+    if (pt <= 0) {
+      out.push({ index: t, methodGrowth: 1, uniformGrowth: 1, ratio: 1, coverage: 0 })
+      continue
+    }
+    const lo = (heat[t] ?? 0) - window
+    const hi = (heat[t] ?? 0) + window
+    const start = Math.max(0, t - X)
+    let mSum = 0
+    let mCount = 0
+    let uSum = 0
+    let uCount = 0
+    for (let j = start; j <= t; j++) {
+      const pj = prices[j]
+      if (pj <= 0) continue
+      const ratio = pt / pj
+      uSum += ratio
+      uCount++
+      const h = heat[j] ?? 0
+      if (h >= lo && h <= hi) {
+        mSum += ratio
+        mCount++
+      }
+    }
+    const uGrowth = uCount ? uSum / uCount : 1
+    const mGrowth = mCount ? mSum / mCount : uGrowth
+    out.push({
+      index: t,
+      methodGrowth: mGrowth,
+      uniformGrowth: uGrowth,
+      ratio: uGrowth > 0 ? mGrowth / uGrowth : 1,
+      coverage: uCount ? mCount / uCount : 0,
+    })
+  }
+  return out
+}
