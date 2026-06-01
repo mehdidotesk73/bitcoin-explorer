@@ -15,10 +15,16 @@ const props = defineProps<{
   zoom: [number, number]
 }>()
 
+const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
+
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 const AXIS = '#8b94ac'
 const SPLIT = 'rgba(54, 66, 95, 0.45)'
+
+// Guard against the datazoom-event ↔ prop-driven render feedback loop.
+let suppressZoomEvent = false
+const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 
 // Which horizon's internals (b, τ, vote) to inspect.
 const horizon = ref<Horizon>('weekly')
@@ -82,13 +88,26 @@ function buildOption(): echarts.EChartsCoreOption {
 }
 
 function render() {
+  suppressZoomEvent = true
   chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
+  suppressZoomEvent = false
 }
 
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   render()
+  // Emit zoom changes so the main price chart stays in sync (two-way).
+  chart.value.on('datazoom', () => {
+    if (suppressZoomEvent) return
+    const opt = chart.value?.getOption() as any
+    const dz = opt?.dataZoom?.[0]
+    if (!dz) return
+    const start = dz.start ?? 0
+    const end = dz.end ?? 100
+    if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
+    emit('update:zoom', [start, end])
+  })
   resizeObserver.observe(el.value)
 })
 const resizeObserver = new ResizeObserver(() => chart.value?.resize())

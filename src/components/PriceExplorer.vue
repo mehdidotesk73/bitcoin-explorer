@@ -28,6 +28,12 @@ const showHeatHelp = ref(false)
 const showDiag = ref(false) // show the heat-components diagnostic chart
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
+// Live M/W heat tuning knobs (spec §11.5 fast-iteration loop).
+const wDaily = ref(0.15)
+const wWeekly = ref(0.55)
+const wMonthly = ref(0.3)
+const horizonGain = ref(4)
+
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
   'It builds a smoothed price-vs-MA oscillator (taming sharp zigzags), then ' +
@@ -63,7 +69,13 @@ const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 // Multi-scale M/W price-heat: blends daily/weekly/monthly lenses via atanh
 // pooling. +1 = M (hot/top), −1 = W (cool/bottom). The Bollinger period (in
 // days) drives N — every horizon scales its own window from it.
-const mwResult = computed(() => mwHeat(prices.value, { N: Math.max(5, bbPeriod.value) }))
+const mwResult = computed(() =>
+  mwHeat(prices.value, {
+    N: Math.max(5, bbPeriod.value),
+    weights: [wDaily.value, wWeekly.value, wMonthly.value],
+    horizonGain: horizonGain.value,
+  }),
+)
 const heat = computed(() => {
   const res = mwResult.value
   const h = res.heat
@@ -213,11 +225,30 @@ const fmtUSD = (v: number | null) =>
       v-model:zoom="zoom"
     />
 
+    <section v-if="showDiag" class="controls tune">
+      <label>
+        Daily weight
+        <input type="number" v-model.number="wDaily" min="0" max="1" step="0.05" />
+      </label>
+      <label>
+        Weekly weight
+        <input type="number" v-model.number="wWeekly" min="0" max="1" step="0.05" />
+      </label>
+      <label>
+        Monthly weight
+        <input type="number" v-model.number="wMonthly" min="0" max="1" step="0.05" />
+      </label>
+      <label>
+        Horizon gain
+        <input type="number" v-model.number="horizonGain" min="0.5" max="12" step="0.5" />
+      </label>
+    </section>
+
     <MwHeatDiagnostic
       v-if="showDiag && dates.length"
       :dates="dates"
       :result="mwResult"
-      :zoom="zoom"
+      v-model:zoom="zoom"
     />
 
     <p class="hint">
