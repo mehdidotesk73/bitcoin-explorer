@@ -8,21 +8,18 @@ merge.
 Make the controls intuitive by separating the two fundamentally different kinds
 of knobs, with clearer labels and grouping.
 
-- [ ] **Group A — Calibration / fitting controls.** Inputs that drive the
-      automatic curve fit and silently overwrite the parameter boxes via
-      `resetToFit`: MA window, Fit window, Day zero, Fit weighting γ.
-  - Put them in a visually distinct "Calibration" group.
-  - Make it obvious that changing one re-fits and rewrites the param boxes
-    below (label, helper text, or an icon/affordance).
-- [ ] **Group B — Model-behavior parameters.** Manual overrides that feed the
-      projection directly and persist until the next refit: growth C/α/β,
-      envelope constants, linear rate, peak spread, peak dates.
-  - Group as "Model parameters"; clarify these are hand-tunable and survive
-    until a recalibration stomps them.
-- [ ] Rename labels for clarity (e.g. "Constant C" → name that says what it is
-      per growth/envelope type; γ → "Recency weighting" or similar with a hint).
-- [ ] Sanity pass: ensure tab/disabled/`resetToFit` behavior still works after
-      regrouping.
+- [x] **Group A — Calibration / fitting controls.** Moved MA window, Fit
+      window, Day zero, Fit weighting γ (and the "Reset to fit" button) into a
+      dedicated, violet-tinted "Calibration" section, set apart from the manual
+      params. A note spells out that changing any knob re-fits and overwrites
+      the parameter boxes below.
+- [x] **Group B — Model-behavior parameters.** Growth (now under "Value
+      baseline — growth") and envelope/peaks sections are now purely the
+      hand-tunable outputs, tagged "auto-filled · editable" vs "manual".
+- [x] Relabel for clarity: "Recency weighting γ", "Day zero (t₀)", "Baseline MA
+      window", "Growth fit window"; γ help text folded into the calibration note.
+- [x] Sanity pass: build + type-check pass; `resetToFit` and per-growth-type
+      toggles still work after regrouping.
 
 ## 2. Cosmetic: envelope band around the projection (cosmetic)
 
