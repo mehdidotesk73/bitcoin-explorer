@@ -267,6 +267,19 @@ const chartFormat = computed<'usd' | 'ratio'>(() =>
   chartTab.value === 'ratio' || chartTab.value === 'envelope' ? 'ratio' : 'usd',
 )
 
+// Price-tab shaded band: lower = value baseline (modelMa), upper = the same
+// baseline lifted by the volatility envelope (modelMa × envelope). Shows the
+// projection's plausible range as a cone that widens/narrows with volatility.
+const chartBand = computed(() => {
+  const f = forecast.value
+  if (!f || chartTab.value !== 'price') return undefined
+  return {
+    lower: f.modelMa,
+    upper: f.modelMa.map((m, i) => m * f.envelope[i]),
+    color: C_BLUE,
+  }
+})
+
 // Headline: projected price at the horizon.
 const horizonPrice = computed(() => {
   const f = forecast.value
@@ -570,6 +583,7 @@ const fmtNum = (v: number) =>
       :log-x="logX"
       :log-y="logY"
       :value-format="chartFormat"
+      :band="chartBand"
     />
   </div>
 </template>

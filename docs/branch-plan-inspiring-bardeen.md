@@ -28,19 +28,16 @@ of knobs, with clearer labels and grouping.
 
 Render the model's plausible range as a shaded band on the chart:
 
-- [ ] **Upper envelope** = `modelMa × envelope` (volatility multiplier applied
+- [x] **Upper envelope** = `modelMa × envelope` (volatility multiplier applied
       to the value baseline) — the ceiling of the target range.
-- [ ] **Lower envelope** = `modelMa` (the blue value baseline) — the floor.
-- [ ] Shade the region between them (e.g. echarts stacked area or two lines with
-      `areaStyle`) so the projection visually sits inside a cone that widens with
-      volatility and narrows as the envelope decays.
-  - Note: `projectForecast` already returns both `modelMa` and `envelope`
-    (`ForecastResult` in `src/lib/forecast.ts`); upper = elementwise product.
-  - Decide which chart tabs show the band (likely the Price tab) and how it
-    interacts with the existing y-axis auto-fit-to-window logic — the band's
-    upper edge is a model series, so confirm it does NOT drive `bounds`
-    (observed data should still set the y-range).
-  - Keep it subtle (low-opacity fill) so it reads as context, not a 4th line.
+- [x] **Lower envelope** = `modelMa` (the blue value baseline) — the floor.
+- [x] Shade the region between them (stacked area: invisible `lower` base +
+      filled `upper − lower` diff) so the projection sits inside a cone that
+      widens with volatility and narrows as the envelope decays.
+  - Done on the **Price tab only** via a new optional `band` prop on
+    `ForecastChart`. Band series are excluded from legend, tooltip, and the
+    y-axis `bounds` calc, so observed price still drives the y-range.
+  - Low-opacity blue fill (0.14) so it reads as context, not a 4th line.
 
 ## Housekeeping before merge
 

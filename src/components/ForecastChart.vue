@@ -45,6 +45,9 @@ const props = defineProps<{
   nowX: number
   /** How to format y values: dollars or a bare ratio multiplier. */
   valueFormat?: 'usd' | 'ratio'
+  /** Optional shaded band drawn behind the lines (e.g. modelMa → modelMa×env).
+   *  Excluded from y-bounds, legend and tooltip — purely contextual. */
+  band?: { lower: (number | null)[]; upper: (number | null)[]; color: string }
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -71,8 +74,36 @@ const fmtXYear = (v: number) =>
 const pair = (ys: (number | null)[]): [number, number | null][] =>
   ys.map((y, i) => [props.x[i], y])
 
+/** Build a shaded band as a stacked area: an invisible `lower` base plus the
+ *  filled `upper − lower` difference. Excluded from legend/tooltip/bounds. */
+function bandSeries(): any[] {
+  const b = props.band
+  if (!b) return []
+  const diff = b.upper.map((u, i) => {
+    const lo = b.lower[i]
+    return u != null && lo != null && u >= lo ? u - lo : null
+  })
+  const base = {
+    type: 'line' as const,
+    stack: 'band',
+    symbol: 'none',
+    silent: true,
+    lineStyle: { opacity: 0 },
+    z: 0,
+  }
+  return [
+    { ...base, name: '__band_lower', data: pair(b.lower) },
+    {
+      ...base,
+      name: '__band_fill',
+      data: pair(diff),
+      areaStyle: { color: b.color, opacity: 0.14 },
+    },
+  ]
+}
+
 function buildOption(): echarts.EChartsCoreOption {
-  const series = props.series.map((s, idx) => ({
+  const lineSeries = props.series.map((s, idx) => ({
     name: s.name,
     type: 'line' as const,
     data: pair(s.data),
@@ -97,6 +128,9 @@ function buildOption(): echarts.EChartsCoreOption {
         }
       : {}),
   }))
+
+  // Band first so it renders behind the lines.
+  const series = [...bandSeries(), ...lineSeries]
 
   return {
     animation: false,
@@ -259,6 +293,7 @@ watch(
     props.logY,
     props.valueFormat,
     props.nowX,
+    props.band,
   ],
   render,
 )
