@@ -230,13 +230,11 @@ const fmtUSD = (v: number | null) =>
         </label>
         <label>
           Buy-band centre
-          <input type="range" v-model.number="dcaCenter" min="-1" max="1" step="0.05" />
-          <span class="muted">{{ dcaCenter.toFixed(2) }}</span>
+          <input type="number" v-model.number="dcaCenter" min="-1" max="1" step="0.05" />
         </label>
         <label>
           Buy-band ± window
-          <input type="range" v-model.number="dcaWindow" min="0.05" max="2" step="0.05" />
-          <span class="muted">{{ dcaWindow.toFixed(2) }}</span>
+          <input type="number" v-model.number="dcaWindow" min="0.05" max="2" step="0.05" />
         </label>
       </div>
 
