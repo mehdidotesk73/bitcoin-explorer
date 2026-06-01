@@ -22,7 +22,17 @@ const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 const showHeat = ref(true) // tint the price line by the M/W heat score
+const showHeatHelp = ref(false)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+const MW_HEAT_HELP =
+  'M/W heat colours the price by how it oscillates around its moving average. ' +
+  'It builds a smoothed price-vs-MA oscillator (taming sharp zigzags), then ' +
+  'matches each window against the W / M shape: blue = W-bottom (two dips ' +
+  'below the MA with a recovery between → bullish), red = M-top (two pushes ' +
+  'above the MA, second weaker → bearish). Stronger, cleaner oscillations ' +
+  'colour more boldly; flat or choppy stretches stay neutral. Heuristic only — ' +
+  'not financial advice.'
 
 // Data is daily, so week/month periods just scale the sample count.
 type PeriodUnit = 'day' | 'week' | 'month'
@@ -139,8 +149,15 @@ const fmtUSD = (v: number | null) =>
       <label class="checkbox">
         <input type="checkbox" v-model="showHeat" />
         M/W heat
+        <span
+          class="help"
+          :title="MW_HEAT_HELP"
+          @click="showHeatHelp = !showHeatHelp"
+        >ⓘ</span>
       </label>
     </section>
+
+    <p v-if="showHeatHelp" class="heat-help">{{ MW_HEAT_HELP }}</p>
 
     <section class="ranges">
       <span class="muted">Graphed range:</span>
@@ -221,6 +238,28 @@ const fmtUSD = (v: number | null) =>
 }
 .controls .checkbox input {
   width: auto;
+}
+.help {
+  cursor: help;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+}
+.heat-help {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 .period {
   display: flex;
