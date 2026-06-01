@@ -10,6 +10,7 @@ import {
   VisualMapComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { logDebug } from '../debug'
 
 echarts.use([
   LineChart,
@@ -219,6 +220,21 @@ onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   render()
+  // One-shot diagnostic (runs once, fully guarded — cannot loop or throw):
+  // report whether the visualMap actually landed in the live chart option.
+  try {
+    const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
+    const opt = chart.value.getOption() as any
+    const vm = opt?.visualMap
+    const sample = (props.heat ?? []).slice(-3).map((v) => v.toFixed(2)).join(',')
+    logDebug(
+      `chart: heatOn=${heatOn} visualMaps=${vm ? vm.length : 0} ` +
+        `dim=${vm?.[0]?.dimension} seriesIdx=${vm?.[0]?.seriesIndex} ` +
+        `series=${opt?.series?.length} lastHeat=[${sample}]`,
+    )
+  } catch (e) {
+    logDebug(`chart diag failed: ${e}`, 'error')
+  }
   // Keep the parent's zoom model in sync when the user drags/pinches, but only
   // emit when the value actually changed (and not while we're applying one).
   chart.value.on('datazoom', () => {
