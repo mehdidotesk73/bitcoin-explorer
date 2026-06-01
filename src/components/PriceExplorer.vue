@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat } from '../lib/indicators'
+import { sma, bollinger } from '../lib/indicators'
 import PriceChart from './PriceChart.vue'
 
 const props = defineProps<{
@@ -20,7 +20,6 @@ const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
-const showHeat = ref(true) // tint the price line by the M/W heat score
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // Data is daily, so week/month periods just scale the sample count.
@@ -46,8 +45,6 @@ const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 
 const ma = computed(() => sma(prices.value, maDays.value))
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
-// Signed M/W price-heat: +cool where W-bottoms dominate, -hot for M-tops.
-const heat = computed(() => mwHeat(prices.value, bands.value, { pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5 }).heat)
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -112,10 +109,6 @@ const fmtUSD = (v: number | null) =>
         Bollinger σ ×
         <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
       </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showHeat" />
-        M/W heat
-      </label>
     </section>
 
     <section class="ranges">
@@ -136,8 +129,6 @@ const fmtUSD = (v: number | null) =>
       :lower="bands.lower"
       :ma-label="maLabel"
       :bb-label="bbLabel"
-      :heat="heat"
-      :show-heat="showHeat"
       v-model:zoom="zoom"
     />
     <p class="hint">
@@ -186,17 +177,6 @@ const fmtUSD = (v: number | null) =>
 }
 .controls input {
   width: 8rem;
-}
-.controls .checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--text);
-  font-size: 0.8rem;
-  align-self: flex-end;
-}
-.controls .checkbox input {
-  width: auto;
 }
 .period {
   display: flex;
