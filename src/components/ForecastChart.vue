@@ -67,9 +67,14 @@ const DAY_MS = 86_400_000
 const fmtXYear = (v: number) =>
   new Date(props.originMs + (v - 1) * DAY_MS).getFullYear().toString()
 
-/** Zip a y-series against the numeric x into [x, y] pairs for the chart. */
+/** Zip a y-series against the numeric x into [x, y] pairs for the chart.
+ *  Values below `yMin` (e.g. the power-law baseline diving toward ~1e-13 near
+ *  day zero) are dropped so they neither draw nor drag the auto-scaled axis. */
 const pair = (ys: (number | null)[]): [number, number | null][] =>
-  ys.map((y, i) => [props.x[i], y])
+  ys.map((y, i) => {
+    const drop = y != null && props.yMin != null && y < props.yMin
+    return [props.x[i], drop ? null : y]
+  })
 
 function buildOption(): echarts.EChartsCoreOption {
   const series = props.series.map((s, idx) => ({
@@ -132,17 +137,22 @@ function buildOption(): echarts.EChartsCoreOption {
     },
     yAxis: {
       type: props.logY ? 'log' : 'value',
+      // Auto-scale to whatever data is in view; sub-floor points are dropped in
+      // `pair`, so the axis follows the visible (zoomed) range, not the global.
       scale: true,
-      // Clamp the floor to a real value, or null to auto-scale (merge-safe).
-      min: props.yMin ?? null,
+      min: null,
       axisLine: { lineStyle: { color: AXIS } },
       axisLabel: { color: AXIS, formatter: (v: number) => fmtY(v) },
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
-      { type: 'inside', start: 0, end: 100 },
+      // filterMode 'filter' drops out-of-window points so the y-axis re-fits to
+      // the visible x-range as the user zooms.
+      { type: 'inside', xAxisIndex: 0, filterMode: 'filter', start: 0, end: 100 },
       {
         type: 'slider',
+        xAxisIndex: 0,
+        filterMode: 'filter',
         start: 0,
         end: 100,
         bottom: 16,
