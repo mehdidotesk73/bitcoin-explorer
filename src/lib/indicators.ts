@@ -54,68 +54,79 @@ export function bollinger(
 }
 
 // ---------------------------------------------------------------------------
-// M/W price-heat indicator (Bollinger band-relative double tops / bottoms)
+// M/W price-heat indicator (soft Bollinger band-relative trend field)
 // ---------------------------------------------------------------------------
 //
-// W-bottom (bullish): two swing lows at similar price, where the FIRST dips
-// below the lower Bollinger band and the SECOND holds inside it — Bollinger's
-// classic "W-Bottom". Pushes the heat score toward +1 (cool).
+// Rather than precisely matching double-top/double-bottom shapes, this scores a
+// continuous, signed "temperature" for every sample from smooth proximity
+// functions — so approximate W/M structure registers proportionally:
 //
-// M-top (bearish): the mirror — two swing highs, the FIRST poking above the
-// upper band and the SECOND staying inside. Pushes the score toward -1 (hot).
+//   W-side (bullish, +, cool): price scooping into a trough while sitting low
+//     in the Bollinger envelope.
+//   M-side (bearish, -, hot):  price arching into a peak while sitting high in
+//     the envelope.
 //
-// The per-pattern strength is spread across the span between the two pivots and
-// accumulated into a signed series in [-1, +1], so the price line can be tinted
-// cool where W-bottoms dominate and hot where M-tops dominate.
+// See `mwHeat` for the three soft ingredients (band position, scoop, pairing).
 
 export interface MWHeatOptions {
-  /** Half-width (in samples) of the local window used to find swing pivots. */
+  /** Neighbourhood half-width (samples) for the scoop/pairing smoothing. */
   pivotWindow?: number
-  /** Max relative gap between the two extremes to count as a pair (e.g. 0.05). */
+  /** Reserved: soft level tolerance (currently unused by the soft field). */
   levelTolerance?: number
 }
 
 export interface MWPattern {
   type: 'W' | 'M'
-  /** Sample indices of the first pivot, neckline, and second pivot. */
   first: number
   neck: number
   second: number
-  /** Signed strength: positive for W (bullish), negative for M (bearish). */
   score: number
 }
 
 export interface MWHeatResult {
-  /** Signed heat per sample in [-1, +1]: +cool (W) … -hot (M). */
+  /** Signed heat per sample in [-1, +1]: +cool (W / bottoming) … -hot (M / topping). */
   heat: number[]
-  /** The detected patterns (for markers/tooltips/debugging). */
+  /** Discrete patterns (unused by the soft field; kept for API stability). */
   patterns: MWPattern[]
-}
-
-/** Indices that are a local min (`dir=-1`) or max (`dir=+1`) over ±`w`. */
-function findPivots(values: number[], w: number, dir: 1 | -1): number[] {
-  const out: number[] = []
-  for (let i = w; i < values.length - w; i++) {
-    const v = values[i]
-    let isPivot = true
-    for (let j = i - w; j <= i + w; j++) {
-      if (j === i) continue
-      // Strictly more extreme neighbours disqualify; ties on one side are fine.
-      if (dir === -1 ? values[j] < v : values[j] > v) {
-        isPivot = false
-        break
-      }
-    }
-    if (isPivot) out.push(i)
-  }
-  return out
 }
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 
+/** Gaussian-weighted smoothing of a series (σ ≈ `radius`/2, truncated at ±2σ). */
+function gaussianSmooth(values: number[], radius: number): number[] {
+  const sigma = Math.max(0.5, radius / 2)
+  const r = Math.max(1, Math.ceil(sigma * 2))
+  const wts: number[] = []
+  for (let d = -r; d <= r; d++) wts.push(Math.exp(-(d * d) / (2 * sigma * sigma)))
+  const out = new Array(values.length).fill(0)
+  for (let i = 0; i < values.length; i++) {
+    let acc = 0
+    let sw = 0
+    for (let d = -r; d <= r; d++) {
+      const j = i + d
+      if (j < 0 || j >= values.length) continue
+      acc += wts[d + r] * values[j]
+      sw += wts[d + r]
+    }
+    out[i] = sw > 0 ? acc / sw : 0
+  }
+  return out
+}
+
 /**
- * Detect Bollinger band-relative W-bottoms and M-tops and render a signed
- * per-sample heat series. Samples without a full band (warm-up) contribute 0.
+ * Soft M/W "price-heat": a continuous trend field rather than precise pattern
+ * matching. Every sample gets a signed likelihood in [-1, +1] — cool (+, W /
+ * bottoming) … hot (-, M / topping) — built from smooth proximity functions, so
+ * approximate shapes register proportionally instead of passing/failing a test:
+ *
+ *   • band position — a continuous tanh of %B (how near the lower vs upper
+ *     band), instead of a hard "did it pierce the band" check.
+ *   • scoop — a Gaussian-weighted measure of the area between the price and its
+ *     local neighbourhood (>0 trough, <0 peak), instead of strict pivots.
+ *   • pairing — the trough/peak field is Gaussian-smoothed so nearby dips (or
+ *     peaks) reinforce into a soft "double" structure, with no level-match gate.
+ *
+ * Samples without a full band (warm-up) contribute 0.
  */
 export function mwHeat(
   price: number[],
@@ -123,72 +134,62 @@ export function mwHeat(
   opts: MWHeatOptions = {},
 ): MWHeatResult {
   const n = price.length
-  const w = Math.max(1, opts.pivotWindow ?? 6)
-  const tol = opts.levelTolerance ?? 0.15
+  const w = Math.max(2, Math.round(opts.pivotWindow ?? 6))
   const heat = new Array(n).fill(0)
   const patterns: MWPattern[] = []
   if (n === 0) return { heat, patterns }
 
-  // %B band position per sample: 0 at the lower band, 1 at the upper band.
-  const pctB: (number | null)[] = new Array(n).fill(null)
+  // Gaussian neighbourhood weights (excluding the centre) for the soft scoop.
+  const sigma = Math.max(1, w / 2)
+  const offs: number[] = []
+  const wts: number[] = []
+  for (let d = -w; d <= w; d++) {
+    if (d === 0) continue
+    offs.push(d)
+    wts.push(Math.exp(-(d * d) / (2 * sigma * sigma)))
+  }
+
+  const bandSignal = new Array(n).fill(0) // +cool (near lower) … -hot (near upper)
+  const scoop = new Array(n).fill(0) // +trough … -peak (soft, normalized)
+
   for (let i = 0; i < n; i++) {
     const u = bands.upper[i]
     const l = bands.lower[i]
     if (u == null || l == null || u <= l) continue
-    pctB[i] = (price[i] - l) / (u - l)
+    const width = u - l
+    const pctB = (price[i] - l) / width
+    // Continuous & bounded: 0.5 → 0, lower band → +, upper band → -.
+    bandSignal[i] = Math.tanh(3 * (0.5 - pctB))
+
+    // Soft scoop ≈ area between the price and its neighbourhood, normalized by
+    // half the band width. Positive when neighbours sit higher (a trough).
+    let acc = 0
+    let sw = 0
+    for (let k = 0; k < offs.length; k++) {
+      const j = i + offs[k]
+      if (j < 0 || j >= n) continue
+      acc += wts[k] * (price[j] - price[i])
+      sw += wts[k]
+    }
+    if (sw > 0) scoop[i] = Math.tanh(acc / sw / (0.5 * width))
   }
 
-  // Continuous base heat: near the lower band → +1 (cool / W side), near the
-  // upper band → -1 (hot / M side). This always varies, so the tint can't
-  // silently collapse to neutral when no discrete pattern is found.
+  // A trough sitting low in the band is bullish (cool); a peak sitting high is
+  // bearish (hot). Both factors are continuous likelihoods in [0, 1].
+  const boost = new Array(n).fill(0)
   for (let i = 0; i < n; i++) {
-    if (pctB[i] != null) heat[i] = clamp(1 - 2 * (pctB[i] as number), -1, 1)
+    const trough = Math.max(0, scoop[i])
+    const peak = Math.max(0, -scoop[i])
+    const cool = Math.max(0, bandSignal[i])
+    const hot = Math.max(0, -bandSignal[i])
+    boost[i] = trough * cool - peak * hot
   }
+  // Smooth so nearby troughs/peaks reinforce (soft "double" structure) and the
+  // heat spreads across spans instead of spiking at single samples.
+  const smoothed = gaussianSmooth(boost, w)
 
-  const lows = findPivots(price, w, -1)
-  const highs = findPivots(price, w, 1)
-
-  // --- W-bottoms: two similar swing lows, at least one near the lower band ---
-  for (let a = 0; a < lows.length - 1; a++) {
-    const i1 = lows[a]
-    const i2 = lows[a + 1]
-    const b1 = pctB[i1]
-    const b2 = pctB[i2]
-    if (b1 == null || b2 == null) continue
-    const rel = Math.abs(price[i2] - price[i1]) / Math.max(price[i1], 1e-9)
-    if (rel > tol) continue
-    // At least one low must sit in the lower third of the band envelope.
-    const lowB = Math.min(b1, b2)
-    if (lowB > 0.33) continue
-    let neck = i1
-    for (let j = i1 + 1; j < i2; j++) if (price[j] > price[neck]) neck = j
-    const score = clamp((0.33 - lowB) / 0.33, 0, 1) * (1 - rel / tol)
-    if (score <= 0) continue
-    patterns.push({ type: 'W', first: i1, neck, second: i2, score })
-  }
-
-  // --- M-tops: two similar swing highs, at least one near the upper band ---
-  for (let a = 0; a < highs.length - 1; a++) {
-    const i1 = highs[a]
-    const i2 = highs[a + 1]
-    const b1 = pctB[i1]
-    const b2 = pctB[i2]
-    if (b1 == null || b2 == null) continue
-    const rel = Math.abs(price[i2] - price[i1]) / Math.max(price[i1], 1e-9)
-    if (rel > tol) continue
-    const highB = Math.max(b1, b2)
-    if (highB < 0.67) continue
-    let neck = i1
-    for (let j = i1 + 1; j < i2; j++) if (price[j] < price[neck]) neck = j
-    const score = clamp((highB - 0.67) / 0.33, 0, 1) * (1 - rel / tol)
-    if (score <= 0) continue
-    patterns.push({ type: 'M', first: i1, neck, second: i2, score })
-  }
-
-  // Detected patterns amplify the base heat across their span (toward ±1).
-  for (const p of patterns) {
-    const signed = (p.type === 'W' ? 1 : -1) * p.score
-    for (let j = p.first; j <= p.second; j++) heat[j] = clamp(heat[j] + signed * 0.5, -1, 1)
+  for (let i = 0; i < n; i++) {
+    heat[i] = clamp(0.7 * bandSignal[i] + 1.4 * smoothed[i], -1, 1)
   }
 
   return { heat, patterns }
