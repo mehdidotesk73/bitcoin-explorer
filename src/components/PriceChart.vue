@@ -7,7 +7,6 @@ import {
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
-  VisualMapComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { logDebug } from '../debug'
@@ -18,7 +17,6 @@ echarts.use([
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
-  VisualMapComponent,
   CanvasRenderer,
 ])
 
@@ -46,6 +44,21 @@ const chart = shallowRef<echarts.ECharts>()
 const fmtUSD = (v: number | null) =>
   v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
+// Map a signed heat value in [-1, +1] to a diverging colour: -1 hot red …
+// 0 neutral grey … +1 cool blue. Used for per-point line colouring (more
+// robust than a visualMap, which needs series dimension tracking).
+function heatColor(h: number): string {
+  const t = Math.max(-1, Math.min(1, h))
+  const stops =
+    t >= 0
+      ? [[154, 163, 184], [47, 111, 224]] // grey → blue
+      : [[154, 163, 184], [226, 59, 59]] // grey → red
+  const f = Math.abs(t)
+  const [a, b] = stops
+  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * f)
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
+}
+
 function buildOption(): echarts.EChartsCoreOption {
   // The shaded band is drawn with two stacked series: an invisible baseline at
   // the lower band, plus the band thickness (upper − lower) rendered as an area.
@@ -58,12 +71,16 @@ function buildOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
 
-  // When heat tinting is on, give the Price series a 3rd "heat" dimension and
-  // colour it with a continuous visualMap: +1 cool (W) … 0 neutral … -1 hot (M).
+  // When heat tinting is on, colour each price point by its heat value using a
+  // per-datum lineStyle. ECharts colours a line segment from the style of its
+  // ending point, so this tints the line cool↔hot without a visualMap.
   const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
-  const priceSeriesIndex = 5 // position of the Price series in the array below
   const priceData = heatOn
-    ? props.price.map((v, i) => [i, v, props.heat![i]])
+    ? props.price.map((v, i) => ({
+        value: v,
+        lineStyle: { color: heatColor(props.heat![i]) },
+        itemStyle: { color: heatColor(props.heat![i]) },
+      }))
     : props.price
 
   return {
@@ -175,39 +192,16 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: priceData,
         symbol: 'none',
-        // On a category axis a line series only tracks 2 data dims by default,
-        // so visualMap.dimension:2 reads nothing. Declaring 3 dimensions exposes
-        // the heat dim (2) for the visualMap to colour by.
-        ...(heatOn
-          ? { dimensions: ['idx', 'price', 'heat'], encode: { x: 0, y: 1 } }
-          : {}),
-        // Omit an explicit colour when heat is on so the visualMap drives it
-        // (an explicit lineStyle.color overrides the visualMap mapping).
+        // Heat colour comes from each datum's own lineStyle (set in priceData);
+        // here we only set the base width and the off-heat solid colour.
         lineStyle: heatOn ? { width: 2 } : { color: '#f7931a', width: 1.5 },
       },
     ],
-    visualMap: heatOn
-      ? {
-          show: false,
-          type: 'continuous',
-          seriesIndex: priceSeriesIndex,
-          dimension: 2,
-          min: -1,
-          max: 1,
-          // Diverging scale: -1 (hot/M) deep red … 0 neutral grey … +1 (cool/W)
-          // deep blue. A grey midpoint (not amber) makes any tint clearly read
-          // as "heat" rather than the plain orange price line.
-          inRange: {
-            color: ['#e23b3b', '#e88f5a', '#9aa3b8', '#5aa9e8', '#2f6fe0'],
-          },
-        }
-      : undefined,
   }
 }
 
 function render() {
-  // replaceMerge visualMap too, so toggling heat off fully removes the mapping.
-  chart.value?.setOption(buildOption(), { replaceMerge: ['series', 'visualMap'] })
+  chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
 }
 
 // Guards against an infinite loop between the chart's `datazoom` event and the
@@ -226,16 +220,15 @@ onMounted(() => {
   chart.value = echarts.init(el.value)
   render()
   // One-shot diagnostic (runs once, fully guarded — cannot loop or throw):
-  // report whether the visualMap actually landed in the live chart option.
+  // confirm the per-point colours made it onto the Price series data.
   try {
     const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
     const opt = chart.value.getOption() as any
-    const vm = opt?.visualMap
-    const sample = (props.heat ?? []).slice(-3).map((v) => v.toFixed(2)).join(',')
+    const priceSeries = (opt?.series ?? []).find((s: any) => s.name === 'Price')
+    const d0 = priceSeries?.data?.[priceSeries.data.length - 1]
     logDebug(
-      `chart: heatOn=${heatOn} visualMaps=${vm ? vm.length : 0} ` +
-        `dim=${vm?.[0]?.dimension} seriesIdx=${vm?.[0]?.seriesIndex} ` +
-        `series=${opt?.series?.length} lastHeat=[${sample}]`,
+      `chart: heatOn=${heatOn} series=${opt?.series?.length} ` +
+        `lastColor=${d0?.lineStyle?.color ?? 'none'}`,
     )
   } catch (e) {
     logDebug(`chart diag failed: ${e}`, 'error')
