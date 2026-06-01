@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { EARLIEST_MS, type PricePoint, type FetchProgress } from '../api/bitcoin'
+import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
 import PriceChart from './PriceChart.vue'
 
@@ -15,7 +15,6 @@ const props = defineProps<{
 const emit = defineEmits<{ refresh: [] }>()
 
 // --- Adjustable parameters --------------------------------------------------
-const startDate = ref('') // data range start (empty = earliest available)
 const maPeriod = ref(20)
 const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
@@ -34,17 +33,8 @@ function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
 
-// Earliest available date drives the "Data start" picker's minimum.
-const minDate = computed(() =>
-  props.raw.length ? toDateInput(props.raw[0].time) : toDateInput(EARLIEST_MS),
-)
-
 // --- Derived series (recomputed instantly on parameter change) --------------
-const filtered = computed(() => {
-  if (!props.raw.length) return []
-  const startMs = startDate.value ? Date.parse(startDate.value) : props.raw[0].time
-  return props.raw.filter((p) => p.time >= startMs)
-})
+const filtered = computed(() => props.raw)
 const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
 const prices = computed(() => filtered.value.map((p) => p.price))
 
@@ -93,10 +83,6 @@ const fmtUSD = (v: number | null) =>
     </section>
 
     <section class="controls">
-      <label>
-        Data start
-        <input type="date" v-model="startDate" :min="minDate" :max="toDateInput(Date.now())" />
-      </label>
       <label>
         MA period
         <span class="period">
