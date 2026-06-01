@@ -18,10 +18,9 @@
 The top-row selectors and their dropdown options use jargon ("Envelope") that
 doesn't convey meaning. Rework labels + option names to be self-explanatory.
 
-- [ ] **"Envelope"** → a clearer name. It's the volatility multiplier on top of
-      the value baseline (how far above the baseline price can swing), so
-      something like "Volatility above baseline" / "Volatility decay". Rename
-      the option names too:
+- [ ] **"Envelope"** → **"Volatility projection"** (decided). It's the
+      volatility multiplier on top of the value baseline. Rename the option
+      names too:
   - `Time exp-decay`, `Value power-decay`, `Value exp-decay`, `Constant` —
     make these describe behavior (e.g. "Shrinks over time", "Shrinks as price
     grows", "Fixed").
