@@ -54,19 +54,23 @@ export function bollinger(
 }
 
 // ---------------------------------------------------------------------------
-// M/W price-heat indicator (soft Bollinger band-relative trend field)
+// M/W price-heat indicator (soft price-vs-MA oscillation matching)
 // ---------------------------------------------------------------------------
 //
-// Rather than precisely matching double-top/double-bottom shapes, this scores a
-// continuous, signed "temperature" for every sample from smooth proximity
-// functions — so approximate W/M structure registers proportionally:
+// The patterns are defined by how price oscillates across its moving average:
 //
-//   W-side (bullish, +, cool): price scooping into a trough while sitting low
-//     in the Bollinger envelope.
-//   M-side (bearish, -, hot):  price arching into a peak while sitting high in
-//     the envelope.
+//   M-top (bearish, -, hot):  price crosses ABOVE the MA, pulls back toward/
+//     below it, pushes up a second time but weaker, then rolls over — two
+//     humps above the MA with a dip between. Likely to drop → red.
+//   W-bottom (bullish, +, cool): the mirror — price dips BELOW the MA, recovers
+//     toward/above it, dips a second time but shallower, then turns up — two
+//     troughs below the MA with a bump between → blue.
 //
-// See `mwHeat` for the three soft ingredients (band position, scoop, pairing).
+// Detection is intentionally soft: it works on a smoothed price-minus-MA
+// oscillator (so sharp zigzags are tamed) and scores each point by the
+// correlation of the surrounding window against an idealised double-bump
+// template, weighted by amplitude. No hard crossing/level tests — closeness to
+// the shape maps continuously to score.
 
 export interface MWHeatOptions {
   /** Neighbourhood half-width (samples) for the scoop/pairing smoothing. */
@@ -92,41 +96,44 @@ export interface MWHeatResult {
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 
-/** Gaussian-weighted smoothing of a series (σ ≈ `radius`/2, truncated at ±2σ). */
-function gaussianSmooth(values: number[], radius: number): number[] {
+/** Gaussian-weighted smoothing that skips NaN gaps (σ ≈ `radius`/2, ±2σ). */
+function gaussianSmoothNaN(values: number[], radius: number): number[] {
   const sigma = Math.max(0.5, radius / 2)
   const r = Math.max(1, Math.ceil(sigma * 2))
   const wts: number[] = []
   for (let d = -r; d <= r; d++) wts.push(Math.exp(-(d * d) / (2 * sigma * sigma)))
-  const out = new Array(values.length).fill(0)
+  const out = new Array(values.length).fill(NaN)
   for (let i = 0; i < values.length; i++) {
     let acc = 0
     let sw = 0
     for (let d = -r; d <= r; d++) {
       const j = i + d
       if (j < 0 || j >= values.length) continue
-      acc += wts[d + r] * values[j]
+      const v = values[j]
+      if (Number.isNaN(v)) continue
+      acc += wts[d + r] * v
       sw += wts[d + r]
     }
-    out[i] = sw > 0 ? acc / sw : 0
+    if (sw > 0) out[i] = acc / sw
   }
   return out
 }
 
 /**
- * Soft M/W "price-heat": a continuous trend field rather than precise pattern
- * matching. Every sample gets a signed likelihood in [-1, +1] — cool (+, W /
- * bottoming) … hot (-, M / topping) — built from smooth proximity functions, so
- * approximate shapes register proportionally instead of passing/failing a test:
+ * Soft M/W "price-heat" from how price oscillates across its moving average.
  *
- *   • band position — a continuous tanh of %B (how near the lower vs upper
- *     band), instead of a hard "did it pierce the band" check.
- *   • scoop — a Gaussian-weighted measure of the area between the price and its
- *     local neighbourhood (>0 trough, <0 peak), instead of strict pivots.
- *   • pairing — the trough/peak field is Gaussian-smoothed so nearby dips (or
- *     peaks) reinforce into a soft "double" structure, with no level-match gate.
+ * Steps:
+ *   1. oscillator o = (price − MA) / MA, then smoothed to tame sharp zigzags.
+ *   2. for each sample, correlate the surrounding window of `o` against an
+ *      idealised double-bump template (two humps with a central dip). A
+ *      positive correlation with positive local amplitude = an M-top (two
+ *      moves above the MA, second weaker) → negative/hot score; the mirror
+ *      (two dips below the MA) = a W-bottom → positive/cool score.
+ *   3. weight by local amplitude (so flat noise stays neutral) and smooth.
  *
- * Samples without a full band (warm-up) contribute 0.
+ * `pivotWindow` sets the half-width of the matched window (and the oscillator
+ * smoothing), i.e. roughly how long an M/W leg is expected to be.
+ * Samples without an MA (warm-up) contribute 0.
  */
 export function mwHeat(
   price: number[],
@@ -134,62 +141,90 @@ export function mwHeat(
   opts: MWHeatOptions = {},
 ): MWHeatResult {
   const n = price.length
-  const w = Math.max(2, Math.round(opts.pivotWindow ?? 6))
+  const w = Math.max(3, Math.round(opts.pivotWindow ?? 6))
   const heat = new Array(n).fill(0)
   const patterns: MWPattern[] = []
   if (n === 0) return { heat, patterns }
 
-  // Gaussian neighbourhood weights (excluding the centre) for the soft scoop.
-  const sigma = Math.max(1, w / 2)
-  const offs: number[] = []
-  const wts: number[] = []
-  for (let d = -w; d <= w; d++) {
-    if (d === 0) continue
-    offs.push(d)
-    wts.push(Math.exp(-(d * d) / (2 * sigma * sigma)))
-  }
-
-  const bandSignal = new Array(n).fill(0) // +cool (near lower) … -hot (near upper)
-  const scoop = new Array(n).fill(0) // +trough … -peak (soft, normalized)
-
+  // 1. Oscillator: relative distance of price from its MA, then smoothed.
+  const ma = bands.middle
+  const raw = new Array(n).fill(NaN)
   for (let i = 0; i < n; i++) {
-    const u = bands.upper[i]
-    const l = bands.lower[i]
-    if (u == null || l == null || u <= l) continue
-    const width = u - l
-    const pctB = (price[i] - l) / width
-    // Continuous & bounded: 0.5 → 0, lower band → +, upper band → -.
-    bandSignal[i] = Math.tanh(3 * (0.5 - pctB))
+    const m = ma[i]
+    if (m != null && m > 0) raw[i] = (price[i] - m) / m
+  }
+  const osc = gaussianSmoothNaN(raw, Math.max(2, Math.round(w / 2)))
 
-    // Soft scoop ≈ area between the price and its neighbourhood, normalized by
-    // half the band width. Positive when neighbours sit higher (a trough).
-    let acc = 0
-    let sw = 0
-    for (let k = 0; k < offs.length; k++) {
-      const j = i + offs[k]
-      if (j < 0 || j >= n) continue
-      acc += wts[k] * (price[j] - price[i])
-      sw += wts[k]
+  // 2. Idealised M template over a ±w window: two humps (cos over 2 periods)
+  //    that sit above the MA, dipping between — a centred, zero-mean profile.
+  const half = w
+  const span = 2 * half + 1
+  const tmpl: number[] = []
+  let tmean = 0
+  for (let d = -half; d <= half; d++) {
+    // cos(2π · 2 · t) gives two peaks across the window (t in [-0.5, 0.5]).
+    const t = d / span
+    const v = Math.cos(2 * Math.PI * 2 * t)
+    tmpl.push(v)
+    tmean += v
+  }
+  tmean /= span
+  let tnorm = 0
+  for (let k = 0; k < span; k++) {
+    tmpl[k] -= tmean
+    tnorm += tmpl[k] * tmpl[k]
+  }
+  tnorm = Math.sqrt(tnorm) || 1
+
+  // Typical oscillator amplitude → normaliser so the amplitude weight is ~O(1).
+  const absVals = osc.filter((v) => !Number.isNaN(v)).map(Math.abs).sort((a, b) => a - b)
+  const ampScale = absVals.length ? (absVals[Math.floor(absVals.length * 0.8)] || 1e-6) : 1e-6
+
+  const match = new Array(n).fill(0)
+  for (let i = half; i < n - half; i++) {
+    // Gather the window; bail if it straddles the MA warm-up gap.
+    let ok = true
+    let wmean = 0
+    for (let d = -half; d <= half; d++) {
+      const v = osc[i + d]
+      if (Number.isNaN(v)) {
+        ok = false
+        break
+      }
+      wmean += v
     }
-    if (sw > 0) scoop[i] = Math.tanh(acc / sw / (0.5 * width))
+    if (!ok) continue
+    wmean /= span
+
+    // Normalised cross-correlation of the window against the template.
+    let dot = 0
+    let wnorm = 0
+    for (let d = -half; d <= half; d++) {
+      const x = osc[i + d] - wmean
+      dot += x * tmpl[d + half]
+      wnorm += x * x
+    }
+    wnorm = Math.sqrt(wnorm) || 1e-9
+    const corr = dot / (wnorm * tnorm) // -1..1: +1 = M shape, -1 = W shape
+
+    // Amplitude weight: flat/noisy windows (small oscillation) stay neutral.
+    const amp = Math.tanh(Math.sqrt(wnorm / span) / ampScale)
+
+    // corr>0 → window matches the two-hump template (M-top) → hot/negative.
+    // corr<0 → inverted template (two dips, W-bottom) → cool/positive.
+    // A small mean-position factor reinforces when humps sit above / dips below
+    // the MA, but corr alone already separates M from W.
+    const posBias = 0.5 + 0.5 * Math.tanh(2 * Math.sign(corr) * (wmean / ampScale))
+    match[i] = clamp(-corr * amp * posBias, -1, 1)
   }
 
-  // A trough sitting low in the band is bullish (cool); a peak sitting high is
-  // bearish (hot). Both factors are continuous likelihoods in [0, 1].
-  const boost = new Array(n).fill(0)
+  // 3. Smooth the match field so the heat reads as coherent zones, not specks.
+  const smoothed = gaussianSmoothNaN(
+    match.map((v) => (Number.isNaN(v) ? 0 : v)),
+    w,
+  )
   for (let i = 0; i < n; i++) {
-    const trough = Math.max(0, scoop[i])
-    const peak = Math.max(0, -scoop[i])
-    const cool = Math.max(0, bandSignal[i])
-    const hot = Math.max(0, -bandSignal[i])
-    boost[i] = trough * cool - peak * hot
-  }
-  // Smooth so nearby troughs/peaks reinforce (soft "double" structure) and the
-  // heat spreads across spans instead of spiking at single samples.
-  const smoothed = gaussianSmooth(boost, w)
-
-  for (let i = 0; i < n; i++) {
-    heat[i] = clamp(0.7 * bandSignal[i] + 1.4 * smoothed[i], -1, 1)
+    heat[i] = clamp(1.6 * (Number.isNaN(smoothed[i]) ? 0 : smoothed[i]), -1, 1)
   }
 
   return { heat, patterns }
