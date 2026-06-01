@@ -418,44 +418,12 @@ const fmtNum = (v: number) =>
           Recency weighting γ
           <input type="number" v-model.number="powFitGamma" min="0" max="2" step="0.05" />
         </label>
-        <label v-if="growthType === 'linear'">
-          Slope range (days, 0 = all)
-          <input
-            type="number"
-            v-model.number="slopeRangeDays"
-            min="0"
-            max="6000"
-            step="30"
-          />
-        </label>
-        <label v-if="growthType === 'linear'">
-          Slope window
-          <select v-model.number="slopeWindowDays">
-            <option v-for="w in SLOPE_WINDOW_PRESETS" :key="w.days" :value="w.days">
-              {{ w.label }}
-            </option>
-          </select>
-        </label>
-        <label v-if="growthType === 'linear'">
-          Slope percentile
-          <input
-            type="number"
-            v-model.number="slopePercentile"
-            min="0"
-            max="100"
-            step="1"
-          />
-        </label>
         <button class="reset" @click="resetToFit">↺ Reset to fit</button>
       </div>
       <p class="calib-note">
         MA ≈ {{ maYears }} yr · growth fit on {{ fitWindowLabel }}.
         <template v-if="growthType === 'power'">
           γ=0 weights every sample equally · γ=1 every log-time decade.
-        </template>
-        <template v-if="growthType === 'linear'">
-          Linear rate = {{ slopePercentile }}ᵗʰ-percentile {{ slopeWindowLabel }}
-          slope over {{ slopeRangeLabel }}.
         </template>
         Changing any calibration knob re-fits the model and overwrites the
         parameter boxes below — hand-edits persist only until the next re-fit.
@@ -512,11 +480,40 @@ const fmtNum = (v: number) =>
             Rate (per day)
             <input type="number" v-model.number="p.linRate" step="any" />
           </label>
-          <span class="fit-note" v-if="fitted">
-            fitted {{ slopePercentile }}ᵗʰ-pct slope:
-            {{ fmtNum(fitted.linRate) }} /day
-          </span>
+          <label>
+            Slope range (days, 0 = all)
+            <input
+              type="number"
+              v-model.number="slopeRangeDays"
+              min="0"
+              max="6000"
+              step="30"
+            />
+          </label>
+          <label>
+            Slope window
+            <select v-model.number="slopeWindowDays">
+              <option v-for="w in SLOPE_WINDOW_PRESETS" :key="w.days" :value="w.days">
+                {{ w.label }}
+              </option>
+            </select>
+          </label>
+          <label>
+            Slope percentile
+            <input
+              type="number"
+              v-model.number="slopePercentile"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </label>
         </div>
+        <p class="fit-note" v-if="fitted">
+          Rate auto-fills from the {{ slopePercentile }}ᵗʰ-percentile
+          {{ slopeWindowLabel }} slope over {{ slopeRangeLabel }}
+          ({{ fmtNum(fitted.linRate) }} /day) — re-fits on change.
+        </p>
         <p class="eq">MA = last_MA + rate · Δt</p>
       </template>
     </section>
