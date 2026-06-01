@@ -502,16 +502,49 @@ const fmtNum = (v: number) =>
       </template>
 
       <template v-if="distributionType === 'peaks'">
-        <h3>Cycle peaks</h3>
+        <h3>
+          Cycle peaks
+          <span class="fit">{{ peakDates.length }} tops</span>
+        </h3>
         <div class="param-grid">
           <label>
             Spread
             <input type="number" v-model.number="peakSpread" step="any" min="0.0001" />
           </label>
-          <span class="fit-note">
-            {{ DEFAULT_PEAK_DATES.length }} tops: {{ DEFAULT_PEAK_DATES.join(', ') }}
-          </span>
+          <div class="peak-actions">
+            <button type="button" @click="addPeak">+ Add</button>
+            <button type="button" @click="resetPeaks">↺ Default</button>
+            <button type="button" @click="clearPeaks" :disabled="!peakDates.length">
+              Clear all
+            </button>
+          </div>
         </div>
+
+        <ul class="peak-list">
+          <li v-for="(d, i) in peakDates" :key="i" class="peak-row">
+            <span class="peak-date">{{ d }}</span>
+            <input
+              class="peak-slider"
+              type="range"
+              :min="peakMin"
+              :max="peakMax"
+              :step="DAY_MS"
+              :value="peakMs(i)"
+              @input="onPeakInput(i, $event)"
+            />
+            <button
+              type="button"
+              class="peak-remove"
+              title="Remove peak"
+              @click="removePeak(i)"
+            >
+              ×
+            </button>
+          </li>
+          <li v-if="!peakDates.length" class="fit-note">
+            No peaks — projection follows the baseline envelope only.
+          </li>
+        </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
       </template>
     </section>
