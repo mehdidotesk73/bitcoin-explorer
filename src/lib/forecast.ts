@@ -32,6 +32,9 @@ export const DEFAULT_PEAK_SPREAD = 0.008
 // the last `slopeWindowDays` of history (0 = all history). 50 ≈ the median.
 export const DEFAULT_SLOPE_WINDOW_DAYS = 365
 export const DEFAULT_SLOPE_PERCENTILE = 50
+// Inner regression window for each rolling slope sample. Short relative to the
+// 4yr MA so the per-sample slopes vary enough for the percentile to matter.
+export const SLOPE_INNER_WINDOW_DAYS = 90
 
 export type GrowthType = 'exponential' | 'power' | 'linear'
 export type EnvelopeType =
@@ -246,11 +249,14 @@ export function fitParams(
       ? linregress(xEnv, yEnv)
       : { slope: -0.000511, intercept: Math.log(48.77), r2: 0 }
 
-  // Linear rate: the chosen percentile of the trailing 1-year MA slopes
-  // observed across the last `slopeWindowDays` of history (0 = all history).
+  // Linear rate: the chosen percentile of the trailing MA slopes observed
+  // across the last `slopeWindowDays` of history (0 = all history). The inner
+  // regression window is kept short (SLOPE_INNER_WINDOW_DAYS) so the slope
+  // distribution has real spread — a year-long inner window over the already
+  // very smooth 4yr MA collapses every percentile onto the same value.
   const slopeCutoff =
     slopeWindowDays > 0 ? lastTime - slopeWindowDays * DAY_MS : -Infinity
-  const slopes = rollingSlopes(times, ma, 365)
+  const slopes = rollingSlopes(times, ma, SLOPE_INNER_WINDOW_DAYS)
     .filter((s, i) => Number.isFinite(s) && times[i] >= slopeCutoff)
     .sort((a, b) => a - b)
   const linRate = percentile(slopes, slopePercentile)

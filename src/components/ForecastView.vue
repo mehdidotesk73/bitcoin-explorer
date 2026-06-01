@@ -64,7 +64,7 @@ const growthType = ref<GrowthType>('power')
 // Linear growth: Nth-percentile of the trailing MA slopes over the last D days.
 const slopeWindowDays = ref(DEFAULT_SLOPE_WINDOW_DAYS)
 const slopePercentile = ref(DEFAULT_SLOPE_PERCENTILE)
-const envelopeType = ref<EnvelopeType>('exponential-decay')
+const envelopeType = ref<EnvelopeType>('value-exponential-decay')
 const distributionType = ref<DistributionType>('peaks')
 const peakSpread = ref(DEFAULT_PEAK_SPREAD)
 const horizonYear = ref(2030)
