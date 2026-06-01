@@ -175,7 +175,12 @@ function buildOption(): echarts.EChartsCoreOption {
         type: 'line',
         data: priceData,
         symbol: 'none',
-        ...(heatOn ? { encode: { x: 0, y: 1 } } : {}),
+        // On a category axis a line series only tracks 2 data dims by default,
+        // so visualMap.dimension:2 reads nothing. Declaring 3 dimensions exposes
+        // the heat dim (2) for the visualMap to colour by.
+        ...(heatOn
+          ? { dimensions: ['idx', 'price', 'heat'], encode: { x: 0, y: 1 } }
+          : {}),
         // Omit an explicit colour when heat is on so the visualMap drives it
         // (an explicit lineStyle.color overrides the visualMap mapping).
         lineStyle: heatOn ? { width: 2 } : { color: '#f7931a', width: 1.5 },
