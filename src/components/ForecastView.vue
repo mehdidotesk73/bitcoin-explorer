@@ -32,7 +32,7 @@ const dayZeroMs = computed(() => Date.parse(dayZero.value))
 const ma = computed(() => movingAverage(prices.value, maWindow.value))
 
 // Calibrate the value-growth fit to the last N days of data (0 = all history).
-const fitWindowDays = ref(0)
+const fitWindowDays = ref(2920)
 // Power-fit weighting: weight each point by (x+1)^(−γ). γ=0 is plain per-sample
 // OLS; γ=1 weights equally per log-time decade, steepening β toward the early
 // cycles. Tune to reproduce a preferred fit.
@@ -172,6 +172,75 @@ const xDays = computed(() => {
   return f.dates.map((d) => (Date.parse(d) - t0) / DAY_MS + 1)
 })
 const nowX = computed(() => (Date.parse(nowDate) - chartOrigin.value) / DAY_MS + 1)
+
+// --- Chart tabs: each plots a model piece against its real-data counterpart --
+type ChartTab = 'price' | 'baseline' | 'ratio' | 'envelope'
+const chartTab = ref<ChartTab>('price')
+const CHART_TABS: { id: ChartTab; label: string }[] = [
+  { id: 'price', label: 'Price' },
+  { id: 'baseline', label: 'Value baseline' },
+  { id: 'ratio', label: 'Price ÷ MA' },
+  { id: 'envelope', label: 'Envelope' },
+]
+
+const C_ORANGE = '#f7931a'
+const C_BLUE = '#4f8ef7'
+const C_VIOLET = '#9b6dff'
+const C_TEAL = '#2bd4a7'
+
+// Observed price ÷ trailing-MA ratio (the real counterpart to price/MA).
+const actualRatio = computed(() => {
+  const f = forecast.value
+  if (!f) return []
+  return f.actual.map((pr, i) => {
+    const m = f.actualMa[i]
+    return pr != null && m != null && m > 0 ? pr / m : null
+  })
+})
+
+// Lowest real price on the grid — used to clamp the y-axis on dollar charts so
+// the power-law baseline (which dives toward ~1e-13 near day zero) can't blow
+// out the scale.
+const priceFloor = computed(() => {
+  const f = forecast.value
+  if (!f) return null
+  let min = Infinity
+  for (const v of f.actual) if (v != null && v > 0 && v < min) min = v
+  return Number.isFinite(min) ? min : null
+})
+
+const chartSeries = computed(() => {
+  const f = forecast.value
+  if (!f) return []
+  switch (chartTab.value) {
+    case 'baseline':
+      return [
+        { name: 'Actual 4yr MA', data: f.actualMa, color: C_ORANGE, width: 1.8 },
+        { name: 'Model baseline (growth fit)', data: f.modelMa, color: C_BLUE },
+      ]
+    case 'ratio':
+      return [
+        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.4 },
+        { name: 'Model price ÷ MA', data: f.priceOverMa, color: C_VIOLET, dashed: true },
+      ]
+    case 'envelope':
+      return [
+        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2 },
+        { name: 'Volatility envelope (max)', data: f.envelope, color: C_TEAL, width: 1.8 },
+      ]
+    default:
+      return [
+        { name: 'Value baseline (4yr MA)', data: f.modelMa, color: C_BLUE },
+        { name: 'Projected price', data: f.projected, color: C_VIOLET, dashed: true },
+        { name: 'Actual', data: f.actual, color: C_ORANGE, width: 1.8 },
+      ]
+  }
+})
+
+const chartFormat = computed<'usd' | 'ratio'>(() =>
+  chartTab.value === 'ratio' || chartTab.value === 'envelope' ? 'ratio' : 'usd',
+)
+const chartYMin = computed(() => (chartFormat.value === 'usd' ? priceFloor.value : null))
 
 // Headline: projected price at the horizon.
 const horizonPrice = computed(() => {
@@ -422,17 +491,28 @@ const fmtNum = (v: number) =>
       </template>
     </section>
 
+    <div class="chart-tabs" v-if="forecast">
+      <button
+        v-for="t in CHART_TABS"
+        :key="t.id"
+        :class="{ active: chartTab === t.id }"
+        @click="chartTab = t.id"
+      >
+        {{ t.label }}
+      </button>
+    </div>
+
     <ForecastChart
       v-if="forecast"
       :dates="forecast.dates"
-      :actual="forecast.actual"
-      :model-ma="forecast.modelMa"
-      :projected="forecast.projected"
+      :series="chartSeries"
       :x="xDays"
       :origin-ms="chartOrigin"
       :now-x="nowX"
       :log-x="logX"
       :log-y="logY"
+      :y-min="chartYMin"
+      :value-format="chartFormat"
     />
   </div>
 </template>
@@ -543,4 +623,25 @@ const fmtNum = (v: number) =>
   color: var(--text-muted);
   margin: 0.5rem 0 0;
 }
+.chart-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.chart-tabs button {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chart-tabs button.active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(79, 142, 247, 0.12);
+}
+
 </style>

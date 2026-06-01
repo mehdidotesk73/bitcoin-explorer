@@ -21,11 +21,18 @@ echarts.use([
   CanvasRenderer,
 ])
 
+export interface ChartSeries {
+  name: string
+  data: (number | null)[]
+  color: string
+  dashed?: boolean
+  width?: number
+}
+
 const props = defineProps<{
   dates: string[]
-  actual: (number | null)[]
-  modelMa: number[]
-  projected: number[]
+  /** Series to plot; all share the numeric x basis below. */
+  series: ChartSeries[]
   /** Numeric x for each point: days since the series start (always ≥ 1). */
   x: number[]
   /** Epoch ms of the first sample — origin for converting x back to a date. */
@@ -34,6 +41,10 @@ const props = defineProps<{
   logY: boolean
   /** x value of "today", drawn as a vertical divider. */
   nowX: number
+  /** Clamp the y-axis to this minimum (e.g. the lowest real price). */
+  yMin?: number | null
+  /** How to format y values: dollars or a bare ratio multiplier. */
+  valueFormat?: 'usd' | 'ratio'
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -42,10 +53,10 @@ const chart = shallowRef<echarts.ECharts>()
 const fmtUSD = (v: number | null) =>
   v == null
     ? '—'
-    : '$' +
-      v.toLocaleString('en-US', {
-        maximumFractionDigits: v < 10 ? 2 : 0,
-      })
+    : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 10 ? 2 : 0 })
+const fmtRatio = (v: number | null) =>
+  v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + '×'
+const fmtY = (v: number | null) => (props.valueFormat === 'ratio' ? fmtRatio(v) : fmtUSD(v))
 
 const AXIS = '#8b94ac'
 const SPLIT = 'rgba(54, 66, 95, 0.45)'
@@ -61,13 +72,39 @@ const pair = (ys: (number | null)[]): [number, number | null][] =>
   ys.map((y, i) => [props.x[i], y])
 
 function buildOption(): echarts.EChartsCoreOption {
+  const series = props.series.map((s, idx) => ({
+    name: s.name,
+    type: 'line' as const,
+    data: pair(s.data),
+    symbol: 'none',
+    connectNulls: false,
+    lineStyle: {
+      color: s.color,
+      width: s.width ?? 1.5,
+      type: s.dashed ? 'dashed' : 'solid',
+    },
+    itemStyle: { color: s.color },
+    // Anchor the "today" divider on the first series only.
+    ...(idx === 0
+      ? {
+          markLine: {
+            symbol: 'none',
+            silent: true,
+            label: { color: AXIS, formatter: 'today', position: 'insideEndTop' },
+            lineStyle: { color: '#5a6480', type: 'dotted' },
+            data: [{ xAxis: props.nowX }],
+          },
+        }
+      : {}),
+  }))
+
   return {
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: '#e7eaf3' },
     grid: { left: 64, right: 16, top: 48, bottom: 72 },
     legend: {
-      data: ['Actual', 'Value baseline (4yr MA)', 'Projected price'],
+      data: props.series.map((s) => s.name),
       top: 8,
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
@@ -79,12 +116,8 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       formatter: (params: any) => {
         const i = params[0].dataIndex
-        const rows = [
-          `<strong>${props.dates[i]}</strong>`,
-          `Actual: ${fmtUSD(props.actual[i])}`,
-          `Value baseline: ${fmtUSD(props.modelMa[i])}`,
-          `Projected: ${fmtUSD(props.projected[i])}`,
-        ]
+        const rows = [`<strong>${props.dates[i]}</strong>`]
+        for (const s of props.series) rows.push(`${s.name}: ${fmtY(s.data[i])}`)
         return rows.join('<br/>')
       },
     },
@@ -100,8 +133,9 @@ function buildOption(): echarts.EChartsCoreOption {
     yAxis: {
       type: props.logY ? 'log' : 'value',
       scale: true,
+      min: props.yMin != null ? props.yMin : undefined,
       axisLine: { lineStyle: { color: AXIS } },
-      axisLabel: { color: AXIS, formatter: (v: number) => fmtUSD(v) },
+      axisLabel: { color: AXIS, formatter: (v: number) => fmtY(v) },
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
@@ -116,41 +150,7 @@ function buildOption(): echarts.EChartsCoreOption {
         textStyle: { color: AXIS },
       },
     ],
-    series: [
-      {
-        name: 'Value baseline (4yr MA)',
-        type: 'line',
-        data: pair(props.modelMa),
-        symbol: 'none',
-        lineStyle: { color: '#4f8ef7', width: 1.5 },
-      },
-      {
-        name: 'Projected price',
-        type: 'line',
-        data: pair(props.projected),
-        symbol: 'none',
-        lineStyle: { color: '#9b6dff', width: 1.5, type: 'dashed' },
-        markLine: {
-          symbol: 'none',
-          silent: true,
-          label: {
-            color: AXIS,
-            formatter: 'today',
-            position: 'insideEndTop',
-          },
-          lineStyle: { color: '#5a6480', type: 'dotted' },
-          data: [{ xAxis: props.nowX }],
-        },
-      },
-      {
-        name: 'Actual',
-        type: 'line',
-        data: pair(props.actual),
-        symbol: 'none',
-        connectNulls: false,
-        lineStyle: { color: '#f7931a', width: 1.8 },
-      },
-    ],
+    series,
   }
 }
 
@@ -175,12 +175,13 @@ onBeforeUnmount(() => {
 watch(
   () => [
     props.dates,
-    props.actual,
-    props.modelMa,
-    props.projected,
+    props.series,
     props.x,
     props.logX,
     props.logY,
+    props.yMin,
+    props.valueFormat,
+    props.nowX,
   ],
   render,
 )

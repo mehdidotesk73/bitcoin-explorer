@@ -280,6 +280,7 @@ export interface ForecastConfig {
 export interface ForecastResult {
   dates: string[]
   actual: (number | null)[] // real price sampled onto the grid (null in future)
+  actualMa: (number | null)[] // real trailing MA sampled onto the grid (null in future)
   modelMa: number[] // value baseline
   envelope: number[]
   priceOverMa: number[]
@@ -310,6 +311,7 @@ export function projectForecast(
 
   const dates: string[] = []
   const actual: (number | null)[] = []
+  const actualMa: (number | null)[] = []
   const modelMa: number[] = []
   const envelope: number[] = []
   const priceOverMa: number[] = []
@@ -371,10 +373,12 @@ export function projectForecast(
     if (t <= lastDataTime) {
       const idx = nearestIndex(times, t)
       actual.push(idx >= 0 ? prices[idx] : null)
+      actualMa.push(idx >= 0 ? ma[idx] : null)
     } else {
       actual.push(null)
+      actualMa.push(null)
     }
   }
 
-  return { dates, actual, modelMa, envelope, priceOverMa, projected }
+  return { dates, actual, actualMa, modelMa, envelope, priceOverMa, projected }
 }
