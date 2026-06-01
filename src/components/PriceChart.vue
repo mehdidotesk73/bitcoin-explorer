@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { LineChart, ScatterChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -13,6 +13,7 @@ import { logDebug } from '../debug'
 
 echarts.use([
   LineChart,
+  ScatterChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
@@ -71,17 +72,17 @@ function buildOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
 
-  // When heat tinting is on, colour each price point by its heat value using a
-  // per-datum lineStyle. ECharts colours a line segment from the style of its
-  // ending point, so this tints the line cool↔hot without a visualMap.
+  // When heat tinting is on, overlay one coloured dot per sample on top of a
+  // faint neutral price line. Per-point itemStyle on a scatter series reliably
+  // honours colour (unlike line-segment lineStyle / visualMap on a category
+  // axis here), so this is the robust way to tint by heat.
   const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
-  const priceData = heatOn
+  const heatPoints = heatOn
     ? props.price.map((v, i) => ({
-        value: v,
-        lineStyle: { color: heatColor(props.heat![i]) },
+        value: [i, v],
         itemStyle: { color: heatColor(props.heat![i]) },
       }))
-    : props.price
+    : []
 
   return {
     animation: false,
@@ -190,12 +191,27 @@ function buildOption(): echarts.EChartsCoreOption {
       {
         name: 'Price',
         type: 'line',
-        data: priceData,
+        data: props.price,
         symbol: 'none',
-        // Heat colour comes from each datum's own lineStyle (set in priceData);
-        // here we only set the base width and the off-heat solid colour.
-        lineStyle: heatOn ? { width: 2 } : { color: '#f7931a', width: 1.5 },
+        // When heat is on, the line is a faint neutral guide and the colour is
+        // carried by the heat-dot series below (per-point itemStyle always
+        // honours colour, unlike line-segment lineStyle / visualMap here).
+        lineStyle: heatOn
+          ? { color: 'rgba(160,170,190,0.35)', width: 1 }
+          : { color: '#f7931a', width: 1.5 },
       },
+      // Heat overlay: one coloured dot per sample, tinted by the heat score.
+      ...(heatOn
+        ? [
+            {
+              name: '__heat',
+              type: 'scatter' as const,
+              data: heatPoints,
+              symbolSize: 3,
+              silent: true,
+            },
+          ]
+        : []),
     ],
   }
 }
@@ -224,11 +240,12 @@ onMounted(() => {
   try {
     const heatOn = !!props.showHeat && !!props.heat && props.heat.length === props.price.length
     const opt = chart.value.getOption() as any
-    const priceSeries = (opt?.series ?? []).find((s: any) => s.name === 'Price')
-    const d0 = priceSeries?.data?.[priceSeries.data.length - 1]
+    const heatSeries = (opt?.series ?? []).find((s: any) => s.name === '__heat')
+    const d0 = heatSeries?.data?.[heatSeries.data.length - 1]
     logDebug(
       `chart: heatOn=${heatOn} series=${opt?.series?.length} ` +
-        `lastColor=${d0?.lineStyle?.color ?? 'none'}`,
+        `heatPts=${heatSeries?.data?.length ?? 0} ` +
+        `lastColor=${d0?.itemStyle?.color ?? 'none'}`,
     )
   } catch (e) {
     logDebug(`chart diag failed: ${e}`, 'error')
