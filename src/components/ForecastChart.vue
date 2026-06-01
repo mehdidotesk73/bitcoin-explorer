@@ -235,18 +235,22 @@ function rangeOf(list: ChartSeries[], x0: number, x1: number): [number, number] 
 }
 
 let applyingBounds = false
-/** Pin the y-axis to the min/max of the in-view observed data (`bounds` series),
- *  falling back to all series where no observed data is in the window. */
+/** Pin the y-axis floor to the in-view observed data (`bounds` series), but let
+ *  the ceiling follow the largest value across all in-view series so nothing is
+ *  clipped at the top. Falls back to all series where no observed data is in
+ *  the window. */
 function applyYBounds() {
   const c = chart.value
   if (!c || applyingBounds || !props.x.length) return
   const [x0, x1] = zoomWindow()
   const flagged = props.series.filter((s) => s.bounds)
-  const range =
+  const boundsRange =
     (flagged.length ? rangeOf(flagged, x0, x1) : null) ?? rangeOf(props.series, x0, x1)
-  if (!range) return
-  // Add a small margin so the extreme points don't sit flush against the edge.
-  let [lo, hi] = range
+  if (!boundsRange) return
+  // Floor from the observed/bounds series; ceiling from the full data extent.
+  const fullRange = rangeOf(props.series, x0, x1) ?? boundsRange
+  let [lo] = boundsRange
+  let hi = fullRange[1]
   const MARGIN = 0.04
   if (props.logY && lo > 0 && hi > 0) {
     const a = Math.log(lo)
