@@ -8,6 +8,7 @@ export interface LogEntry {
   time: string
   kind: 'error' | 'info'
   msg: string
+  count?: number
 }
 
 export const debugState = reactive({
@@ -15,11 +16,16 @@ export const debugState = reactive({
 })
 
 export function logDebug(msg: string, kind: 'error' | 'info' = 'info') {
-  debugState.logs.push({
-    time: new Date().toLocaleTimeString(),
-    kind,
-    msg: String(msg),
-  })
+  const text = String(msg)
+  // Collapse consecutive identical messages into a count. This also breaks any
+  // accidental render→error→log→render feedback loop from freezing the page.
+  const last = debugState.logs[debugState.logs.length - 1]
+  if (last && last.msg === text && last.kind === kind) {
+    last.count = (last.count ?? 1) + 1
+    last.time = new Date().toLocaleTimeString()
+    return
+  }
+  debugState.logs.push({ time: new Date().toLocaleTimeString(), kind, msg: text })
   // Keep the buffer small.
   if (debugState.logs.length > 40) debugState.logs.shift()
 }
