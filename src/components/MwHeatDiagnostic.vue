@@ -11,6 +11,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 const props = defineProps<{
   dates: string[]
   result: MwHeatResult
+  /** Graphed-range window [startPercent, endPercent] synced from the price chart. */
+  zoom: [number, number]
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -64,7 +66,7 @@ function buildOption(): echarts.EChartsCoreOption {
       { type: 'value', gridIndex: 1, min: -1, max: 1, name: 'τ / vote', nameTextStyle: { color: AXIS, fontSize: 10 }, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
       { type: 'value', gridIndex: 2, min: -1, max: 1, name: 'heat', nameTextStyle: { color: AXIS, fontSize: 10 }, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
     ],
-    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1, 2], start: 0, end: 100 }, { type: 'slider', xAxisIndex: [0, 1, 2], start: 0, end: 100, bottom: 4, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } }],
+    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1, 2], start: props.zoom[0], end: props.zoom[1] }, { type: 'slider', xAxisIndex: [0, 1, 2], start: props.zoom[0], end: props.zoom[1], bottom: 4, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } }],
     series: [
       {
         name: 'b', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: d.b, symbol: 'none',
@@ -94,7 +96,7 @@ onBeforeUnmount(() => {
   resizeObserver.disconnect()
   chart.value?.dispose()
 })
-watch(() => [props.dates, props.result, horizon.value], render)
+watch(() => [props.dates, props.result, horizon.value, props.zoom], render)
 </script>
 
 <template>
@@ -142,7 +144,7 @@ watch(() => [props.dates, props.result, horizon.value], render)
 }
 .diag-chart {
   width: 100%;
-  height: 420px;
+  height: 640px;
 }
 .muted {
   color: var(--text-muted);

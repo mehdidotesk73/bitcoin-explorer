@@ -40,6 +40,7 @@ export interface MwHeatParams {
   delta: number // crossing-detection lag (days)
   // Composite.
   gain: number // global gain G on the atanh sum
+  horizonGain: number // saturating gain applied to each horizon's f_M − f_W
   epsilon: number // safety clamp before atanh
   sigmaFloorFrac: number // σ floor as a fraction of mean price
 }
@@ -56,7 +57,8 @@ export const DEFAULT_MW_PARAMS: MwHeatParams = {
   tauBand: 0.5,
   tauTurn: 0.35,
   delta: 1,
-  gain: 1,
+  gain: 1.3,
+  horizonGain: 4,
   epsilon: 0.001,
   sigmaFloorFrac: 0.001,
 }
@@ -355,7 +357,9 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
     const heat = new Array(n).fill(0)
     for (let i = 0; i < n; i++) {
       // Mute until a full band exists at this horizon.
-      heat[i] = ma[i] == null ? 0 : clamp(fM[i] - fW[i], -1, 1)
+      // f_M and f_W are both small geomeans, so their difference is tiny.
+      // A saturating gain spreads a real (if noisy) pattern toward ±1.
+      heat[i] = ma[i] == null ? 0 : clamp(Math.tanh(P.horizonGain * (fM[i] - fW[i])), -1, 1)
     }
 
     horizons.push({ horizon, hd, bandWindow, k, ma, upper, lower, smoothed, b, tau, vote, heat })
