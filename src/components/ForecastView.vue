@@ -217,7 +217,7 @@ const CHART_TABS: { id: ChartTab; label: string }[] = [
   { id: 'price', label: 'Price' },
   { id: 'baseline', label: 'Value baseline' },
   { id: 'ratio', label: 'Price ÷ MA' },
-  { id: 'envelope', label: 'Envelope' },
+  { id: 'envelope', label: 'Volatility' },
 ]
 
 const C_ORANGE = '#f7931a'
@@ -252,7 +252,7 @@ const chartSeries = computed(() => {
     case 'envelope':
       return [
         { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2, bounds: true },
-        { name: 'Volatility envelope (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
+        { name: 'Volatility projection (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
       ]
     default:
       return [
@@ -266,6 +266,19 @@ const chartSeries = computed(() => {
 const chartFormat = computed<'usd' | 'ratio'>(() =>
   chartTab.value === 'ratio' || chartTab.value === 'envelope' ? 'ratio' : 'usd',
 )
+
+// Price-tab shaded band: lower = value baseline (modelMa), upper = the same
+// baseline lifted by the volatility envelope (modelMa × envelope). Shows the
+// projection's plausible range as a cone that widens/narrows with volatility.
+const chartBand = computed(() => {
+  const f = forecast.value
+  if (!f || chartTab.value !== 'price') return undefined
+  return {
+    lower: f.modelMa,
+    upper: f.modelMa.map((m, i) => m * f.envelope[i]),
+    color: C_BLUE,
+  }
+})
 
 // Headline: projected price at the horizon.
 const horizonPrice = computed(() => {
@@ -296,7 +309,7 @@ const fmtNum = (v: number) =>
     <p class="headline" v-if="horizonPrice != null">
       Projected {{ horizonYear }} close:
       <strong>{{ fmtUSD(horizonPrice) }}</strong>
-      <span class="muted"> · {{ growthType }} growth · {{ envelopeType }} envelope</span>
+      <span class="muted"> · {{ growthType }} growth · {{ envelopeType }} volatility</span>
     </p>
     <section class="status" v-else-if="loading">Loading price history…</section>
 
@@ -309,11 +322,11 @@ const fmtNum = (v: number) =>
     <!-- Model selection -->
     <section class="controls">
       <label>
-        Value growth
+        Growth projection
         <select v-model="growthType">
-          <option value="power">Power-law</option>
-          <option value="exponential">Exponential</option>
-          <option value="linear">Linear</option>
+          <option value="power">Time-based power-law</option>
+          <option value="exponential">Time-based exponential</option>
+          <option value="linear">Time-based linear</option>
         </select>
       </label>
       <label v-if="growthType === 'linear'">
@@ -326,18 +339,18 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Envelope
+        Volatility projection
         <select v-model="envelopeType">
-          <option value="exponential-decay">Time exp-decay</option>
-          <option value="value-power-decay">Value power-decay</option>
-          <option value="value-exponential-decay">Value exp-decay</option>
+          <option value="exponential-decay">Time-based exponential decay</option>
+          <option value="value-power-decay">Value-based power decay</option>
+          <option value="value-exponential-decay">Value-based exponential decay</option>
           <option value="constant">Constant</option>
         </select>
       </label>
       <label>
-        Peaks
+        Cycle peaks
         <select v-model="distributionType">
-          <option value="peaks">Cycle peaks</option>
+          <option value="peaks">Laplacian</option>
           <option value="none">None</option>
         </select>
       </label>
@@ -358,35 +371,56 @@ const fmtNum = (v: number) =>
         <input type="checkbox" v-model="logY" />
         Log Y
       </label>
-      <button class="reset" @click="resetToFit">↺ Reset to fit</button>
     </section>
 
-    <!-- Parameters: value baseline + growth -->
-    <section class="params">
-      <h3>Value baseline</h3>
+    <!-- Calibration: knobs that drive the auto-fit and overwrite the model
+         parameters below (same effect as "Reset to fit"). -->
+    <section class="params calibration">
+      <h3>
+        Calibration
+        <span class="fit">auto-fits the model parameters below</span>
+      </h3>
       <div class="param-grid">
         <label>
-          MA window (days)
+          Baseline MA window (days)
           <input type="number" v-model.number="maWindow" min="30" max="3000" step="5" />
         </label>
         <label>
-          Fit window (days, 0 = all)
+          Growth fit window (days, 0 = all)
           <input type="number" v-model.number="fitWindowDays" min="0" max="6000" step="50" />
         </label>
         <label>
-          Day zero
+          Day zero (t₀)
           <input type="date" v-model="dayZero" />
         </label>
-        <span class="fit-note">
-          MA ≈ {{ maYears }} yr · growth fit on {{ fitWindowLabel }}
-        </span>
+        <label v-if="growthType === 'power'">
+          Recency weighting γ
+          <input type="number" v-model.number="powFitGamma" min="0" max="2" step="0.05" />
+        </label>
+        <button class="reset" @click="resetToFit">↺ Reset to fit</button>
       </div>
+      <p class="calib-note">
+        MA ≈ {{ maYears }} yr · growth fit on {{ fitWindowLabel }}.
+        <template v-if="growthType === 'power'">
+          γ=0 weights every sample equally · γ=1 every log-time decade.
+        </template>
+        Changing any calibration knob re-fits the model and overwrites the
+        parameter boxes below — hand-edits persist only until the next re-fit.
+      </p>
+    </section>
+
+    <!-- Model parameters: hand-tunable, persist until the next calibration -->
+    <section class="params">
+      <h3>
+        Value baseline — growth
+        <span class="fit-note">auto-filled · editable</span>
+      </h3>
 
       <template v-if="growthType === 'exponential'">
-        <h3>
-          Exponential growth
+        <h4>
+          Exponential
           <span class="fit" v-if="fitted">R² {{ fitted.expR2.toFixed(4) }}</span>
-        </h3>
+        </h4>
         <div class="param-grid">
           <label>
             Constant C
@@ -401,10 +435,10 @@ const fmtNum = (v: number) =>
       </template>
 
       <template v-else-if="growthType === 'power'">
-        <h3>
-          Power-law growth
+        <h4>
+          Power-law
           <span class="fit" v-if="fitted">R² {{ fitted.powR2.toFixed(4) }}</span>
-        </h3>
+        </h4>
         <div class="param-grid">
           <label>
             Constant C
@@ -414,23 +448,12 @@ const fmtNum = (v: number) =>
             Power β
             <input type="number" v-model.number="p.powExponent" step="any" />
           </label>
-          <label>
-            Fit weighting γ
-            <input
-              type="number"
-              v-model.number="powFitGamma"
-              min="0"
-              max="2"
-              step="0.05"
-            />
-          </label>
-          <span class="fit-note">γ=0 per-sample · γ=1 per log-time decade</span>
         </div>
-        <p class="eq">MA = C · (x + 1)^β · &nbsp; fit weight ∝ (x + 1)^(−γ)</p>
+        <p class="eq">MA = C · (x + 1)^β</p>
       </template>
 
       <template v-else>
-        <h3>Linear growth</h3>
+        <h4>Linear</h4>
         <div class="param-grid">
           <label>
             Rate (per day)
@@ -445,9 +468,14 @@ const fmtNum = (v: number) =>
       </template>
     </section>
 
-    <!-- Parameters: volatility -->
+    <!-- Model parameters: volatility -->
     <section class="params">
-      <h3>Volatility envelope</h3>
+      <h3>
+        Volatility projection
+        <span class="fit-note">
+          {{ envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual' }}
+        </span>
+      </h3>
       <template v-if="envelopeType === 'exponential-decay'">
         <div class="param-grid">
           <label>
@@ -542,7 +570,7 @@ const fmtNum = (v: number) =>
             </button>
           </li>
           <li v-if="!peakDates.length" class="fit-note">
-            No peaks — projection follows the baseline envelope only.
+            No peaks — projection follows the baseline volatility only.
           </li>
         </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
@@ -570,6 +598,7 @@ const fmtNum = (v: number) =>
       :log-x="logX"
       :log-y="logY"
       :value-format="chartFormat"
+      :band="chartBand"
     />
   </div>
 </template>
@@ -652,6 +681,37 @@ const fmtNum = (v: number) =>
   color: var(--text-muted);
   font-weight: 400;
   font-size: 0.72rem;
+}
+.params h4 {
+  margin: 0.5rem 0 0.4rem;
+  font-size: 0.76rem;
+  color: var(--text);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.params h4 .fit {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.72rem;
+}
+/* Calibration section: visually set apart from the manual model params. */
+.calibration {
+  border-color: var(--accent-violet);
+  background: rgba(155, 109, 255, 0.06);
+}
+.calibration h3 {
+  color: var(--accent-violet);
+}
+.calibration .param-grid {
+  align-items: flex-end;
+}
+.calib-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0.55rem 0 0;
+  line-height: 1.45;
 }
 .param-grid {
   display: flex;
