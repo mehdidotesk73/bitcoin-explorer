@@ -28,6 +28,14 @@ export const DEFAULT_PEAK_DATES = [
   '2039-09-24',
 ]
 export const DEFAULT_PEAK_SPREAD = 0.008
+// Linear growth: take the Nth-percentile of the trailing MA slopes.
+//   slopeRangeDays  — how far back to gather slope samples (0 = all history).
+//   slopeWindowDays — the span each individual slope is measured over
+//                     (daily/weekly/monthly/yearly preset).
+// e.g. "20th percentile of the past 4 years' weekly slopes".
+export const DEFAULT_SLOPE_RANGE_DAYS = 1460 // ~4 years
+export const DEFAULT_SLOPE_WINDOW_DAYS = 7 // weekly
+export const DEFAULT_SLOPE_PERCENTILE = 50
 
 export type GrowthType = 'exponential' | 'power' | 'linear'
 export type EnvelopeType =
@@ -36,7 +44,6 @@ export type EnvelopeType =
   | 'value-exponential-decay'
   | 'constant'
 export type DistributionType = 'peaks' | 'none'
-export type SlopeVariant = 'min' | 'max' | 'median' | 'mean'
 
 // ---------------------------------------------------------------------------
 // Small numeric helpers
@@ -136,7 +143,23 @@ export interface FittedParams {
   powR2: number
   envConstant: number
   envExponent: number
-  slopeStats: Record<SlopeVariant, number>
+  linRate: number // chosen-percentile trailing MA slope (per day)
+}
+
+/**
+ * Linear-interpolated `p`-th percentile (0–100) of `sorted` (ascending).
+ * Returns 0 for an empty input.
+ */
+export function percentile(sorted: number[], p: number): number {
+  const n = sorted.length
+  if (n === 0) return 0
+  if (n === 1) return sorted[0]
+  const clamped = Math.min(100, Math.max(0, p))
+  const rank = (clamped / 100) * (n - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  if (lo === hi) return sorted[lo]
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo)
 }
 
 /** Rolling slope of `ma` over a trailing `windowDays` window, per sample. */
@@ -176,6 +199,9 @@ export function fitParams(
   peakDatesMs: number[],
   fitWindowDays = 0,
   powFitGamma = 0,
+  slopeRangeDays = DEFAULT_SLOPE_RANGE_DAYS,
+  slopeWindowDays = DEFAULT_SLOPE_WINDOW_DAYS,
+  slopePercentile = DEFAULT_SLOPE_PERCENTILE,
 ): FittedParams {
   const lastTime = times[times.length - 1] ?? 0
   const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
@@ -225,16 +251,17 @@ export function fitParams(
       ? linregress(xEnv, yEnv)
       : { slope: -0.000511, intercept: Math.log(48.77), r2: 0 }
 
-  const slopes = rollingSlopes(times, ma, 365)
-    .filter((s) => Number.isFinite(s))
+  // Linear rate: the chosen percentile of the trailing MA slopes. Each slope is
+  // measured over a `slopeWindowDays` window (daily/weekly/monthly/yearly), and
+  // samples are gathered across the last `slopeRangeDays` of history (0 = all).
+  // A short window relative to the very smooth 4yr MA gives the slope
+  // distribution real spread, so the percentile meaningfully changes the rate.
+  const slopeCutoff =
+    slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
+  const slopes = rollingSlopes(times, ma, Math.max(slopeWindowDays, 2))
+    .filter((s, i) => Number.isFinite(s) && times[i] >= slopeCutoff)
     .sort((a, b) => a - b)
-  const n = slopes.length
-  const slopeStats: Record<SlopeVariant, number> = {
-    min: slopes[0] ?? 0,
-    max: slopes[n - 1] ?? 0,
-    median: n ? slopes[Math.floor(n / 2)] : 0,
-    mean: n ? slopes.reduce((a, b) => a + b, 0) / n : 0,
-  }
+  const linRate = percentile(slopes, slopePercentile)
 
   return {
     expConstant: Math.exp(expFit.intercept),
@@ -245,7 +272,7 @@ export function fitParams(
     powR2: powFit.r2,
     envConstant: Math.exp(envFit.intercept),
     envExponent: -envFit.slope,
-    slopeStats,
+    linRate,
   }
 }
 

@@ -21,21 +21,17 @@
     exponential), so the option is labelled "Laplacian" / "None".
   - "Horizon" left as-is (already clear).
 
+- [x] Linear slope as an Nth-percentile trailing slope. Replaced the fixed
+      min/median/mean/max variant with a `percentile()` helper + three params on
+      `fitParams`: `slopeRangeDays` (how far back to gather samples),
+      `slopeWindowDays` (span each slope is measured over — daily/weekly/
+      monthly/yearly preset), and `slopePercentile` (0–100); dropped the
+      `SlopeVariant`/`slopeStats` API. UI: "Slope range (days)", "Slope window"
+      preset, and "Slope percentile" inputs in the Calibration section.
+
 ## Next branch
 
-Replace the fixed slope-variant set (min/median/mean/max) with a tunable
-"nth-percentile slope over the past D days" control for the linear growth model.
-
-- [ ] Add inputs: **percentile** (0–100) and **lookback window D (days)**.
-- [ ] Compute the rolling MA slopes (existing `rollingSlopes`) but only over the
-      last D days of history, then take the chosen percentile as the linear
-      rate.
-- [ ] Decide how this interacts with the current `SlopeVariant` /
-      `slopeStats` API in `src/lib/forecast.ts` — likely generalize
-      `slopeStats` to a percentile function, or add a `slopePercentile(p, D)`
-      helper, and have `resetToFit` use it.
-- [ ] Update the linear-growth UI (currently the "Slope variant" dropdown) to
-      the percentile + window inputs, and refresh `p.linRate` accordingly.
+(nothing queued yet)
 
 ## Housekeeping / ideas
 
