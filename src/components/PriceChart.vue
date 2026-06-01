@@ -50,13 +50,15 @@ const fmtUSD = (v: number | null) =>
 // robust than a visualMap, which needs series dimension tracking).
 function heatColor(h: number): string {
   const t = Math.max(-1, Math.min(1, h))
-  const stops =
+  // Vivid endpoints with a pale midpoint so even small heat departs visibly
+  // from neutral; a sqrt ramp makes mid-range values saturate quickly.
+  const mid = [225, 230, 240] // near-white neutral
+  const end =
     t >= 0
-      ? [[154, 163, 184], [47, 111, 224]] // grey → blue
-      : [[154, 163, 184], [226, 59, 59]] // grey → red
-  const f = Math.abs(t)
-  const [a, b] = stops
-  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * f)
+      ? [0, 122, 255] // cool: bright blue
+      : [255, 45, 45] // hot: bright red
+  const f = Math.sqrt(Math.abs(t))
+  const mix = (i: number) => Math.round(mid[i] + (end[i] - mid[i]) * f)
   return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
 }
 
@@ -197,7 +199,7 @@ function buildOption(): echarts.EChartsCoreOption {
         // carried by the heat-dot series below (per-point itemStyle always
         // honours colour, unlike line-segment lineStyle / visualMap here).
         lineStyle: heatOn
-          ? { color: 'rgba(160,170,190,0.35)', width: 1 }
+          ? { color: 'rgba(160,170,190,0.2)', width: 1 }
           : { color: '#f7931a', width: 1.5 },
       },
       // Heat overlay: one coloured dot per sample, tinted by the heat score.
@@ -207,7 +209,7 @@ function buildOption(): echarts.EChartsCoreOption {
               name: '__heat',
               type: 'scatter' as const,
               data: heatPoints,
-              symbolSize: 3,
+              symbolSize: 5,
               silent: true,
             },
           ]
