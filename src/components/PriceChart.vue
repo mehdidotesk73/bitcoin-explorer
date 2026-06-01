@@ -176,7 +176,9 @@ function buildOption(): echarts.EChartsCoreOption {
         symbol: 'none',
         // When heat is off, encode is harmless; when on, y comes from dim 1.
         ...(heatOn ? { encode: { x: 0, y: 1 } } : {}),
-        lineStyle: { color: '#f7931a', width: 1.5 },
+        // Omit an explicit colour when heat is on so the visualMap drives it
+        // (an explicit lineStyle.color overrides the visualMap mapping).
+        lineStyle: heatOn ? { width: 2 } : { color: '#f7931a', width: 1.5 },
       },
     ],
     visualMap: heatOn
