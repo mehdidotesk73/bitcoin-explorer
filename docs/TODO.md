@@ -12,9 +12,11 @@
       hand-tunable model-parameter sections, with clearer labels.
 - [x] Clearer model-selection naming (display labels only; underlying type
       values unchanged):
-  - "Envelope" → "Volatility projection"; options → "Shrinks over time",
-    "Shrinks as price grows (power/exp)", "Fixed".
-  - "Value growth" → "Baseline growth model".
+  - "Envelope" → "Volatility projection"; options → "Time-based exponential
+    decay", "Value-based power decay", "Value-based exponential decay",
+    "Constant".
+  - "Value growth" → "Growth projection"; options → "Time-based power-law",
+    "Time-based exponential", "Time-based linear".
   - "Peaks" → "Cycle peaks"; the kernel is `e^(−spread·|x−dᵢ|)` (double
     exponential), so the option is labelled "Laplacian" / "None".
   - "Horizon" left as-is (already clear).

@@ -322,11 +322,11 @@ const fmtNum = (v: number) =>
     <!-- Model selection -->
     <section class="controls">
       <label>
-        Baseline growth model
+        Growth projection
         <select v-model="growthType">
-          <option value="power">Power-law</option>
-          <option value="exponential">Exponential</option>
-          <option value="linear">Linear</option>
+          <option value="power">Time-based power-law</option>
+          <option value="exponential">Time-based exponential</option>
+          <option value="linear">Time-based linear</option>
         </select>
       </label>
       <label v-if="growthType === 'linear'">
@@ -341,10 +341,10 @@ const fmtNum = (v: number) =>
       <label>
         Volatility projection
         <select v-model="envelopeType">
-          <option value="exponential-decay">Shrinks over time</option>
-          <option value="value-power-decay">Shrinks as price grows (power)</option>
-          <option value="value-exponential-decay">Shrinks as price grows (exp)</option>
-          <option value="constant">Fixed</option>
+          <option value="exponential-decay">Time-based exponential decay</option>
+          <option value="value-power-decay">Value-based power decay</option>
+          <option value="value-exponential-decay">Value-based exponential decay</option>
+          <option value="constant">Constant</option>
         </select>
       </label>
       <label>
