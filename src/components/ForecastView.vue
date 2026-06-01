@@ -61,7 +61,7 @@ const slopeVariant = ref<SlopeVariant>('median')
 const envelopeType = ref<EnvelopeType>('exponential-decay')
 const distributionType = ref<DistributionType>('peaks')
 const peakSpread = ref(DEFAULT_PEAK_SPREAD)
-const horizonYear = ref(2050)
+const horizonYear = ref(2030)
 const logY = ref(true)
 const logX = ref(false)
 

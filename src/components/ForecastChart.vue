@@ -133,7 +133,8 @@ function buildOption(): echarts.EChartsCoreOption {
     yAxis: {
       type: props.logY ? 'log' : 'value',
       scale: true,
-      min: props.yMin != null ? props.yMin : undefined,
+      // Clamp the floor to a real value, or null to auto-scale (merge-safe).
+      min: props.yMin ?? null,
       axisLine: { lineStyle: { color: AXIS } },
       axisLabel: { color: AXIS, formatter: (v: number) => fmtY(v) },
       splitLine: { lineStyle: { color: SPLIT } },
