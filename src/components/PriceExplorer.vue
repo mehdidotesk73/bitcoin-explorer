@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat } from '../lib/indicators'
+import { sma, bollinger, mwHeat, dcaCompare } from '../lib/indicators'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 
@@ -24,6 +24,11 @@ const bbK = ref(2)
 const showHeat = ref(true) // tint the price line by the M/W heat score
 const showHeatHelp = ref(false)
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+// --- DCA exploration --------------------------------------------------------
+const dcaBudget = ref(10000) // total $ deployed over the period
+const dcaIntervalDays = ref(7) // buy cadence (days)
+const dcaK = ref(1) // heat reactiveness (0 = uniform)
 
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
@@ -86,6 +91,26 @@ const heat = computed(() => {
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
+
+// Uniform vs heat-driven DCA over the loaded history (same total budget).
+const dca = computed(() =>
+  prices.value.length
+    ? dcaCompare(prices.value, heat.value, dcaIntervalDays.value, dcaBudget.value, dcaK.value)
+    : null,
+)
+const dcaEdge = computed(() => {
+  const d = dca.value
+  if (!d || d.uniform.finalValue <= 0) return null
+  return d.heat.finalValue / d.uniform.finalValue - 1 // heat vs uniform, fractional
+})
+const dcaBestEdge = computed(() => {
+  const d = dca.value
+  if (!d || d.uniform.finalValue <= 0) return null
+  return d.bestValue / d.uniform.finalValue - 1
+})
+const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
+const fmtBtc = (v: number) => v.toFixed(4) + ' ₿'
+const edgeClass = (v: number) => (v >= 0 ? 'pos' : 'neg')
 
 // --- Graphed-range presets --------------------------------------------------
 function setRange(days: number | 'all') {
@@ -181,6 +206,70 @@ const fmtUSD = (v: number | null) =>
       :show-heat="showHeat"
       v-model:zoom="zoom"
     />
+    <!-- DCA exploration: does buying the blue (W/low) zones beat uniform DCA? -->
+    <section class="dca" v-if="dca">
+      <h2>DCA exploration</h2>
+      <p class="dca-sub">
+        Same total budget deployed two ways over the loaded history — uniform
+        vs. weighted by M/W heat (buy more on blue/lows). Difference is pure
+        timing, not extra capital. Heuristic, not advice.
+      </p>
+
+      <div class="controls">
+        <label>
+          Total budget ($)
+          <input type="number" v-model.number="dcaBudget" min="100" step="100" />
+        </label>
+        <label>
+          Buy every (days)
+          <input type="number" v-model.number="dcaIntervalDays" min="1" max="90" />
+        </label>
+        <label>
+          Heat reactiveness k
+          <input type="range" v-model.number="dcaK" min="0" max="3" step="0.1" />
+          <span class="muted">{{ dcaK.toFixed(1) }} (0 = uniform)</span>
+        </label>
+        <button
+          v-if="dca.bestK !== dcaK"
+          class="best-k"
+          @click="dcaK = dca.bestK"
+        >
+          Use best k = {{ dca.bestK.toFixed(1) }}
+        </button>
+      </div>
+
+      <div class="dca-grid">
+        <div class="dca-card">
+          <h3>Uniform DCA</h3>
+          <dl>
+            <div><dt>BTC</dt><dd>{{ fmtBtc(dca.uniform.btc) }}</dd></div>
+            <div><dt>Avg cost</dt><dd>{{ fmtUSD(dca.uniform.avgCost) }}</dd></div>
+            <div><dt>Value</dt><dd>{{ fmtUSD(dca.uniform.finalValue) }}</dd></div>
+            <div><dt>ROI</dt><dd>{{ fmtPct(dca.uniform.roi) }}</dd></div>
+          </dl>
+        </div>
+        <div class="dca-card heat">
+          <h3>Heat-driven DCA</h3>
+          <dl>
+            <div><dt>BTC</dt><dd>{{ fmtBtc(dca.heat.btc) }}</dd></div>
+            <div><dt>Avg cost</dt><dd>{{ fmtUSD(dca.heat.avgCost) }}</dd></div>
+            <div><dt>Value</dt><dd>{{ fmtUSD(dca.heat.finalValue) }}</dd></div>
+            <div><dt>ROI</dt><dd>{{ fmtPct(dca.heat.roi) }}</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <p class="dca-edge" v-if="dcaEdge != null">
+        Heat-driven ends
+        <strong :class="edgeClass(dcaEdge)">{{ fmtPct(dcaEdge) }}</strong>
+        vs. uniform at k = {{ dcaK.toFixed(1) }}.
+        Best over the scan: k = {{ dca.bestK.toFixed(1) }} →
+        {{ fmtUSD(dca.bestValue) }}
+        <span v-if="dcaBestEdge != null" :class="edgeClass(dcaBestEdge)">
+          ({{ fmtPct(dcaBestEdge) }})</span>.
+      </p>
+    </section>
+
     <p class="hint">
       Drag the slider under the chart (or pinch) to adjust the graphed range.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
@@ -272,5 +361,78 @@ const fmtUSD = (v: number | null) =>
   color: var(--text-muted);
   font-size: 0.8rem;
   margin-top: 0.75rem;
+}
+.dca {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.dca h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.3rem;
+}
+.dca-sub {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+.dca .controls label {
+  gap: 0.3rem;
+}
+.dca-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.dca-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+}
+.dca-card.heat {
+  border-color: var(--accent-blue);
+}
+.dca-card h3 {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+.dca-card dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.dca-card dl div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+.dca-card dt {
+  color: var(--text-muted);
+}
+.dca-card dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.best-k {
+  align-self: flex-end;
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+}
+.dca-edge {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.pos {
+  color: #3fd07a;
+}
+.neg {
+  color: var(--danger);
 }
 </style>

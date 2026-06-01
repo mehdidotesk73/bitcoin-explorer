@@ -38,21 +38,19 @@
       (visualMap/line-segment colouring don't bind on a category axis), with a
       "M/W heat" toggle and an explainer tooltip.
 
+- [x] **Heat-driven DCA exploration** (Price Explorer). Uniform DCA vs
+      heat-weighted DCA over the same total budget, so the comparison is pure
+      *timing* (each buy weighted by `max(0, 1 + k·heat)`, renormalised to the
+      same total). User controls: total budget, buy interval, reactiveness `k`
+      slider (0 = uniform) + a "use best k" button from a `k ∈ [0,3]` scan.
+      Reports BTC, avg cost, final value, ROI per strategy and the heat-vs-
+      uniform edge. `simulateDca()` / `dcaCompare()` in `indicators.ts`.
+
 ## Next branch
 
-- [ ] **Heat-driven DCA backtest / calculator.** Quantify whether buying the
-      blue (W/oversold) zones beats naive DCA, and let the user tune it:
-  - Uniform DCA vs heat-weighted DCA over the same total budget, so the
-    comparison is purely *timing* (weight each buy by `max(0, 1 + k·heat)`,
-    renormalised to spend the same total).
-  - User-controlled **reactiveness `k`** slider (0 = uniform), plus an
-    auto-scan for the value-maximising `k`.
-  - Report per strategy: BTC accumulated, avg cost basis, final value, ROI.
-  - A `dcaCompare()` helper was prototyped in this branch and discarded; rebuild
-    it fresh (≈90 lines in `indicators.ts`) on the new branch.
-  - Stretch: forward-return analysis conditioned on heat at entry (avg N-day
-    return after deep-blue vs neutral vs deep-red) to measure the correlation
-    directly rather than by eye.
+- [ ] Stretch from the DCA work: forward-return analysis conditioned on heat at
+      entry (avg N-day return after deep-blue vs neutral vs deep-red) to measure
+      the signal's correlation directly rather than via the DCA proxy.
 
 ## Housekeeping / ideas
 

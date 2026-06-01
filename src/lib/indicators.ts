@@ -234,3 +234,89 @@ export function mwHeat(
 
   return { heat, patterns }
 }
+
+// ---------------------------------------------------------------------------
+// DCA exploration: uniform vs heat-driven dollar-cost averaging
+// ---------------------------------------------------------------------------
+
+export interface DcaResult {
+  invested: number // total cash deployed
+  btc: number // total BTC accumulated
+  avgCost: number // average cost basis ($/BTC)
+  finalValue: number // btc × last price
+  roi: number // finalValue / invested − 1
+  buys: number // number of buy events
+}
+
+export interface DcaCompare {
+  uniform: DcaResult
+  heat: DcaResult
+  /** Reactiveness `k` that maximised the heat strategy's final value. */
+  bestK: number
+  /** Heat-strategy final value at `bestK` (the optimised upside). */
+  bestValue: number
+}
+
+/**
+ * Simulate DCA buying every `intervalDays`-th sample, deploying `totalBudget`
+ * in total. The heat strategy scales each buy by `max(0, 1 + k·heat)` — more
+ * when cool/blue (a W/low), less when hot/red — then renormalises so it spends
+ * exactly the same total as the uniform strategy. Any difference is therefore
+ * pure *timing*, not deploying more capital.
+ */
+export function simulateDca(
+  prices: number[],
+  heat: number[],
+  intervalDays: number,
+  totalBudget: number,
+  k: number,
+): DcaResult {
+  const n = prices.length
+  const step = Math.max(1, Math.round(intervalDays))
+  const idx: number[] = []
+  for (let i = 0; i < n; i++) if (i % step === 0 && prices[i] > 0) idx.push(i)
+  if (idx.length === 0) {
+    return { invested: 0, btc: 0, avgCost: 0, finalValue: 0, roi: 0, buys: 0 }
+  }
+  const weights = idx.map((i) => Math.max(0, 1 + k * (heat[i] ?? 0)))
+  const wsum = weights.reduce((a, b) => a + b, 0) || 1
+  let btc = 0
+  let invested = 0
+  for (let j = 0; j < idx.length; j++) {
+    const spend = (totalBudget * weights[j]) / wsum
+    btc += spend / prices[idx[j]]
+    invested += spend
+  }
+  const lastPrice = prices[n - 1]
+  const finalValue = btc * lastPrice
+  return {
+    invested,
+    btc,
+    avgCost: btc > 0 ? invested / btc : 0,
+    finalValue,
+    roi: invested > 0 ? finalValue / invested - 1 : 0,
+    buys: idx.length,
+  }
+}
+
+/** Compare uniform vs heat-driven DCA, and scan k ∈ [0, 3] for the best value. */
+export function dcaCompare(
+  prices: number[],
+  heat: number[],
+  intervalDays: number,
+  totalBudget: number,
+  k: number,
+): DcaCompare {
+  const uniform = simulateDca(prices, heat, intervalDays, totalBudget, 0)
+  const heatRes = simulateDca(prices, heat, intervalDays, totalBudget, k)
+  let bestK = 0
+  let bestValue = uniform.finalValue
+  for (let kk = 0; kk <= 3.0001; kk += 0.1) {
+    const v = simulateDca(prices, heat, intervalDays, totalBudget, kk).finalValue
+    if (v > bestValue) {
+      bestValue = v
+      bestK = Math.round(kk * 10) / 10
+    }
+  }
+  return { uniform, heat: heatRes, bestK, bestValue }
+}
