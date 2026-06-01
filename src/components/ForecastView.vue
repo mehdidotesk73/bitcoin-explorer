@@ -198,17 +198,6 @@ const actualRatio = computed(() => {
   })
 })
 
-// Lowest real price on the grid — used to clamp the y-axis on dollar charts so
-// the power-law baseline (which dives toward ~1e-13 near day zero) can't blow
-// out the scale.
-const priceFloor = computed(() => {
-  const f = forecast.value
-  if (!f) return null
-  let min = Infinity
-  for (const v of f.actual) if (v != null && v > 0 && v < min) min = v
-  return Number.isFinite(min) ? min : null
-})
-
 const chartSeries = computed(() => {
   const f = forecast.value
   if (!f) return []
@@ -240,7 +229,6 @@ const chartSeries = computed(() => {
 const chartFormat = computed<'usd' | 'ratio'>(() =>
   chartTab.value === 'ratio' || chartTab.value === 'envelope' ? 'ratio' : 'usd',
 )
-const chartYMin = computed(() => (chartFormat.value === 'usd' ? priceFloor.value : null))
 
 // Headline: projected price at the horizon.
 const horizonPrice = computed(() => {
@@ -511,7 +499,6 @@ const fmtNum = (v: number) =>
       :now-x="nowX"
       :log-x="logX"
       :log-y="logY"
-      :y-min="chartYMin"
       :value-format="chartFormat"
     />
   </div>

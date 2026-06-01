@@ -43,8 +43,6 @@ const props = defineProps<{
   logY: boolean
   /** x value of "today", drawn as a vertical divider. */
   nowX: number
-  /** Clamp the y-axis to this minimum (e.g. the lowest real price). */
-  yMin?: number | null
   /** How to format y values: dollars or a bare ratio multiplier. */
   valueFormat?: 'usd' | 'ratio'
 }>()
@@ -69,14 +67,9 @@ const DAY_MS = 86_400_000
 const fmtXYear = (v: number) =>
   new Date(props.originMs + (v - 1) * DAY_MS).getFullYear().toString()
 
-/** Zip a y-series against the numeric x into [x, y] pairs for the chart.
- *  Values below `yMin` (e.g. the power-law baseline diving toward ~1e-13 near
- *  day zero) are dropped so they neither draw nor drag the auto-scaled axis. */
+/** Zip a y-series against the numeric x into [x, y] pairs for the chart. */
 const pair = (ys: (number | null)[]): [number, number | null][] =>
-  ys.map((y, i) => {
-    const drop = y != null && props.yMin != null && y < props.yMin
-    return [props.x[i], drop ? null : y]
-  })
+  ys.map((y, i) => [props.x[i], y])
 
 function buildOption(): echarts.EChartsCoreOption {
   const series = props.series.map((s, idx) => ({
@@ -218,11 +211,19 @@ function applyYBounds() {
   const range =
     (flagged.length ? rangeOf(flagged, x0, x1) : null) ?? rangeOf(props.series, x0, x1)
   if (!range) return
+  // Add a small margin so the extreme points don't sit flush against the edge.
   let [lo, hi] = range
-  if (lo === hi) {
-    const pad = lo === 0 ? 1 : Math.abs(lo) * 0.05
-    lo -= pad
-    hi += pad
+  const MARGIN = 0.04
+  if (props.logY && lo > 0 && hi > 0) {
+    const a = Math.log(lo)
+    const b = Math.log(hi)
+    const m = (b - a) * MARGIN || Math.log(1.05)
+    lo = Math.exp(a - m)
+    hi = Math.exp(b + m)
+  } else {
+    const m = (hi - lo) * MARGIN || Math.abs(lo) * 0.05 || 1
+    lo -= m
+    hi += m
   }
   applyingBounds = true
   c.setOption({ yAxis: { min: lo, max: hi } })
@@ -256,7 +257,6 @@ watch(
     props.x,
     props.logX,
     props.logY,
-    props.yMin,
     props.valueFormat,
     props.nowX,
   ],
