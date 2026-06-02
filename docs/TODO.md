@@ -48,12 +48,10 @@
       only. **Removed:** the M/W composite heat tint, the buy/hold signal, and
       the Components diagnostic (`mwHeat`, `phaseMachine`, `MwHeatDiagnostic`).
 
-## Next feature — DCA Explorer (its own tab)
+## Next branch — Indicator setup
 
-> **Branch ordering.** Both the **Indicator setup** and the **DCA Explorer**
-> below are deferred to a follow-up branch, to be started *after* the current
-> metric-framework branch is finished and merged. Tackle **Indicator setup
-> first**, then the DCA Explorer.
+> Deferred to a follow-up branch, to be started after the current
+> metric-framework branch is merged.
 
 ### Indicator setup (do first)
 
@@ -66,83 +64,41 @@ run slope) share one "Run parameters" group. Next:
   render from data instead of hand-written rows.
 - Persist enabled metrics + params (localStorage / URL) so a view is shareable.
 - Tidy defaults and grouping; make adding a new indicator a one-entry change.
-- This registry is also what the DCA Explorer's metric picker reads from.
+- This registry is also what a future strategy-explorer's metric picker reads.
 
-**Goal.** Let the user pick a *metric* to drive a dollar-cost-averaging
-strategy, tune that metric's knobs, and compare the resulting ROI against a
-plain "buy the same amount every day" benchmark. The metrics panel
-(price ÷ MA, b, run-slope) is the menu of drivers; this tab turns them into
-spending decisions and scores them.
+## Later — Hodl Explorer (after Indicator setup)
 
-### Core model
+The owner's buying-strategy feature (replaces the retired DCA Explorer; **do
+not** revive the heat-band prototype — see `docs/experience.md`). Builds on the
+Indicator-setup metric registry, so it comes after that branch lands.
 
-- **Benchmark:** naive DCA — a fixed dollar amount every period (daily default,
-  weekly option), price-blind. This is the line every strategy must beat.
-- **Strategy:** same *total budget* over the same window, but the per-period
-  spend is modulated by the chosen metric so the comparison is purely about
-  *timing*, not about investing more money.
-- **Report per strategy:** BTC accumulated, average cost basis, final value,
-  ROI %, max drawdown, and % of budget deployed (for save-and-buy modes).
+**Idea.** Seed a set of purchase dates over the price history, then live-simulate
+"buy a uniform amount on each seeded date" and compare it against a baseline of
+"buy a uniform amount on every day in the past X days."
 
-### Two spending models (user toggle)
+### Seeding the purchase dates
+- **Manual** — the user picks / adds individual dates (and can remove them).
+- **Pattern spreading via indicators** — an indicator (from the metric registry)
+  generates dates by spreading purchases across the days that meet a condition
+  (e.g. buy where price ÷ MA < T, or where a run is in a chosen state). The
+  indicator's params come from its registry config.
+- **Combination** — manual dates plus indicator-spread dates, merged.
 
-1. **Weighted (always invested):** each period spend `budget · w[i] / Σw`,
-   where `w[i] ≥ 0` is the metric's buy-weight. `w` constant ⇒ naive DCA.
-   Spends the whole budget; rewards *tilting* buys toward good days.
-2. **Save-and-deploy (trigger):** accrue the fixed contribution into a cash
-   pile every period; deploy cash (all or a fraction) only when the metric
-   *triggers* (e.g. price ÷ MA < T). Rewards *waiting* for dips; leftover cash
-   at the end is valued as cash. This is the model that can really diverge
-   from naive.
+### Live simulation + comparison
+- **Same total budget** on both sides, split uniformly across that side's
+  buy-days — so the comparison is purely about *which* days, not how much.
+- **Strategy:** budget ÷ (number of seeded dates) on each seeded date.
+- **Baseline:** budget ÷ X on each of the trailing X days, counted back from
+  today (X is a knob).
+- **Compare (current worth & more):** value today, **cost basis** (avg buy
+  price), BTC accumulated, ROI %, number of buys / amount deployed, and other
+  side-by-side stats. Recompute live as the seeding or params change.
 
-### Pluggable metrics + knob registry
-
-Each driver implements a small interface so the UI can render generic sliders:
-
-```
-interface DcaMetric {
-  id: string; label: string
-  knobs: { id; label; min; max; step; default; help }[]
-  // CAUSAL: may only read series[0..i] to decide day i.
-  weight(ctx, knobs): number[]   // per-day buy-weight ≥ 0
-}
-```
-
-Planned drivers and their knobs:
-
-- **price ÷ MA** — knob: threshold `T`. Buy-weight ramps up as the ratio drops
-  below `T` (e.g. `w = max(0, T − price/MA)` or a step at `T`). Optional second
-  knob: MA window. Cleanest metric to start with.
-- **b (band position)** — a raw threshold on `b` is regime-sensitive, so build a
-  **derived signal on top of b** first: e.g. trailing-window *percentile rank*
-  of `b`, or a normalised "b-dip depth × duration below 0". Knob: percentile/
-  depth threshold. (Tracked as a sub-task: "b-driver derived signal".)
-- **run-slope regime** — buy in chop (slope ≈ 0) once a down-run has *ended*;
-  hold (skip) during active down-runs. Knobs: chop band `±ε` around 0,
-  cool-off after a down-run. ⚠️ Causal caveat: a run's average slope is only
-  known at the run's *end*, so the in-progress run must be treated as "unknown
-  / chop" until it closes — no peeking at the current run's final slope.
-- **composite heat** — the existing M/W signal as a weight, for comparison.
-
-### Architecture / steps
-
-1. `src/lib/dca.ts` — pure, unit-tested: `simulateDca(price, weights, budget,
-   model)` → timeline (spent, BTC, basis, value) + summary stats; the
-   `DcaMetric` interface + a registry; naive baseline = constant weights.
-2. Metric adapters (one per driver above), each declaring its knobs.
-3. `src/components/DcaExplorer.vue` — new tab: metric picker → generic knob
-   sliders → spending-model toggle → results (value-over-time overlay vs naive,
-   stats table). Reuses `useBitcoinData` + the cached `mwHeat` result.
-4. Tests: known price path + weights ⇒ known ROI; assert every driver is causal
-   (decision at `i` unchanged by mutating `price[>i]`).
-
-### Stretch
-
-- Auto-scan a knob for the ROI-maximising value (and show the curve).
-- Fees/slippage; lump-sum-at-start benchmark; weekly vs daily cadence.
-- Risk-adjusted scoring (Sharpe, max drawdown) so "more ROI" isn't the only win.
-- Forward-return analysis: avg N-day return after deep-oversold vs neutral vs
-  deep-overbought entries, to validate a driver before backtesting it.
+### Notes
+- Reuse `useBitcoinData`; keep the simulation a pure function in `src/lib/` over
+  the fetched arrays (causal where relevant), components thin.
+- Indicator-driven seeding is exactly why **Indicator setup comes first** — the
+  explorer reads the available drivers and their configs from that registry.
 
 ## Housekeeping / ideas
 
