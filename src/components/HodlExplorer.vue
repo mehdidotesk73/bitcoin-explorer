@@ -19,7 +19,6 @@ import {
   type SeedKind,
   type SeedLayer,
   ratioSeries,
-  windowIndices,
   selectBandBuyDates,
   simulateStrategy,
   unionIndices,
@@ -64,7 +63,12 @@ const emit = defineEmits<{
 
 // --- Builder controls -------------------------------------------------------
 const driver = ref<SeedKind>('ratio')
+
+// Comparison window: either trailing-X-days-from-today, or an explicit from/to.
+const windowMode = ref<'trailing' | 'range'>('trailing')
 const baselineDays = ref(1460) // trailing comparison window (default 4yr)
+const fromDate = ref('')
+const toDate = ref('')
 
 // Each indicator driver carries its own buy band [lower, upper].
 const ratioLower = ref(0.3)
@@ -106,21 +110,43 @@ const maLabel = computed(() => {
 // b-score series (fixed monthly scale).
 const bDiag = computed(() => scaleDiag(prices.value, B_SCALE_HD, { N: B_SCALE_N }))
 
-// Comparison window — baseline + indicator layers operate within these days.
-const windowStart = computed(() => Math.max(0, prices.value.length - baselineDays.value))
-const windowSize = computed(() => prices.value.length - windowStart.value)
-const candidates = computed(() => windowIndices(prices.value.length, baselineDays.value))
+// Comparison window — baseline + all layers operate within [start, end] (incl.).
+const windowRange = computed<{ start: number; end: number }>(() => {
+  const n = prices.value.length
+  if (!n) return { start: 0, end: -1 }
+  if (windowMode.value === 'range') {
+    let s = fromDate.value ? (snapDateToIndex(dates.value, fromDate.value) ?? 0) : 0
+    let e = toDate.value ? (snapDateToIndex(dates.value, toDate.value) ?? n - 1) : n - 1
+    if (s > e) [s, e] = [e, s]
+    return { start: s, end: e }
+  }
+  return { start: Math.max(0, n - baselineDays.value), end: n - 1 }
+})
+const windowSize = computed(() => Math.max(0, windowRange.value.end - windowRange.value.start + 1))
+const inWindow = (i: number) => i >= windowRange.value.start && i <= windowRange.value.end
+const candidates = computed(() => {
+  const { start, end } = windowRange.value
+  const out: number[] = []
+  for (let i = start; i <= end; i++) out.push(i)
+  return out
+})
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
 
-// Initialise the budget to the current price the first time data lands.
+// Initialise budget (to the current price) + the from/to range the first time
+// data lands.
 watch(
   latestPrice,
   (p) => {
     if (!budgetInitialised && p) {
       totalBudget.value = Math.round(p)
+      const n = prices.value.length
+      if (n) {
+        fromDate.value = dates.value[Math.max(0, n - baselineDays.value)]
+        toDate.value = dates.value[n - 1]
+      }
       budgetInitialised = true
     }
   },
@@ -149,21 +175,33 @@ const manualPendingIndices = computed(() => {
   return [...new Set(idx)].sort((a, b) => a - b)
 })
 
-// Live preview of what the builder would add as a layer.
+// Live preview of what the builder would add as a layer (manual is filtered to
+// the window — out-of-window dates are excluded from the strategy).
 const previewIndices = computed(() => {
-  if (driver.value === 'manual') return manualPendingIndices.value
+  if (driver.value === 'manual') return manualPendingIndices.value.filter(inWindow)
   return selectBandBuyDates(builderMetric.value, builderBand.value, candidates.value)
 })
 
 // --- Combinator: resolve each layer, union into the strategy -----------------
 function resolveLayer(layer: SeedLayer): number[] {
-  if (layer.kind === 'manual') return layer.dateIndices ?? []
+  if (layer.kind === 'manual') return (layer.dateIndices ?? []).filter(inWindow)
   if (layer.kind === 'ratio') {
     const metric = ratioSeries(prices.value, sma(prices.value, layer.maDays ?? props.ratioMaDays))
     return selectBandBuyDates(metric, layer.band!, candidates.value)
   }
   return selectBandBuyDates(bDiag.value.b, layer.band!, candidates.value)
 }
+
+// Manual dates (committed layers + pending) that fall OUTSIDE the window: these
+// are dropped from the strategy and surfaced as a warning.
+const outOfWindowDates = computed<string[]>(() => {
+  const bad = new Set<number>()
+  for (const l of layers.value) {
+    if (l.kind === 'manual') for (const i of l.dateIndices ?? []) if (!inWindow(i)) bad.add(i)
+  }
+  for (const i of manualPendingIndices.value) if (!inWindow(i)) bad.add(i)
+  return [...bad].sort((a, b) => a - b).map((i) => dates.value[i])
+})
 function layerCount(layer: SeedLayer): number {
   return resolveLayer(layer).length
 }
@@ -244,7 +282,7 @@ function buildPriceOption(): echarts.EChartsCoreOption {
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
   const cats = dates.value
   const p = prices.value
-  const bStart = windowStart.value
+  const { start: bStart, end: bEnd } = windowRange.value
 
   const committed = strategyIndices.value.map((i) => [cats[i], p[i]])
   const preview = previewIndices.value.map((i) => [cats[i], p[i]])
@@ -297,7 +335,7 @@ function buildPriceOption(): echarts.EChartsCoreOption {
       {
         name: 'Baseline window',
         type: 'line',
-        data: cats.map((_, i) => (i >= bStart ? p[i] : null)),
+        data: cats.map((_, i) => (i >= bStart && i <= bEnd ? p[i] : null)),
         symbol: 'none',
         lineStyle: { opacity: 0 },
         areaStyle: { color: 'rgba(100, 120, 180, 0.12)' },
@@ -351,7 +389,8 @@ function buildMetricOption(): echarts.EChartsCoreOption {
   const b = builderBand.value
   const lo = Math.min(b.lower, b.upper)
   const hi = Math.max(b.lower, b.upper)
-  const startDate = cats[windowStart.value]
+  const { start: wStart, end: wEnd } = windowRange.value
+  const edges = [cats[wStart], cats[wEnd]].filter(Boolean).map((d) => ({ xAxis: d }))
   const preview = previewIndices.value.map((i) => [cats[i], builderMetric.value[i]])
 
   return {
@@ -410,7 +449,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
           symbol: 'none',
           label: { show: false },
           lineStyle: { color: '#5a6480', type: 'dashed' },
-          data: startDate ? [{ xAxis: startDate }] : [],
+          data: edges,
         },
         z: 2,
       },
@@ -466,7 +505,10 @@ watch(
     props.ratioMaDays,
     driver.value,
     builderBand.value,
+    windowMode.value,
     baselineDays.value,
+    fromDate.value,
+    toDate.value,
     strategyIndices.value,
     previewIndices.value,
   ],
@@ -576,6 +618,13 @@ watch(
       </div>
     </section>
 
+    <!-- Out-of-window manual dates warning -->
+    <section class="warn" v-if="outOfWindowDates.length">
+      ⚠️ {{ outOfWindowDates.length }} manual date(s) fall outside the comparison
+      window and are excluded from the strategy:
+      <strong>{{ outOfWindowDates.join(', ') }}</strong>. Widen the window to include them.
+    </section>
+
     <!-- Budget + window -->
     <section class="controls">
       <label class="ctrl-label">
@@ -585,13 +634,32 @@ watch(
           <input type="number" v-model.number="totalBudget" min="1" step="100" class="num-input" />
         </span>
       </label>
+
       <label class="ctrl-label">
-        Window (trailing)
+        Window mode
+        <select v-model="windowMode" class="select sm">
+          <option value="trailing">Trailing days</option>
+          <option value="range">Date range</option>
+        </select>
+      </label>
+
+      <label class="ctrl-label" v-if="windowMode === 'trailing'">
+        Window (trailing from today)
         <span class="ctrl-row">
           <input type="number" v-model.number="baselineDays" min="30" max="5000" step="30" class="num-input" />
           <span class="unit">days</span>
         </span>
       </label>
+      <template v-else>
+        <label class="ctrl-label">
+          From
+          <input type="date" v-model="fromDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
+        </label>
+        <label class="ctrl-label">
+          To
+          <input type="date" v-model="toDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
+        </label>
+      </template>
     </section>
 
     <!-- Price chart with buy markers -->
@@ -737,6 +805,21 @@ watch(
 }
 .select {
   width: 12rem;
+}
+.select.sm {
+  width: 9rem;
+}
+.warn {
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius);
+  color: #f6d488;
+}
+.warn strong {
+  color: #fbbf24;
 }
 .num-input {
   width: 6rem;
