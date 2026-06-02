@@ -19,20 +19,20 @@ const emit = defineEmits<{ refresh: [] }>()
 // --- Metric toggles (default view = price only) -----------------------------
 const showMa = ref(false) // MA overlay
 const showBb = ref(false) // Bollinger overlay
-const showRuns = ref(false) // run-skeleton overlay
+const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
-const showB = ref(false) // b-score curve
-const showRunSlope = ref(false) // run-slope curve
+const showBScore = ref(false) // Bollinger (b) score curve
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
 const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
+const cfgB = ref(false)
 
-// Run-based metrics (b, runs overlay, run slope) share these parameters.
-const anyRun = computed(() => showRuns.value || showB.value || showRunSlope.value)
-const anyCurve = computed(() => showRatio.value || showB.value || showRunSlope.value)
+// Whether any separate-curve metric is on, and whether that panel is collapsed.
+const anyCurve = computed(() => showRatio.value || showBScore.value || showRunDetection.value)
+const curvesCollapsed = ref(false)
 
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
@@ -215,10 +215,23 @@ const fmtUSD = (v: number | null) =>
         </div>
       </div>
 
-      <!-- Overlay: run skeleton -->
+      <!-- Run detection: runs overlay (price) + run-slope graph -->
       <div class="metric">
         <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showRuns" /> Runs overlay</label>
+          <label class="checkbox"><input type="checkbox" v-model="showRunDetection" /> Run detection</label>
+          <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgRun" class="metric-cfg">
+          <label class="slider">
+            Scale
+            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+            <span class="val">{{ runScaleLabel }}</span>
+          </label>
+          <label class="slider">
+            Sensitivity
+            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+          </label>
         </div>
       </div>
 
@@ -239,27 +252,14 @@ const fmtUSD = (v: number | null) =>
         </div>
       </div>
 
-      <!-- Curve: b score -->
+      <!-- Curve: Bollinger score (b = band position) -->
       <div class="metric">
         <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showB" /> b score</label>
+          <label class="checkbox"><input type="checkbox" v-model="showBScore" /> Bollinger score</label>
+          <button class="cfg" :class="{ open: cfgB }" @click="cfgB = !cfgB" title="Configure">⚙</button>
         </div>
-      </div>
-
-      <!-- Curve: run slope -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showRunSlope" /> Run slope</label>
-        </div>
-      </div>
-
-      <!-- Shared params for the run-based metrics -->
-      <div class="metric shared" v-if="anyRun">
-        <div class="metric-head">
-          <span class="shared-label">Run parameters</span>
-          <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgRun" class="metric-cfg">
+        <div v-if="cfgB" class="metric-cfg">
+          <p class="cfg-note">Shares the run scale &amp; sensitivity below.</p>
           <label class="slider">
             Scale
             <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
@@ -295,23 +295,28 @@ const fmtUSD = (v: number | null) =>
       :show-ma="showMa"
       :show-bb="showBb"
       :run-overlay="runOverlay"
-      :show-runs="showRuns"
+      :show-runs="showRunDetection"
       v-model:zoom="zoom"
     />
 
-    <MetricsPanel
-      v-if="anyCurve && dates.length"
-      :dates="dates"
-      :price="prices"
-      :ma="ratioMa"
-      :ma-label="ratioMaLabel"
-      :diag="runDiag"
-      :scale-label="runScaleLabel"
-      :show-ratio="showRatio"
-      :show-b="showB"
-      :show-run-slope="showRunSlope"
-      v-model:zoom="zoom"
-    />
+    <section v-if="anyCurve && dates.length" class="curves">
+      <button class="curves-toggle" @click="curvesCollapsed = !curvesCollapsed">
+        <span class="chev">{{ curvesCollapsed ? '▸' : '▾' }}</span> Additional graphs
+      </button>
+      <MetricsPanel
+        v-if="!curvesCollapsed"
+        :dates="dates"
+        :price="prices"
+        :ma="ratioMa"
+        :ma-label="ratioMaLabel"
+        :diag="runDiag"
+        :scale-label="runScaleLabel"
+        :show-ratio="showRatio"
+        :show-b="showBScore"
+        :show-run-slope="showRunDetection"
+        v-model:zoom="zoom"
+      />
+    </section>
 
     <p class="hint">
       Drag the slider under the chart (or pinch) to adjust the graphed range.
@@ -367,10 +372,27 @@ const fmtUSD = (v: number | null) =>
   align-items: center;
   gap: 0.4rem;
 }
-.shared-label {
-  color: var(--text);
-  font-size: 0.8rem;
-  font-weight: 500;
+.cfg-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.curves {
+  margin-bottom: 0.5rem;
+}
+.curves-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.chev {
+  font-size: 0.7rem;
 }
 .cfg {
   background: none;
