@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import PriceExplorer from './components/PriceExplorer.vue'
 import ForecastView from './components/ForecastView.vue'
+import HodlExplorer from './components/HodlExplorer.vue'
 import { useBitcoinData } from './lib/useBitcoinData'
 import { debugState, logDebug } from './debug'
 import { setupPWAUpdates } from './pwa'
@@ -34,8 +35,11 @@ const { reloadLatest } = setupPWAUpdates()
 const { raw, loading, error, progress, lastUpdated, refresh, init } = useBitcoinData()
 onMounted(init)
 
-type Tab = 'explorer' | 'forecast'
+type Tab = 'explorer' | 'forecast' | 'hodl'
 const tab = ref<Tab>('explorer')
+
+// Shared long-MA window — synced between Price Explorer and Hodl Explorer.
+const ratioMaDays = ref(1460)
 </script>
 
 <template>
@@ -49,6 +53,9 @@ const tab = ref<Tab>('explorer')
         <button :class="{ active: tab === 'forecast' }" @click="tab = 'forecast'">
           Price Mechanics
         </button>
+        <button :class="{ active: tab === 'hodl' }" @click="tab = 'hodl'">
+          Hodl
+        </button>
       </nav>
     </header>
 
@@ -59,9 +66,21 @@ const tab = ref<Tab>('explorer')
       :error="error"
       :progress="progress"
       :last-updated="lastUpdated"
+      :ratio-ma-days="ratioMaDays"
+      @update:ratio-ma-days="ratioMaDays = $event"
       @refresh="refresh"
     />
-    <ForecastView v-else :raw="raw" :loading="loading" />
+    <ForecastView v-else-if="tab === 'forecast'" :raw="raw" :loading="loading" />
+    <HodlExplorer
+      v-else-if="tab === 'hodl'"
+      :raw="raw"
+      :loading="loading"
+      :error="error"
+      :progress="progress"
+      :ratio-ma-days="ratioMaDays"
+      @update:ratio-ma-days="ratioMaDays = $event"
+      @refresh="refresh"
+    />
 
     <footer class="debug">
       <button class="debug-toggle" @click="showDebug = !showDebug">
