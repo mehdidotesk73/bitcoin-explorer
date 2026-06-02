@@ -35,17 +35,17 @@ export interface HodlStats {
 export type SeedKind = 'ratio' | 'bscore' | 'manual'
 
 /**
- * One stored seed layer in the combinator. Indicator layers snapshot their band
- * (+ MA window for ratio) so they stay fixed once added; manual layers store
- * resolved day indices. The final strategy is the union of all layers.
+ * One stored seed layer in the combinator. Every layer is a STATIC set of day
+ * indices, resolved once when added and frozen thereafter — indicator layers
+ * resolve their band over all history at add-time, manual layers store the
+ * chosen dates. `kind`/`label` are display metadata. The window only filters
+ * which stored days count; the final strategy is the union of all layers.
  */
 export interface SeedLayer {
   id: string
   kind: SeedKind
   label: string
-  band?: Band // ratio | bscore
-  maDays?: number // ratio
-  dateIndices?: number[] // manual
+  dateIndices: number[]
 }
 
 /** Merge several index lists into one sorted, de-duplicated list. */

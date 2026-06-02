@@ -182,18 +182,22 @@ const previewIndices = computed(() => {
   return selectBandBuyDates(builderMetric.value, builderBand.value, candidates.value)
 })
 
-// --- Combinator: resolve each layer, union into the strategy -----------------
+// --- Combinator: each layer is a STATIC set of day indices (resolved once at
+// add-time and frozen). The window only filters which stored days count — the
+// driver parameters never re-tune an existing layer.
 function resolveLayer(layer: SeedLayer): number[] {
-  if (layer.kind === 'manual') return (layer.dateIndices ?? []).filter(inWindow)
-  if (layer.kind === 'ratio') {
-    const metric = ratioSeries(prices.value, sma(prices.value, layer.maDays ?? props.ratioMaDays))
-    return selectBandBuyDates(metric, layer.band!, candidates.value)
-  }
-  return selectBandBuyDates(bDiag.value.b, layer.band!, candidates.value)
+  return (layer.dateIndices ?? []).filter(inWindow)
+}
+function layerActive(layer: SeedLayer): number {
+  return resolveLayer(layer).length
+}
+function layerTotal(layer: SeedLayer): number {
+  return (layer.dateIndices ?? []).length
 }
 
-// Manual dates (committed layers + pending) that fall OUTSIDE the window: these
-// are dropped from the strategy and surfaced as a warning.
+// Manual dates (committed layers + pending) that fall OUTSIDE the window. They
+// are still stored on the layer; they're just ignored in the totals until the
+// window covers them. Surfaced as an informational note only.
 const outOfWindowDates = computed<string[]>(() => {
   const bad = new Set<number>()
   for (const l of layers.value) {
@@ -202,9 +206,6 @@ const outOfWindowDates = computed<string[]>(() => {
   for (const i of manualPendingIndices.value) if (!inWindow(i)) bad.add(i)
   return [...bad].sort((a, b) => a - b).map((i) => dates.value[i])
 })
-function layerCount(layer: SeedLayer): number {
-  return resolveLayer(layer).length
-}
 
 const strategyIndices = computed(() => unionIndices(layers.value.map(resolveLayer)))
 
@@ -222,9 +223,23 @@ function newId(): string {
     : `l_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 }
 
+// Can we commit the current builder as a layer? Manual: any pending date (even
+// out-of-window). Indicator: any in-window match.
+const canAddLayer = computed(() =>
+  driver.value === 'manual'
+    ? manualPendingIndices.value.length > 0
+    : previewIndices.value.length > 0,
+)
+const addCount = computed(() =>
+  driver.value === 'manual' ? manualPendingIndices.value.length : previewIndices.value.length,
+)
+
 function addLayer() {
+  if (!canAddLayer.value) return
+  const n = prices.value.length
+  const all = Array.from({ length: n }, (_, i) => i)
   if (driver.value === 'manual') {
-    if (!manualPendingIndices.value.length) return
+    // Store ALL chosen dates (in- and out-of-window); the window filters later.
     layers.value.push({
       id: newId(),
       kind: 'manual',
@@ -234,19 +249,21 @@ function addLayer() {
     manualDates.value = []
     manualDateInput.value = ''
   } else if (driver.value === 'ratio') {
+    // Resolve over ALL history at add-time → a frozen seed independent of the
+    // driver knobs (band/MA window) from here on.
+    const metric = ratioSeries(prices.value, sma(prices.value, props.ratioMaDays))
     layers.value.push({
       id: newId(),
       kind: 'ratio',
       label: `Price÷MA ${ratioLower.value}–${ratioUpper.value} · ${maLabel.value}`,
-      band: { lower: ratioLower.value, upper: ratioUpper.value },
-      maDays: props.ratioMaDays,
+      dateIndices: selectBandBuyDates(metric, builderBand.value, all),
     })
   } else {
     layers.value.push({
       id: newId(),
       kind: 'bscore',
       label: `b score ${bLower.value}–${bUpper.value}`,
-      band: { lower: bLower.value, upper: bUpper.value },
+      dateIndices: selectBandBuyDates(bDiag.value.b, builderBand.value, all),
     })
   }
 }
@@ -596,8 +613,8 @@ watch(
           </div>
         </div>
 
-        <button class="add-layer" @click="addLayer" :disabled="!previewIndices.length">
-          + Add layer ({{ previewIndices.length }} day{{ previewIndices.length === 1 ? '' : 's' }})
+        <button class="add-layer" @click="addLayer" :disabled="!canAddLayer">
+          + Add layer ({{ addCount }} day{{ addCount === 1 ? '' : 's' }})
         </button>
       </div>
 
@@ -611,17 +628,21 @@ watch(
           <li v-for="l in layers" :key="l.id" class="layer-item">
             <span class="layer-kind" :class="l.kind">{{ l.kind }}</span>
             <span class="layer-label">{{ l.label }}</span>
-            <span class="layer-count">{{ layerCount(l) }} days</span>
+            <span class="layer-count">
+              {{ layerActive(l) }}<template v-if="layerTotal(l) !== layerActive(l)"> of {{ layerTotal(l) }}</template> days
+            </span>
             <button class="chip-x" @click="removeLayer(l.id)">×</button>
           </li>
         </ul>
       </div>
     </section>
 
-    <!-- Out-of-window manual dates warning -->
+    <!-- Out-of-window manual dates: informational only. The seed/layer is still
+         kept; these days are simply ignored in the totals until the window
+         covers them. -->
     <section class="warn" v-if="outOfWindowDates.length">
-      ⚠️ {{ outOfWindowDates.length }} manual date(s) fall outside the comparison
-      window and are excluded from the strategy:
+      ℹ️ {{ outOfWindowDates.length }} manual date(s) sit outside the comparison
+      window and are ignored in the totals (still stored):
       <strong>{{ outOfWindowDates.join(', ') }}</strong>. Widen the window to include them.
     </section>
 
