@@ -38,6 +38,8 @@ const props = defineProps<{
   signal?: number[]
   /** Shade under the price line by `signal` when true. */
   showSignal?: boolean
+  /** Buy-strength (= −signal) above this shades green (buy); else grey (hold). */
+  buyThreshold?: number
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -68,14 +70,14 @@ function heatColor(h: number): string {
   return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
 }
 
-// Translucent fill colour for the smoothed buy/sell signal. Sign follows the
-// engine: negative = W (bottom → buy → green), positive = M (top → sell → red).
-// Opacity scales with strength so neutral stretches stay almost clear.
-function signalColor(s: number): string {
-  const t = Math.max(-1, Math.min(1, s))
-  const rgb = t < 0 ? '46, 204, 113' : '255, 70, 70' // green buy · red sell
-  const alpha = 0.42 * Math.sqrt(Math.abs(t))
-  return `rgba(${rgb}, ${alpha.toFixed(3)})`
+// Buy/hold fill for the smoothed signal. Buy-strength = −signal (the engine
+// signs W-bottoms negative), so buy-strength > threshold ⇒ green (buy), else a
+// faint grey (hold). Green deepens the further above threshold it runs.
+function signalFill(s: number, threshold: number): string {
+  const buy = -Math.max(-1, Math.min(1, s))
+  if (buy <= threshold) return 'rgba(140, 150, 170, 0.10)' // hold (grey)
+  const f = Math.min(1, (buy - threshold) / Math.max(0.05, 1 - threshold))
+  return `rgba(46, 204, 113, ${(0.26 + 0.26 * f).toFixed(3)})` // buy (green)
 }
 
 function buildOption(): echarts.EChartsCoreOption {
@@ -107,10 +109,11 @@ function buildOption(): echarts.EChartsCoreOption {
   // price line. Per-point itemStyle reliably honours colour (like the heat dots).
   const signalOn =
     !!props.showSignal && !!props.signal && props.signal.length === props.price.length
+  const buyTh = props.buyThreshold ?? 0.25
   const signalBars = signalOn
     ? props.price.map((v, i) => ({
         value: v,
-        itemStyle: { color: signalColor(props.signal![i]) },
+        itemStyle: { color: signalFill(props.signal![i], buyTh) },
       }))
     : []
 
@@ -145,9 +148,9 @@ function buildOption(): echarts.EChartsCoreOption {
           rows.push(`M/W heat: ${h.toFixed(2)} (${label})`)
         }
         if (props.showSignal && props.signal && props.signal[i] != null) {
-          const s = props.signal[i]
-          const label = s < -0.05 ? 'buy / W' : s > 0.05 ? 'sell / M' : 'neutral'
-          rows.push(`Buy/sell signal: ${s.toFixed(2)} (${label})`)
+          const buy = -props.signal[i]
+          const th = props.buyThreshold ?? 0.25
+          rows.push(`Buy/hold: ${buy.toFixed(2)} (${buy > th ? 'BUY' : 'hold'})`)
         }
         return rows.join('<br/>')
       },
@@ -319,7 +322,7 @@ onBeforeUnmount(() => {
 
 // Re-render when data or indicator parameters change.
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat, props.signal, props.showSignal],
+  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat, props.signal, props.showSignal, props.buyThreshold],
   render,
 )
 
