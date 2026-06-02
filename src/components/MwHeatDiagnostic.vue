@@ -128,7 +128,9 @@ function render() {
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
+  chart.value.group = 'btc-explorer' // sync x-zoom + crosshair with the other panels
   render()
+  echarts.connect('btc-explorer')
   // Emit zoom changes so the main price chart stays in sync (two-way).
   chart.value.on('datazoom', () => {
     if (suppressZoomEvent) return

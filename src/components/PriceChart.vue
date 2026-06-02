@@ -286,7 +286,9 @@ function currentZoom(): [number, number] {
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
+  chart.value.group = 'btc-explorer' // sync x-zoom + crosshair with the other panels
   render()
+  echarts.connect('btc-explorer')
   // One-shot diagnostic (runs once, fully guarded — cannot loop or throw):
   // confirm the per-point colours made it onto the Price series data.
   try {

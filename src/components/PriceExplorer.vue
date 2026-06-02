@@ -5,6 +5,7 @@ import { sma, bollinger } from '../lib/indicators'
 import { mwHeat } from '../lib/mwheat'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
+import MetricsPanel from './MetricsPanel.vue'
 import MwHeatDiagnostic from './MwHeatDiagnostic.vue'
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const bbK = ref(2)
 const showHeat = ref(false) // tint the price line by the M/W heat score
 const showHeatHelp = ref(false)
 const showDiag = ref(false) // show the heat-components diagnostic chart
+const showMetrics = ref(false) // show the metrics panel (price÷MA, b, runs)
 const showSignal = ref(false) // shade under price by the smoothed M/W signal
 const signalPeriod = ref(21) // smoothing window (days) for the composite signal
 const buyThreshold = ref(0.25) // buy-strength (= −composite) above this → green
@@ -224,6 +226,10 @@ const fmtUSD = (v: number | null) =>
         <input type="number" v-model.number="buyThreshold" min="0" max="1" step="0.05" />
       </label>
       <label class="checkbox">
+        <input type="checkbox" v-model="showMetrics" />
+        Metrics
+      </label>
+      <label class="checkbox">
         <input type="checkbox" v-model="showDiag" />
         Components
       </label>
@@ -254,6 +260,15 @@ const fmtUSD = (v: number | null) =>
       :signal="signal"
       :show-signal="showSignal"
       :buy-threshold="buyThreshold"
+      v-model:zoom="zoom"
+    />
+
+    <MetricsPanel
+      v-if="showMetrics && dates.length"
+      :dates="dates"
+      :price="prices"
+      :ma="ma"
+      :result="mwResult"
       v-model:zoom="zoom"
     />
 
