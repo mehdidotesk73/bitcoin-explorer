@@ -114,6 +114,17 @@ export interface MwHeatResult {
   horizons: MwHeatHorizonDiag[]
 }
 
+/** Run-relevant signals for a single (arbitrary) scale — drives the metrics panel
+ *  and the price-chart run overlay at a continuously-tunable window. */
+export interface ScaleDiag {
+  hd: number
+  ma: (number | null)[]
+  smoothed: number[] // P_s (causal EMA of price) — the series runs are built on
+  b: (number | null)[]
+  vote: number[]
+  runs: MwHeatRun[]
+}
+
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
 const atanh = (x: number) => 0.5 * Math.log((1 + x) / (1 - x))
@@ -356,6 +367,49 @@ export function phaseMachine(b: number[], vote: number[], P: MwHeatParams): numb
 }
 
 /** Compute the full multi-scale M/W heat for a daily price series. */
+/**
+ * Shared per-scale band/run computation: the b-trace, trend vote, and sustained
+ * runs for a window `hd` (in days). Used by both the multi-horizon `mwHeat` and
+ * the continuous-scale `scaleDiag`, so runs are identical wherever they appear.
+ */
+function bandRuns(price: number[], hd: number, P: MwHeatParams, sigmaFloor: number) {
+  const n = price.length
+  const k = P.N / 10
+  const bandWindow = P.N * hd
+  const { ma, sigma } = rollingMeanStd(price, bandWindow)
+  const upper = ma.map((m, i) => (m == null ? null : m + k * (sigma[i] as number)))
+  const lower = ma.map((m, i) => (m == null ? null : m - k * (sigma[i] as number)))
+
+  // Smooth the PRICE, then compute b against the (un-smoothed) bands.
+  const smoothed = causalEMA(price, P.alpha * hd)
+  const b: (number | null)[] = new Array(n).fill(null)
+  const bFilled = new Array(n).fill(0)
+  for (let i = 0; i < n; i++) {
+    const m = ma[i]
+    if (m == null) continue
+    const s = Math.max(sigma[i] as number, sigmaFloor)
+    const val = (smoothed[i] - m) / (k * s)
+    b[i] = val
+    bFilled[i] = val
+  }
+
+  const tau = trendOperator(smoothed, P.beta * hd)
+  const vote = rollingVote(tau, P.gamma * hd)
+  const runs = segmentRuns(vote, P.sustThresh)
+  return { k, bandWindow, ma, upper, lower, smoothed, b, bFilled, tau, vote, runs }
+}
+
+/** Run-relevant signals at one continuously-tunable scale `hd` (days). */
+export function scaleDiag(price: number[], hd: number, params: Partial<MwHeatParams> = {}): ScaleDiag {
+  const P: MwHeatParams = { ...DEFAULT_MW_PARAMS, ...params }
+  const n = price.length
+  if (n === 0) return { hd, ma: [], smoothed: [], b: [], vote: [], runs: [] }
+  const meanPrice = price.reduce((a, v) => a + v, 0) / n
+  const sigmaFloor = P.sigmaFloorFrac * meanPrice
+  const { ma, smoothed, b, vote, runs } = bandRuns(price, hd, P, sigmaFloor)
+  return { hd, ma, smoothed, b, vote, runs }
+}
+
 export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwHeatResult {
   const P: MwHeatParams = { ...DEFAULT_MW_PARAMS, ...params }
   const n = price.length
@@ -363,32 +417,16 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
 
   const meanPrice = price.reduce((a, v) => a + v, 0) / n
   const sigmaFloor = P.sigmaFloorFrac * meanPrice
-  const k = P.N / 10
 
   const horizons: MwHeatHorizonDiag[] = []
   for (const horizon of P.horizons) {
     const hd = HORIZON_UNIT_DAYS[horizon]
-    const bandWindow = P.N * hd
-    const { ma, sigma } = rollingMeanStd(price, bandWindow)
-    const upper = ma.map((m, i) => (m == null ? null : m + k * (sigma[i] as number)))
-    const lower = ma.map((m, i) => (m == null ? null : m - k * (sigma[i] as number)))
-
-    // Smooth the PRICE, then compute b against the (un-smoothed) bands.
-    const smoothed = causalEMA(price, P.alpha * hd)
-    const b: (number | null)[] = new Array(n).fill(null)
-    const bFilled = new Array(n).fill(0)
-    for (let i = 0; i < n; i++) {
-      const m = ma[i]
-      if (m == null) continue
-      const s = Math.max(sigma[i] as number, sigmaFloor)
-      const val = (smoothed[i] - m) / (k * s)
-      b[i] = val
-      bFilled[i] = val
-    }
-
-    const tau = trendOperator(smoothed, P.beta * hd)
-    const vote = rollingVote(tau, P.gamma * hd)
-    const runs = segmentRuns(vote, P.sustThresh)
+    const { k, bandWindow, ma, upper, lower, smoothed, b, bFilled, tau, vote, runs } = bandRuns(
+      price,
+      hd,
+      P,
+      sigmaFloor,
+    )
 
     // The machine matches the W run-template; M is the same template on −b.
     const fW = phaseMachine(bFilled, vote, P)

@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
-import { mwHeat, type Horizon } from '../lib/mwheat'
+import { mwHeat, scaleDiag } from '../lib/mwheat'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -29,7 +29,35 @@ const showHeatHelp = ref(false)
 const showDiag = ref(false) // show the heat-components diagnostic chart
 const showMetrics = ref(false) // show the metrics panel (price÷MA, b, runs)
 const showRuns = ref(false) // overlay the piecewise-linear run skeleton on the price
-const runHorizon = ref<Horizon>('weekly') // scale (window) driving runs/metrics
+// Run scale is a continuous (log) window in days. The slider position 0–100 maps
+// to hd ∈ [1, 1500]; the label snaps to the nearest named scale below.
+const RUN_SCALES = [
+  { name: 'daily', hd: 1 },
+  { name: 'weekly', hd: 5 },
+  { name: 'monthly', hd: 20 },
+  { name: 'seasonal', hd: 65 },
+  { name: 'yearly', hd: 250 },
+  { name: 'multi-year', hd: 1000 },
+]
+const RUN_SCALE_MAX = 1500
+const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
+const runScaleT = ref(tForHd(20)) // default: monthly
+const runScaleDays = computed(() =>
+  Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
+)
+const runScaleLabel = computed(() => {
+  const hd = runScaleDays.value
+  let best = RUN_SCALES[0]
+  let bestD = Infinity
+  for (const s of RUN_SCALES) {
+    const dist = Math.abs(Math.log(hd) - Math.log(s.hd))
+    if (dist < bestD) {
+      bestD = dist
+      best = s
+    }
+  }
+  return `${best.name} · ${hd}d`
+})
 // Price ÷ MA in the metrics panel uses a long, slow baseline (like the
 // Mechanics tab's 4yr MA) so the ratio traces whole cycles instead of hugging 1
 // the way a short indicator MA does.
@@ -46,7 +74,7 @@ const wMonthly = ref(0.3)
 const horizonGain = ref(4)
 // Run-detector core knobs: sustainment threshold (≈ uptick fraction a run must
 // clear). Doubles as the breakout-direction leniency in the matcher.
-const sustThresh = ref(0.4)
+const sustThresh = ref(0.1) // default run sensitivity 0.8 (gate = 0.9 − sensitivity)
 // Run sensitivity, presented so higher = more/longer runs. The engine gate is
 // the sustainment threshold a run must clear, so sensitivity = 0.9 − gate.
 const runSensitivity = computed({
@@ -99,14 +127,21 @@ const mwResult = computed(() =>
     sustThresh: sustThresh.value,
   }),
 )
+// Runs/metrics at the selected continuous scale (separate from the 3-horizon
+// composite). Sensitivity and the Bollinger N are shared with the heat engine.
+const runDiag = computed(() =>
+  scaleDiag(prices.value, runScaleDays.value, {
+    N: Math.max(5, bbPeriod.value),
+    sustThresh: sustThresh.value,
+  }),
+)
+
 // Piecewise-linear run skeleton: anchor the price at every run boundary and
 // leave the rest null. The chart joins anchors with straight segments, so each
 // run renders as a line at its average slope, continuous across choppy gaps.
 const runOverlay = computed<(number | null)[]>(() => {
   const out = new Array(prices.value.length).fill(null)
-  const diag = mwResult.value.horizons.find((h) => h.horizon === runHorizon.value)
-  if (!diag) return out
-  for (const r of diag.runs) {
+  for (const r of runDiag.value.runs) {
     out[r.start] = prices.value[r.start]
     out[r.end] = prices.value[r.end]
   }
@@ -261,13 +296,10 @@ const fmtUSD = (v: number | null) =>
         <input type="checkbox" v-model="showRuns" />
         Runs overlay
       </label>
-      <label v-if="showRuns || showMetrics">
+      <label v-if="showRuns || showMetrics" class="slider">
         Run scale
-        <select v-model="runHorizon">
-          <option value="daily">daily</option>
-          <option value="weekly">weekly</option>
-          <option value="monthly">monthly</option>
-        </select>
+        <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+        <span class="val">{{ runScaleLabel }}</span>
       </label>
       <label v-if="showRuns || showMetrics" class="slider">
         Run sensitivity
@@ -322,8 +354,8 @@ const fmtUSD = (v: number | null) =>
       :dates="dates"
       :price="prices"
       :ma="ratioMa"
-      :result="mwResult"
-      :horizon="runHorizon"
+      :diag="runDiag"
+      :scale-label="runScaleLabel"
       :ma-label="ratioMaLabel"
       v-model:zoom="zoom"
     />

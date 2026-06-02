@@ -4,7 +4,7 @@ import * as echarts from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import type { MwHeatResult, Horizon } from '../lib/mwheat'
+import type { ScaleDiag } from '../lib/mwheat'
 
 echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
 
@@ -19,9 +19,10 @@ const props = defineProps<{
   dates: string[]
   price: number[]
   ma: (number | null)[]
-  result: MwHeatResult
-  /** Which horizon's b / runs to show (price ÷ MA uses the chart's own MA). */
-  horizon: Horizon
+  /** Run-relevant signals at the selected continuous scale. */
+  diag: ScaleDiag
+  /** Human label for the run scale (e.g. "monthly · 20d"). */
+  scaleLabel: string
   /** Human label for the ratio's MA window (e.g. "4.0yr"). */
   maLabel: string
   /** Graphed-range window [startPercent, endPercent] synced across the tab. */
@@ -34,9 +35,6 @@ const chart = shallowRef<echarts.ECharts>()
 let suppressZoomEvent = false
 const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 
-const diag = computed(
-  () => props.result.horizons.find((h) => h.horizon === props.horizon) ?? props.result.horizons[0],
-)
 const priceMa = computed(() =>
   props.price.map((p, i) => {
     const m = props.ma[i]
@@ -44,26 +42,31 @@ const priceMa = computed(() =>
   }),
 )
 
-// Per-run average slope as a daily % change (compounded), flat-zero on the
-// choppy gaps between runs. Up-runs read positive, down-runs negative — so the
-// trace blocks out trending vs sideways stretches at a glance.
+// Per-run average slope as a daily % change, measured on the SMOOTHED price the
+// runs are built from (so the sign matches the run's direction), and coloured by
+// that direction — so this trace agrees with the b-graph's run shading run for
+// run. Flat-zero on the choppy gaps between runs.
 const runSlope = computed(() => {
-  const d = diag.value
-  const out = new Array(props.price.length).fill(0)
-  if (!d) return out
+  const d = props.diag
+  const n = props.price.length
+  const out = new Array<number>(n).fill(0)
+  const dir = new Array<number>(n).fill(0)
+  const s = d.smoothed
   for (const r of d.runs) {
-    const p0 = props.price[r.start]
-    const p1 = props.price[r.end]
+    const p0 = s[r.start]
+    const p1 = s[r.end]
     const span = Math.max(1, r.end - r.start)
-    if (p0 == null || p1 == null || p0 <= 0 || p1 <= 0) continue
-    const dailyPct = (Math.exp(Math.log(p1 / p0) / span) - 1) * 100
-    for (let i = r.start; i <= r.end; i++) out[i] = dailyPct
+    const dailyPct = p0 > 0 && p1 > 0 ? (Math.exp(Math.log(p1 / p0) / span) - 1) * 100 : 0
+    for (let i = r.start; i <= r.end; i++) {
+      out[i] = dailyPct
+      dir[i] = r.dir
+    }
   }
-  return out
+  return { out, dir }
 })
 
 function buildOption(): echarts.EChartsCoreOption {
-  const d = diag.value
+  const d = props.diag
   if (!d) return {}
   const cats = props.dates
   const runArea = {
@@ -77,9 +80,10 @@ function buildOption(): echarts.EChartsCoreOption {
   const GRID = (i: number) => ({ left: 52, right: 12, top: S[i] + 38, height: 104 })
   const titleBase = { left: 52, textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' as const } }
   const legendBase = { type: 'plain' as const, itemWidth: 13, itemHeight: 8, itemGap: 8, textStyle: { color: '#e7eaf3', fontSize: 9 }, inactiveColor: '#5a6480' }
-  const slopeData = runSlope.value.map((v) => ({
+  const { out: slope, dir } = runSlope.value
+  const slopeData = slope.map((v, i) => ({
     value: v,
-    itemStyle: { color: v > 0 ? '#2bd4a7' : v < 0 ? '#f74b4b' : 'transparent' },
+    itemStyle: { color: dir[i] > 0 ? '#2bd4a7' : dir[i] < 0 ? '#f74b4b' : 'transparent' },
   }))
 
   return {
@@ -90,8 +94,8 @@ function buildOption(): echarts.EChartsCoreOption {
     axisPointer: { link: [{ xAxisIndex: 'all' }], lineStyle: { color: '#8b94ac', type: 'dashed' } },
     title: [
       { ...titleBase, top: S[0], text: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)` },
-      { ...titleBase, top: S[1], text: `b = band position · shaded by run (green up · red down · gaps = chop)   (${d.horizon})` },
-      { ...titleBase, top: S[2], text: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${d.horizon})` },
+      { ...titleBase, top: S[1], text: `b = band position · shaded by run (green up · red down · gaps = chop)   (${props.scaleLabel})` },
+      { ...titleBase, top: S[2], text: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})` },
     ],
     legend: [
       { ...legendBase, left: 52, top: S[0] + 20, data: ['price ÷ MA'] },
@@ -162,7 +166,7 @@ onBeforeUnmount(() => {
   resizeObserver.disconnect()
   chart.value?.dispose()
 })
-watch(() => [props.dates, props.price, props.ma, props.result, props.horizon, props.maLabel, props.zoom], render)
+watch(() => [props.dates, props.price, props.ma, props.diag, props.scaleLabel, props.maLabel, props.zoom], render)
 </script>
 
 <template>
