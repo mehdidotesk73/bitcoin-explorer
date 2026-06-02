@@ -10,6 +10,8 @@ import {
   defaultMetricState,
   loadMetricState,
   saveMetricState,
+  decodeMetricState,
+  encodeMetricState,
 } from '../lib/metricRegistry'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -28,9 +30,27 @@ const emit = defineEmits<{ refresh: [] }>()
 const metricState = ref<MetricState>(defaultMetricState())
 const cfgOpen = ref<Record<string, boolean>>({}) // which metric config is expanded
 
-// Load initial state on mount.
+// Load initial state on mount: URL query params > localStorage > defaults.
 onMounted(() => {
-  metricState.value = loadMetricState()
+  let state = defaultMetricState()
+
+  // Try to load from URL query params (for shareability).
+  const query = window.location.search.slice(1)
+  if (query) {
+    const urlState = decodeMetricState(query)
+    if (urlState.enabled || urlState.params || urlState.periodUnits) {
+      state = {
+        enabled: { ...state.enabled, ...urlState.enabled },
+        params: { ...state.params, ...urlState.params },
+        periodUnits: { ...state.periodUnits, ...urlState.periodUnits },
+      }
+    }
+  } else {
+    // No URL params; try localStorage.
+    state = loadMetricState()
+  }
+
+  metricState.value = state
 })
 
 // Persist state changes to localStorage.
@@ -150,6 +170,19 @@ function setRange(days: number | 'all') {
   }
   const start = Math.max(0, ((n - days) / n) * 100)
   zoom.value = [start, 100]
+}
+
+// Generate a shareable URL with current metrics state encoded in query params.
+async function copyShareUrl() {
+  const query = encodeMetricState(metricState.value)
+  const url = `${window.location.origin}${window.location.pathname}${query ? '?' + query : ''}`
+  try {
+    await navigator.clipboard.writeText(url)
+    // Visual feedback: the emoji button could briefly change. For now, silent success.
+  } catch {
+    // Fallback: alert the user.
+    alert(`Shareable URL:\n\n${url}`)
+  }
 }
 
 const fmtUSD = (v: number | null) =>
@@ -303,6 +336,7 @@ const fmtUSD = (v: number | null) =>
       <button @click="setRange(365)">1Y</button>
       <button @click="setRange(365 * 3)">3Y</button>
       <button @click="setRange('all')">All</button>
+      <button class="share-btn" @click="copyShareUrl" title="Copy shareable URL with current metrics">📋</button>
     </section>
 
     <PriceChart
@@ -376,6 +410,14 @@ const fmtUSD = (v: number | null) =>
   gap: 0.6rem;
   align-items: center;
   margin-bottom: 0.75rem;
+}
+.share-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.2rem 0.4rem;
+  color: var(--text-muted);
 }
 .metrics-menu {
   align-items: flex-start;
