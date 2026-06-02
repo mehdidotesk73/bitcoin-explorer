@@ -100,7 +100,43 @@ Indicator-setup metric registry, so it comes after that branch lands.
 - Indicator-driven seeding is exactly why **Indicator setup comes first** — the
   explorer reads the available drivers and their configs from that registry.
 
-## Housekeeping / ideas
+## DevOps / CI
 
-- [ ] Add a CI build + type-check gate on PRs (a broken-build commit reached
-      history on the forecast-tab branch because nothing ran `npm run build`).
+The only workflow today is `deploy.yml` (Pages deploy on push to `main`). There
+is no PR gate, no lint/format config, no test suite, and no Node-version pin —
+so a broken build can (and once did) reach history. Prioritised backlog:
+
+- [ ] **CI gate on PRs (do first).** Add `.github/workflows/ci.yml` that runs on
+      pull_request → `main`: `npm ci` then `npm run build` (this already does
+      `vue-tsc -b && vite build`, so it catches TS *and* Vue template errors).
+      Use Node 22 + `cache: npm` to match `deploy.yml`. Make it a **required
+      status check** in branch protection so PRs can't merge red. This is the
+      single highest-value item — it's the gate `CLAUDE.md` already assumes.
+- [ ] **Lint + format.** No ESLint/Prettier exists yet, but an auto-formatter is
+      clearly in the loop (files keep getting reformatted). Codify it: add
+      `eslint` (vue + @typescript-eslint) and `prettier` with a committed config,
+      `npm run lint` / `npm run format:check` scripts, and run both in CI so
+      style is deterministic instead of incidental.
+- [ ] **Unit tests (Vitest).** `src/lib/` is pure functions over arrays — ideal
+      to test and currently untested. High-value cases: `hodl.ts`
+      (`simulateStrategy` math: known price path → known ROI/cost basis/BTC;
+      `selectBandBuyDates`, `windowIndices`, `unionIndices`, `snapDateToIndex`);
+      `runs.ts`/`indicators.ts` **causality** (mutating `price[>i]` must not
+      change the decision at `i`); `forecast.ts` fit/projection invariants. Add
+      `npm run test` to the CI gate.
+- [ ] **Pin the Node version.** Add `.nvmrc` (22) and an `engines` field so local
+      dev matches CI/deploy and avoids "works on my machine" drift.
+- [ ] **Automated dependency updates.** Add `.github/dependabot.yml` for `npm`
+      and `github-actions` (vite / echarts / capacitor / vite-plugin-pwa move
+      fast). The CI gate above makes these safe to review/merge.
+
+### Lower priority / nice-to-have
+
+- [ ] **Bundle-size guard.** The build warns the main chunk is >500 kB (echarts
+      dominates). Either split it (`manualChunks` / dynamic `import()` for the
+      forecast + chart code) or add a `size-limit` check so regressions surface.
+- [ ] **PR hygiene.** A short PR template (what / why / testing) and optionally
+      `CODEOWNERS`, to match the what/why/testing summary `CLAUDE.md` asks for.
+- [ ] **Preview-deploy provenance.** The footer already stamps `build <sha>`;
+      consider surfacing the same in CI artifacts so a Netlify preview can be
+      tied back to a commit at a glance.
