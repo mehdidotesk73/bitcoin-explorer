@@ -174,6 +174,20 @@ const metricTitle = computed(() =>
 // Only band-on-a-metric drivers get the shaded driver chart.
 const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
 
+// Weekday picker for weekly (every-7) uniform spacing. The grid lands on the
+// weekday of (today + offset), so map a chosen weekday back to that offset.
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const todayDow = computed(() => {
+  const n = dates.value.length
+  return n ? new Date(dates.value[n - 1]).getUTCDay() : 0
+})
+const uniformWeekday = computed<number>({
+  get: () => (((todayDow.value + uniformOffset.value) % 7) + 7) % 7,
+  set: (w) => {
+    uniformOffset.value = (((w - todayDow.value) % 7) + 7) % 7
+  },
+})
+
 // Manual: resolve the working dates to unique sorted day indices.
 const manualPendingIndices = computed(() => {
   const idx = manualDates.value
@@ -613,12 +627,17 @@ watch(
           </span>
         </label>
         <label class="ctrl-label" v-else-if="driver === 'uniform'">
-          Every X days · offset
+          Every X days · {{ uniformEveryX === 7 ? 'weekday' : 'offset' }}
           <span class="ctrl-row">
             <input type="number" v-model.number="uniformEveryX" min="1" max="365" step="1" class="num-input sm" />
             <span class="unit">days</span>
-            <input type="number" v-model.number="uniformOffset" min="0" max="365" step="1" class="num-input sm" />
-            <span class="unit">offset</span>
+            <select v-if="uniformEveryX === 7" v-model.number="uniformWeekday" class="select sm">
+              <option v-for="(w, i) in WEEKDAYS" :key="i" :value="i">{{ w }}</option>
+            </select>
+            <template v-else>
+              <input type="number" v-model.number="uniformOffset" min="0" max="365" step="1" class="num-input sm" />
+              <span class="unit">offset</span>
+            </template>
           </span>
         </label>
         <div class="ctrl-label" v-else-if="driver === 'manual'">
