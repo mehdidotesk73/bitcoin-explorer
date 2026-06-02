@@ -85,8 +85,11 @@ Indicator-setup metric registry, so it comes after that branch lands.
 - **Combination** — manual dates plus indicator-spread dates, merged.
 
 ### Live simulation + comparison
-- **Strategy:** uniform amount on each seeded date.
-- **Baseline:** uniform amount on every day over the trailing X days (X is a knob).
+- **Same total budget** on both sides, split uniformly across that side's
+  buy-days — so the comparison is purely about *which* days, not how much.
+- **Strategy:** budget ÷ (number of seeded dates) on each seeded date.
+- **Baseline:** budget ÷ X on each of the trailing X days, counted back from
+  today (X is a knob).
 - **Compare (current worth & more):** value today, **cost basis** (avg buy
   price), BTC accumulated, ROI %, number of buys / amount deployed, and other
   side-by-side stats. Recompute live as the seeding or params change.
