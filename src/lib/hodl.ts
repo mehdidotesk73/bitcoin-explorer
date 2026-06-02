@@ -5,6 +5,15 @@
  * All decisions are causal: day i is computed from data at indices ≤ i only.
  */
 
+/** Which metric drives the seeding of buy dates. */
+export type DriverId = 'ratio' | 'bscore'
+
+/** A buy band: the metric must fall within [lower, upper] (inclusive) to buy. */
+export interface Band {
+  lower: number
+  upper: number
+}
+
 export interface HodlStats {
   /** Current total value of all BTC bought (at today's price). */
   currentValue: number
@@ -16,42 +25,63 @@ export interface HodlStats {
   btcAccumulated: number
   /** Number of buy events that fired. */
   numBuys: number
-  /** Fraction of total days that were buy days (numBuys / total days). */
+  /** Fraction of the comparison window that were buy days. */
   coverage: number
   /** Total budget deployed (equal on both sides — used for ROI). */
   totalSpent: number
 }
 
-/**
- * Select buy dates where price / longMA < threshold.
- * longMA must already be computed causally (sma at each i uses only data ≤ i).
- * Returns the array indices of qualifying days.
- */
-export function selectRatioBuyDates(
-  price: number[],
-  longMa: (number | null)[],
-  threshold: number,
-): number[] {
-  const dates: number[] = []
-  for (let i = 0; i < price.length; i++) {
+/** price / longMa as a per-day series (null where the MA isn't defined yet). */
+export function ratioSeries(price: number[], longMa: (number | null)[]): (number | null)[] {
+  return price.map((p, i) => {
     const m = longMa[i]
-    if (m != null && m > 0 && price[i] / m < threshold) {
-      dates.push(i)
-    }
-  }
-  return dates
+    return m != null && m > 0 ? p / m : null
+  })
 }
 
 /**
- * Simulate the strategy: buy equally on each of the given date indices,
- * spending a total budget of 1 unit (scale-free). Value at the final price.
+ * Indices of the trailing comparison window [n − windowDays, n).
+ * This is the shared window both the strategy and the baseline buy within.
+ */
+export function windowIndices(n: number, windowDays: number): number[] {
+  if (!n || windowDays <= 0) return []
+  const start = Math.max(0, n - windowDays)
+  const out: number[] = []
+  for (let i = start; i < n; i++) out.push(i)
+  return out
+}
+
+/**
+ * Select buy days where the driver metric falls within the band [lower, upper],
+ * restricted to the given candidate indices (the comparison window).
+ */
+export function selectBandBuyDates(
+  metric: (number | null)[],
+  band: Band,
+  candidates: number[],
+): number[] {
+  const lo = Math.min(band.lower, band.upper)
+  const hi = Math.max(band.lower, band.upper)
+  const out: number[] = []
+  for (const i of candidates) {
+    const v = metric[i]
+    if (v != null && v >= lo && v <= hi) out.push(i)
+  }
+  return out
+}
+
+/**
+ * Simulate buying equally on each of the given date indices, spending a total
+ * budget (scale-free default of 1 unit). Value at the final price.
  *
- * Returns null if no qualifying buy dates exist.
+ * `coverageDenom` is the size of the comparison window — coverage is
+ * numBuys / coverageDenom. Returns null if there are no buy dates.
  */
 export function simulateStrategy(
   price: number[],
   buyIndices: number[],
   budget: number = 1,
+  coverageDenom?: number,
 ): HodlStats | null {
   if (!buyIndices.length || !price.length) return null
   const latestPrice = price[price.length - 1]
@@ -63,32 +93,14 @@ export function simulateStrategy(
   const currentValue = btc * latestPrice
   const roi = (currentValue - budget) / budget
   const costBasis = budget / btc
+  const denom = coverageDenom ?? price.length
   return {
     currentValue,
     roi,
     costBasis,
     btcAccumulated: btc,
     numBuys: buyIndices.length,
-    coverage: buyIndices.length / price.length,
+    coverage: denom > 0 ? buyIndices.length / denom : 0,
     totalSpent: budget,
   }
-}
-
-/**
- * Simulate the baseline: buy equally on every day in the trailing X days
- * (counted back from the last data point = "today").
- *
- * Returns null if baselineDays <= 0 or no data.
- */
-export function simulateBaseline(
-  price: number[],
-  baselineDays: number,
-  budget: number = 1,
-): HodlStats | null {
-  const n = price.length
-  if (!n || baselineDays <= 0) return null
-  const start = Math.max(0, n - baselineDays)
-  const indices: number[] = []
-  for (let i = start; i < n; i++) indices.push(i)
-  return simulateStrategy(price, indices, budget)
 }
