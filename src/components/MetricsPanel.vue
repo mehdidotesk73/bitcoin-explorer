@@ -20,6 +20,8 @@ const props = defineProps<{
   price: number[]
   ma: (number | null)[]
   result: MwHeatResult
+  /** Which horizon's b / runs to show (price ÷ MA uses the chart's own MA). */
+  horizon: Horizon
   /** Graphed-range window [startPercent, endPercent] synced across the tab. */
   zoom: [number, number]
 }>()
@@ -30,11 +32,8 @@ const chart = shallowRef<echarts.ECharts>()
 let suppressZoomEvent = false
 const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 
-// b / runs come from one horizon; price ÷ MA uses the chart's own MA.
-const horizon = ref<Horizon>('weekly')
-const available = computed(() => props.result.horizons.map((h) => h.horizon))
 const diag = computed(
-  () => props.result.horizons.find((h) => h.horizon === horizon.value) ?? props.result.horizons[0],
+  () => props.result.horizons.find((h) => h.horizon === props.horizon) ?? props.result.horizons[0],
 )
 const priceMa = computed(() =>
   props.price.map((p, i) => {
@@ -161,22 +160,11 @@ onBeforeUnmount(() => {
   resizeObserver.disconnect()
   chart.value?.dispose()
 })
-watch(() => [props.dates, props.price, props.ma, props.result, horizon.value, props.zoom], render)
+watch(() => [props.dates, props.price, props.ma, props.result, props.horizon, props.zoom], render)
 </script>
 
 <template>
   <div class="metrics">
-    <div class="metrics-controls">
-      <span class="muted">Metrics — b / runs horizon:</span>
-      <button
-        v-for="h in available"
-        :key="h"
-        :class="{ active: horizon === h }"
-        @click="horizon = h"
-      >
-        {{ h }}
-      </button>
-    </div>
     <div ref="el" class="metrics-chart"></div>
   </div>
 </template>

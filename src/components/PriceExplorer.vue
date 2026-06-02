@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
-import { mwHeat } from '../lib/mwheat'
+import { mwHeat, type Horizon } from '../lib/mwheat'
 import { logDebug } from '../debug'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -28,6 +28,8 @@ const showHeat = ref(false) // tint the price line by the M/W heat score
 const showHeatHelp = ref(false)
 const showDiag = ref(false) // show the heat-components diagnostic chart
 const showMetrics = ref(false) // show the metrics panel (price÷MA, b, runs)
+const showRuns = ref(false) // overlay the piecewise-linear run skeleton on the price
+const runHorizon = ref<Horizon>('weekly') // scale (window) driving runs/metrics
 const showSignal = ref(false) // shade under price by the smoothed M/W signal
 const signalPeriod = ref(21) // smoothing window (days) for the composite signal
 const buyThreshold = ref(0.25) // buy-strength (= −composite) above this → green
@@ -41,6 +43,12 @@ const horizonGain = ref(4)
 // Run-detector core knobs: sustainment threshold (≈ uptick fraction a run must
 // clear). Doubles as the breakout-direction leniency in the matcher.
 const sustThresh = ref(0.4)
+// Run sensitivity, presented so higher = more/longer runs. The engine gate is
+// the sustainment threshold a run must clear, so sensitivity = 0.9 − gate.
+const runSensitivity = computed({
+  get: () => +(0.9 - sustThresh.value).toFixed(2),
+  set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
+})
 
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
@@ -85,6 +93,20 @@ const mwResult = computed(() =>
     sustThresh: sustThresh.value,
   }),
 )
+// Piecewise-linear run skeleton: anchor the price at every run boundary and
+// leave the rest null. The chart joins anchors with straight segments, so each
+// run renders as a line at its average slope, continuous across choppy gaps.
+const runOverlay = computed<(number | null)[]>(() => {
+  const out = new Array(prices.value.length).fill(null)
+  const diag = mwResult.value.horizons.find((h) => h.horizon === runHorizon.value)
+  if (!diag) return out
+  for (const r of diag.runs) {
+    out[r.start] = prices.value[r.start]
+    out[r.end] = prices.value[r.end]
+  }
+  return out
+})
+
 const heat = computed(() => {
   const res = mwResult.value
   const h = res.heat
@@ -230,6 +252,22 @@ const fmtUSD = (v: number | null) =>
         Metrics
       </label>
       <label class="checkbox">
+        <input type="checkbox" v-model="showRuns" />
+        Runs overlay
+      </label>
+      <label v-if="showRuns || showMetrics">
+        Run scale
+        <select v-model="runHorizon">
+          <option value="daily">daily</option>
+          <option value="weekly">weekly</option>
+          <option value="monthly">monthly</option>
+        </select>
+      </label>
+      <label v-if="showRuns || showMetrics">
+        Run sensitivity
+        <input type="number" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+      </label>
+      <label class="checkbox">
         <input type="checkbox" v-model="showDiag" />
         Components
       </label>
@@ -260,6 +298,8 @@ const fmtUSD = (v: number | null) =>
       :signal="signal"
       :show-signal="showSignal"
       :buy-threshold="buyThreshold"
+      :run-overlay="runOverlay"
+      :show-runs="showRuns"
       v-model:zoom="zoom"
     />
 
@@ -269,6 +309,7 @@ const fmtUSD = (v: number | null) =>
       :price="prices"
       :ma="ma"
       :result="mwResult"
+      :horizon="runHorizon"
       v-model:zoom="zoom"
     />
 
@@ -288,10 +329,6 @@ const fmtUSD = (v: number | null) =>
       <label>
         Horizon gain
         <input type="number" v-model.number="horizonGain" min="0.5" max="12" step="0.5" />
-      </label>
-      <label>
-        Sustainment
-        <input type="number" v-model.number="sustThresh" min="0" max="0.9" step="0.05" />
       </label>
     </section>
 

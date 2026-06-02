@@ -40,6 +40,11 @@ const props = defineProps<{
   showSignal?: boolean
   /** Buy-strength (= −signal) above this shades green (buy); else grey (hold). */
   buyThreshold?: number
+  /** Per-day price anchored at run boundaries (null between) → piecewise-linear
+   *  run skeleton; each run segment's slope is its average pace. */
+  runOverlay?: (number | null)[]
+  /** Draw the run skeleton over the price when true. */
+  showRuns?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -117,13 +122,24 @@ function buildOption(): echarts.EChartsCoreOption {
       }))
     : []
 
+  // Run skeleton: a continuous piecewise-linear line through the price at each
+  // run boundary (null between). connectNulls joins the anchors with straight
+  // segments, so each run shows as a line at its average slope.
+  const runsOn =
+    !!props.showRuns && !!props.runOverlay && props.runOverlay.length === props.price.length
+
   return {
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: '#e7eaf3' },
     grid: { left: 56, right: 16, top: 48, bottom: 72 },
     legend: {
-      data: ['Price', `MA (${props.maLabel})`, `Bollinger (${props.bbLabel})`],
+      data: [
+        'Price',
+        `MA (${props.maLabel})`,
+        `Bollinger (${props.bbLabel})`,
+        ...(runsOn ? ['Runs'] : []),
+      ],
       top: 8,
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
@@ -252,6 +268,20 @@ function buildOption(): echarts.EChartsCoreOption {
           ? { color: 'rgba(160,170,190,0.2)', width: 1 }
           : { color: '#f7931a', width: 1.5 },
       },
+      // Run skeleton overlay: piecewise-linear line through run-boundary anchors.
+      ...(runsOn
+        ? [
+            {
+              name: 'Runs',
+              type: 'line' as const,
+              data: props.runOverlay,
+              symbol: 'none',
+              connectNulls: true,
+              z: 4,
+              lineStyle: { color: '#22d3ee', width: 2 },
+            },
+          ]
+        : []),
       // Heat overlay: one coloured dot per sample, tinted by the heat score.
       ...(heatOn
         ? [
@@ -324,7 +354,7 @@ onBeforeUnmount(() => {
 
 // Re-render when data or indicator parameters change.
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat, props.signal, props.showSignal, props.buyThreshold],
+  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat, props.signal, props.showSignal, props.buyThreshold, props.runOverlay, props.showRuns],
   render,
 )
 
