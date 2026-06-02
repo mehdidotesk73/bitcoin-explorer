@@ -38,7 +38,35 @@
       (visualMap/line-segment colouring don't bind on a category axis), with a
       "M/W heat" toggle and an explainer tooltip.
 
+- [x] Run/scale metric framework (Price Explorer), replacing the composite-heat
+      subsystem. The engine is now `lib/runs.ts`: `scaleDiag(price, hd)` derives
+      b, the sustained-trend vote, and runs at one continuously-tunable scale.
+      The UI is a metric toggle list — Moving average, Bollinger, Runs overlay
+      (all overlays), and Price ÷ MA, b score, Run slope (separate curves) —
+      each with its own collapsible config; b / runs / run-slope share a "Run
+      parameters" group (log scale slider + sensitivity). Default view is price
+      only. **Removed:** the M/W composite heat tint, the buy/hold signal, and
+      the Components diagnostic (`mwHeat`, `phaseMachine`, `MwHeatDiagnostic`).
+
 ## Next feature — DCA Explorer (its own tab)
+
+> **Branch ordering.** Both the **Indicator setup** and the **DCA Explorer**
+> below are deferred to a follow-up branch, to be started *after* the current
+> metric-framework branch is finished and merged. Tackle **Indicator setup
+> first**, then the DCA Explorer.
+
+### Indicator setup (do first)
+
+The Price Explorer now has a metric-toggle framework: each metric is toggled
+on/off, has its own collapsible config, and run-based metrics (b, runs overlay,
+run slope) share one "Run parameters" group. Next:
+
+- Promote the ad-hoc metric list into a small registry/spec (id, label, kind =
+  overlay | curve, param schema, shared-param group) so metrics + their configs
+  render from data instead of hand-written rows.
+- Persist enabled metrics + params (localStorage / URL) so a view is shareable.
+- Tidy defaults and grouping; make adding a new indicator a one-entry change.
+- This registry is also what the DCA Explorer's metric picker reads from.
 
 **Goal.** Let the user pick a *metric* to drive a dollar-cost-averaging
 strategy, tune that metric's knobs, and compare the resulting ROI against a

@@ -2,11 +2,9 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
-import { mwHeat, scaleDiag } from '../lib/mwheat'
-import { logDebug } from '../debug'
+import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
-import MwHeatDiagnostic from './MwHeatDiagnostic.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -18,19 +16,39 @@ const props = defineProps<{
 
 const emit = defineEmits<{ refresh: [] }>()
 
-// --- Adjustable parameters --------------------------------------------------
+// --- Metric toggles (default view = price only) -----------------------------
+const showMa = ref(false) // MA overlay
+const showBb = ref(false) // Bollinger overlay
+const showRuns = ref(false) // run-skeleton overlay
+const showRatio = ref(false) // price ÷ MA curve
+const showB = ref(false) // b-score curve
+const showRunSlope = ref(false) // run-slope curve
+
+// Per-metric config disclosure state.
+const cfgMa = ref(false)
+const cfgBb = ref(false)
+const cfgRatio = ref(false)
+const cfgRun = ref(false)
+
+// Run-based metrics (b, runs overlay, run slope) share these parameters.
+const anyRun = computed(() => showRuns.value || showB.value || showRunSlope.value)
+const anyCurve = computed(() => showRatio.value || showB.value || showRunSlope.value)
+
+// --- Metric parameters ------------------------------------------------------
+// MA overlay.
 const maPeriod = ref(20)
 const maUnit = ref<PeriodUnit>('day')
+// Bollinger overlay.
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
-const showHeat = ref(false) // tint the price line by the M/W heat score
-const showHeatHelp = ref(false)
-const showDiag = ref(false) // show the heat-components diagnostic chart
-const showMetrics = ref(false) // show the metrics panel (price÷MA, b, runs)
-const showRuns = ref(false) // overlay the piecewise-linear run skeleton on the price
-// Run scale is a continuous (log) window in days. The slider position 0–100 maps
-// to hd ∈ [1, 1500]; the label snaps to the nearest named scale below.
+// Price ÷ MA uses a long, slow baseline (like the Mechanics tab's 4yr MA) so the
+// ratio traces whole cycles instead of hugging 1 the way a short MA does.
+const ratioMaDays = ref(1460) // 4 years
+
+// Shared run params. Scale is a continuous (log) window in days: the slider
+// position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
+// named scale below.
 const RUN_SCALES = [
   { name: 'daily', hd: 1 },
   { name: 'weekly', hd: 5 },
@@ -41,7 +59,7 @@ const RUN_SCALES = [
 ]
 const RUN_SCALE_MAX = 1500
 const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
-const runScaleT = ref(tForHd(20)) // default: monthly
+const runScaleT = ref(tForHd(31)) // default scale ≈ 31d
 const runScaleDays = computed(() =>
   Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
 )
@@ -58,38 +76,15 @@ const runScaleLabel = computed(() => {
   }
   return `${best.name} · ${hd}d`
 })
-// Price ÷ MA in the metrics panel uses a long, slow baseline (like the
-// Mechanics tab's 4yr MA) so the ratio traces whole cycles instead of hugging 1
-// the way a short indicator MA does.
-const ratioMaDays = ref(1460) // 4 years
-const showSignal = ref(false) // shade under price by the smoothed M/W signal
-const signalPeriod = ref(21) // smoothing window (days) for the composite signal
-const buyThreshold = ref(0.25) // buy-strength (= −composite) above this → green
-const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
-
-// Live M/W heat tuning knobs (spec §11.5 fast-iteration loop).
-const wDaily = ref(0.15)
-const wWeekly = ref(0.55)
-const wMonthly = ref(0.3)
-const horizonGain = ref(4)
-// Run-detector core knobs: sustainment threshold (≈ uptick fraction a run must
-// clear). Doubles as the breakout-direction leniency in the matcher.
-const sustThresh = ref(0.1) // default run sensitivity 0.8 (gate = 0.9 − sensitivity)
-// Run sensitivity, presented so higher = more/longer runs. The engine gate is
-// the sustainment threshold a run must clear, so sensitivity = 0.9 − gate.
+// Sustainment gate a run must clear. Presented as sensitivity (higher = more /
+// longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.2 → gate 0.7.
+const sustThresh = ref(0.7)
 const runSensitivity = computed({
   get: () => +(0.9 - sustThresh.value).toFixed(2),
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
 })
 
-const MW_HEAT_HELP =
-  'M/W heat colours the price by how it oscillates around its moving average. ' +
-  'It builds a smoothed price-vs-MA oscillator (taming sharp zigzags), then ' +
-  'matches each window against the W / M shape: blue = W-bottom (two dips ' +
-  'below the MA with a recovery between → bullish), red = M-top (two pushes ' +
-  'above the MA, second weaker → bearish). Stronger, cleaner oscillations ' +
-  'colour more boldly; flat or choppy stretches stay neutral. Heuristic only — ' +
-  'not financial advice.'
+const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // Data is daily, so week/month periods just scale the sample count.
 type PeriodUnit = 'day' | 'week' | 'month'
@@ -116,19 +111,8 @@ const ma = computed(() => sma(prices.value, maDays.value))
 const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
-// Multi-scale M/W price-heat: blends daily/weekly/monthly lenses via atanh
-// pooling. +1 = M (hot/top), −1 = W (cool/bottom). The Bollinger period (in
-// days) drives N — every horizon scales its own window from it.
-const mwResult = computed(() =>
-  mwHeat(prices.value, {
-    N: Math.max(5, bbPeriod.value),
-    weights: [wDaily.value, wWeekly.value, wMonthly.value],
-    horizonGain: horizonGain.value,
-    sustThresh: sustThresh.value,
-  }),
-)
-// Runs/metrics at the selected continuous scale (separate from the 3-horizon
-// composite). Sensitivity and the Bollinger N are shared with the heat engine.
+
+// Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
   scaleDiag(prices.value, runScaleDays.value, {
     N: Math.max(5, bbPeriod.value),
@@ -147,59 +131,6 @@ const runOverlay = computed<(number | null)[]>(() => {
   }
   return out
 })
-
-const heat = computed(() => {
-  const res = mwResult.value
-  const h = res.heat
-  // Diagnostic: distribution + per-horizon + a spot-check at the latest day.
-  let min = Infinity
-  let max = -Infinity
-  let nonZero = 0
-  let absSum = 0
-  for (const v of h) {
-    if (v < min) min = v
-    if (v > max) max = v
-    if (Math.abs(v) > 0.02) nonZero++
-    absSum += Math.abs(v)
-  }
-  logDebug(
-    `heat: n=${h.length} min=${min.toFixed(2)} max=${max.toFixed(2)} ` +
-      `mean|h|=${(absSum / (h.length || 1)).toFixed(2)} nonZero=${nonZero}`,
-  )
-  const t = h.length - 1
-  if (t >= 0) {
-    const per = res.horizons
-      .map((hz) => `${hz.horizon[0]}=${(hz.heat[t] ?? 0).toFixed(2)}`)
-      .join(' ')
-    logDebug(`heat@last: composite=${h[t].toFixed(2)} [${per}]`)
-    for (const hz of res.horizons) {
-      logDebug(
-        `  ${hz.horizon}: b=${(hz.b[t] ?? 0).toFixed(2)} ` +
-          `tau=${hz.tau[t].toFixed(2)} vote=${hz.vote[t].toFixed(2)} H=${hz.heat[t].toFixed(2)}`,
-      )
-    }
-    // Where do the strongest M (hot) and W (cool) signals land? Compare these
-    // dates against the hand-annotated patterns.
-    let iMax = 0
-    let iMin = 0
-    for (let i = 0; i < h.length; i++) {
-      if (h[i] > h[iMax]) iMax = i
-      if (h[i] < h[iMin]) iMin = i
-    }
-    logDebug(
-      `heat extremes: strongest M ${h[iMax].toFixed(2)} @ ${dates.value[iMax]} · ` +
-        `strongest W ${h[iMin].toFixed(2)} @ ${dates.value[iMin]}`,
-    )
-  }
-  return h
-})
-
-// Smoothed composite M/W signal: a trailing moving average of the heat score,
-// taming the sharp ±1 swings into a slow buy/sell trend. Sign follows the
-// engine: negative = W (bottom, bullish/buy), positive = M (top, bearish/sell).
-const signal = computed(() =>
-  sma(heat.value, Math.max(1, signalPeriod.value)).map((v) => v ?? 0),
-)
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -237,89 +168,111 @@ const fmtUSD = (v: number | null) =>
       <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <section class="controls">
-      <label>
-        MA period
-        <span class="period">
-          <input type="number" v-model.number="maPeriod" min="1" max="400" />
-          <select v-model="maUnit">
-            <option value="day">days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </span>
-      </label>
-      <label>
-        Bollinger period
-        <span class="period">
-          <input type="number" v-model.number="bbPeriod" min="1" max="400" />
-          <select v-model="bbUnit">
-            <option value="day">days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </span>
-      </label>
-      <label>
-        Bollinger σ ×
-        <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showHeat" />
-        M/W heat
-        <span
-          class="help"
-          :title="MW_HEAT_HELP"
-          @click="showHeatHelp = !showHeatHelp"
-        >ⓘ</span>
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showSignal" />
-        Buy/hold signal
-      </label>
-      <label v-if="showSignal">
-        Signal smoothing
-        <span class="period">
-          <input type="number" v-model.number="signalPeriod" min="1" max="200" />
-          <span class="unit">days</span>
-        </span>
-      </label>
-      <label v-if="showSignal">
-        Buy threshold
-        <input type="number" v-model.number="buyThreshold" min="0" max="1" step="0.05" />
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showMetrics" />
-        Metrics
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showRuns" />
-        Runs overlay
-      </label>
-      <label v-if="showRuns || showMetrics" class="slider">
-        Run scale
-        <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-        <span class="val">{{ runScaleLabel }}</span>
-      </label>
-      <label v-if="showRuns || showMetrics" class="slider">
-        Run sensitivity
-        <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-        <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-      </label>
-      <label v-if="showMetrics">
-        Price ÷ MA window
-        <span class="period">
-          <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
-          <span class="unit">days</span>
-        </span>
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showDiag" />
-        Components
-      </label>
-    </section>
+    <section class="controls metrics-menu">
+      <!-- Overlay: moving average -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showMa" /> Moving average</label>
+          <button class="cfg" :class="{ open: cfgMa }" @click="cfgMa = !cfgMa" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgMa" class="metric-cfg">
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="maPeriod" min="1" max="400" />
+              <select v-model="maUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+        </div>
+      </div>
 
-    <p v-if="showHeatHelp" class="heat-help">{{ MW_HEAT_HELP }}</p>
+      <!-- Overlay: Bollinger bands -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showBb" /> Bollinger bands</label>
+          <button class="cfg" :class="{ open: cfgBb }" @click="cfgBb = !cfgBb" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgBb" class="metric-cfg">
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+              <select v-model="bbUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+          <label>
+            σ ×
+            <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Overlay: run skeleton -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showRuns" /> Runs overlay</label>
+        </div>
+      </div>
+
+      <!-- Curve: price ÷ MA -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
+          <button class="cfg" :class="{ open: cfgRatio }" @click="cfgRatio = !cfgRatio" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgRatio" class="metric-cfg">
+          <label>
+            MA window
+            <span class="period">
+              <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
+              <span class="unit">days</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Curve: b score -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showB" /> b score</label>
+        </div>
+      </div>
+
+      <!-- Curve: run slope -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showRunSlope" /> Run slope</label>
+        </div>
+      </div>
+
+      <!-- Shared params for the run-based metrics -->
+      <div class="metric shared" v-if="anyRun">
+        <div class="metric-head">
+          <span class="shared-label">Run parameters</span>
+          <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgRun" class="metric-cfg">
+          <label class="slider">
+            Scale
+            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+            <span class="val">{{ runScaleLabel }}</span>
+          </label>
+          <label class="slider">
+            Sensitivity
+            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+          </label>
+        </div>
+      </div>
+    </section>
 
     <section class="ranges">
       <span class="muted">Graphed range:</span>
@@ -339,51 +292,24 @@ const fmtUSD = (v: number | null) =>
       :lower="bands.lower"
       :ma-label="maLabel"
       :bb-label="bbLabel"
-      :heat="heat"
-      :show-heat="showHeat"
-      :signal="signal"
-      :show-signal="showSignal"
-      :buy-threshold="buyThreshold"
+      :show-ma="showMa"
+      :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRuns"
       v-model:zoom="zoom"
     />
 
     <MetricsPanel
-      v-if="showMetrics && dates.length"
+      v-if="anyCurve && dates.length"
       :dates="dates"
       :price="prices"
       :ma="ratioMa"
+      :ma-label="ratioMaLabel"
       :diag="runDiag"
       :scale-label="runScaleLabel"
-      :ma-label="ratioMaLabel"
-      v-model:zoom="zoom"
-    />
-
-    <section v-if="showDiag" class="controls tune">
-      <label>
-        Daily weight
-        <input type="number" v-model.number="wDaily" min="0" max="1" step="0.05" />
-      </label>
-      <label>
-        Weekly weight
-        <input type="number" v-model.number="wWeekly" min="0" max="1" step="0.05" />
-      </label>
-      <label>
-        Monthly weight
-        <input type="number" v-model.number="wMonthly" min="0" max="1" step="0.05" />
-      </label>
-      <label>
-        Horizon gain
-        <input type="number" v-model.number="horizonGain" min="0.5" max="12" step="0.5" />
-      </label>
-    </section>
-
-    <MwHeatDiagnostic
-      v-if="showDiag && dates.length"
-      :dates="dates"
-      :result="mwResult"
-      :signal="signal"
+      :show-ratio="showRatio"
+      :show-b="showB"
+      :show-run-slope="showRunSlope"
       v-model:zoom="zoom"
     />
 
@@ -424,6 +350,47 @@ const fmtUSD = (v: number | null) =>
   align-items: center;
   margin-bottom: 0.75rem;
 }
+.metrics-menu {
+  align-items: flex-start;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.55rem;
+  background: var(--bg-elev);
+}
+.metric-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.shared-label {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.cfg {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+}
+.cfg.open {
+  color: var(--accent-blue);
+}
+.metric-cfg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
 .controls label {
   display: flex;
   flex-direction: column;
@@ -440,7 +407,6 @@ const fmtUSD = (v: number | null) =>
   gap: 0.35rem;
   color: var(--text);
   font-size: 0.8rem;
-  align-self: flex-end;
 }
 .controls .checkbox input {
   width: auto;
@@ -457,28 +423,6 @@ const fmtUSD = (v: number | null) =>
   font-variant-numeric: tabular-nums;
   color: var(--text);
   min-width: 2.2rem;
-}
-.help {
-  cursor: help;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  width: 1.1rem;
-  height: 1.1rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-}
-.heat-help {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
-  margin: 0 0 0.75rem;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 .period {
   display: flex;
