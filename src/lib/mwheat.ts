@@ -83,6 +83,13 @@ export const DEFAULT_MW_PARAMS: MwHeatParams = {
   sigmaFloorFrac: 0.001,
 }
 
+/** A sustained run: [start, end] inclusive day indices, dir +1 up / −1 down. */
+export interface MwHeatRun {
+  start: number
+  end: number
+  dir: 1 | -1
+}
+
 /** Per-horizon intermediate signals, surfaced for the diagnostic view. */
 export interface MwHeatHorizonDiag {
   horizon: Horizon
@@ -97,6 +104,7 @@ export interface MwHeatHorizonDiag {
   tau: number[] // trend operator ∈ [−1, 1]
   vote: number[] // sustained-trend vote ∈ [−1, 1]
   heat: number[] // single-horizon H_s ∈ (−1, 1)
+  runs: MwHeatRun[] // sustainment-gated runs the matcher reads
 }
 
 export interface MwHeatResult {
@@ -201,6 +209,32 @@ function rollingVote(tau: number[], voteWindow: number): number[] {
     out[i] = (up / count) * 2 - 1
   }
   return out
+}
+
+/**
+ * Segment the vote signal into runs: maximal stretches where sustainment clears
+ * the threshold in one direction. This is exactly the gate the phase emissions
+ * use (sustThresh), so the runs shown match what the matcher reads. Sub-threshold
+ * (choppy) days break runs and are left unsegmented.
+ */
+function segmentRuns(vote: number[], thresh: number): MwHeatRun[] {
+  const runs: MwHeatRun[] = []
+  let cur: MwHeatRun | null = null
+  for (let i = 0; i < vote.length; i++) {
+    const dir = vote[i] > thresh ? 1 : vote[i] < -thresh ? -1 : 0
+    if (dir === 0) {
+      if (cur) runs.push(cur)
+      cur = null
+      continue
+    }
+    if (cur && cur.dir === dir) cur.end = i
+    else {
+      if (cur) runs.push(cur)
+      cur = { start: i, end: i, dir }
+    }
+  }
+  if (cur) runs.push(cur)
+  return runs
 }
 
 // Run-template emission tables for the W, expressed purely in terms of the input
@@ -325,6 +359,7 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
 
     const tau = trendOperator(smoothed, P.beta * hd)
     const vote = rollingVote(tau, P.gamma * hd)
+    const runs = segmentRuns(vote, P.sustThresh)
 
     // The machine matches the W run-template; M is the same template on −b.
     const fW = phaseMachine(bFilled, vote, P)
@@ -340,7 +375,7 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
       heat[i] = ma[i] == null ? 0 : clamp(Math.tanh(P.horizonGain * (fM[i] - fW[i])), -1, 1)
     }
 
-    horizons.push({ horizon, hd, bandWindow, k, ma, upper, lower, smoothed, b, tau, vote, heat })
+    horizons.push({ horizon, hd, bandWindow, k, ma, upper, lower, smoothed, b, tau, vote, heat, runs })
   }
 
   // Composite via atanh evidence pooling: agreeing lenses reinforce.

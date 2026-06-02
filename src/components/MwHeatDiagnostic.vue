@@ -2,11 +2,14 @@
 import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { MwHeatResult, Horizon } from '../lib/mwheat'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, CanvasRenderer])
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer])
+
+const UP_RUN = 'rgba(43, 212, 167, 0.16)' // sustained up-run shading
+const DOWN_RUN = 'rgba(247, 75, 75, 0.14)' // sustained down-run shading
 
 const props = defineProps<{
   dates: string[]
@@ -40,6 +43,15 @@ function buildOption(): echarts.EChartsCoreOption {
   // Panel 1: b-space for the selected horizon (0 = MA, ±1 = bands).
   // Panel 2: τ and vote for the selected horizon (−1..1).
   // Panel 3: per-horizon heat + composite (−1..1).
+  // Shade panel 1 by sustainment run: green = up-run, red = down-run, gaps = chop.
+  const runArea = {
+    silent: true,
+    data: d.runs.map((r) => [
+      { xAxis: cats[r.start], itemStyle: { color: r.dir > 0 ? UP_RUN : DOWN_RUN } },
+      { xAxis: cats[r.end] },
+    ]),
+  }
+
   const perHeat = props.result.horizons.map((hz) => ({
     name: `${hz.horizon} H`,
     type: 'line' as const,
@@ -78,6 +90,7 @@ function buildOption(): echarts.EChartsCoreOption {
         name: 'b', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: d.b, symbol: 'none',
         lineStyle: { color: '#4f8ef7', width: 1.5 },
         markLine: { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' }, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] },
+        markArea: runArea,
       },
       { name: 'τ', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.tau, symbol: 'none', lineStyle: { color: '#f7931a', width: 1 } },
       { name: 'vote', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.vote, symbol: 'none', lineStyle: { color: '#2bd4a7', width: 1.5 } },
@@ -133,10 +146,12 @@ watch(() => [props.dates, props.result, horizon.value, props.zoom], render)
     </div>
     <div ref="el" class="diag-chart"></div>
     <p class="muted note">
-      Top: band position b (0 = MA, ±1 = bands) — the signal the phase machine
-      reads. Middle: τ (fast trend) vs vote (sustained trend). Bottom: each
-      horizon's heat + the white composite. M/W shapes should be visible as
-      humps/dips in b.
+      Top: band position b (0 = MA, ±1 = bands), shaded by sustainment run —
+      <span class="swatch up">green</span> = sustained up-run,
+      <span class="swatch down">red</span> = sustained down-run, gaps = chop. A W
+      is a down-run below the MA, up, a down-run crossing to below the MA, then
+      the breakout up-run. Middle: τ (fast trend) vs vote (sustained trend).
+      Bottom: each horizon's heat + the white composite.
     </p>
   </div>
 </template>
@@ -172,5 +187,18 @@ watch(() => [props.dates, props.result, horizon.value, props.zoom], render)
 .note {
   line-height: 1.45;
   margin-top: 0.3rem;
+}
+.swatch {
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.swatch.up {
+  background: rgba(43, 212, 167, 0.28);
+  color: #2bd4a7;
+}
+.swatch.down {
+  background: rgba(247, 75, 75, 0.26);
+  color: #f74b4b;
 }
 </style>
