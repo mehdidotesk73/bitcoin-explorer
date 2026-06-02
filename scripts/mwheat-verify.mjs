@@ -99,5 +99,35 @@ function randomWalk(n = 600, seed = 1, drift = 0) {
   ok('ladder: ideal W reaches strong negative (< −0.3)', troughW < -0.3, `troughW=${troughW.toFixed(3)}`)
 }
 
+// --- Three-down-run W (the spec'd run-template) → strong negative heat -------
+// Build a price series whose b-trace is DR1(below) UR1 DR2(cross) UR2 DR3(above)
+// UR3, i.e. the exact "two troughs in the lower band" W (see wpattern-example).
+{
+  const ramp = (from, to, days) =>
+    Array.from({ length: days }, (_, i) => from + ((to - from) * (i + 1)) / days)
+  // b-trace legs (monotone runs ⇒ ~100% sustained in-direction).
+  const bTrace = [
+    -0.2,
+    ...ramp(-0.2, -1.0, 12), // DR1: into lower band (trough 1)
+    ...ramp(-1.0, 0.8, 14), //  UR1
+    ...ramp(0.8, -0.9, 16), //  DR2: cross upper→lower (trough 2)
+    ...ramp(-0.9, 0.7, 14), //  UR2
+    ...ramp(0.7, 0.2, 8), //    DR3: shallow, above MA
+    ...ramp(0.2, 1.1, 10), //   UR3: breakout
+  ]
+  // Realise as price; flat MA ≈ 100 so engine-b tracks the designed b-trace.
+  const pre = randomWalk(120, 23)
+  const base = pre[pre.length - 1]
+  const wPrice = [...pre, ...bTrace.map((bv) => base * (1 + 0.08 * bv))]
+  const res = mwHeat(wPrice, params)
+  const region = res.heat.slice(pre.length)
+  const troughW = Math.min(...region)
+  // And the daily lens (the comparable scale for ~75-day legs) should see it.
+  const daily = res.horizons.find((h) => h.horizon === 'daily')
+  const dailyTrough = Math.min(...daily.heat.slice(pre.length))
+  ok('run-template: spec W reaches strong negative (< −0.3)', troughW < -0.3, `troughW=${troughW.toFixed(3)}`)
+  ok('run-template: daily lens fires on the W (< −0.3)', dailyTrough < -0.3, `dailyTrough=${dailyTrough.toFixed(3)}`)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

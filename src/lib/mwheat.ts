@@ -3,10 +3,25 @@
 // Three horizons (daily/weekly/monthly), each a self-consistent Bollinger lens.
 // Per horizon: smooth the PRICE (causal EMA), express it in band-position
 // b-space, derive a trend operator τ and a sustained-trend vote, then run a soft
-// phase-machine DP that matches the 7-phase M sequence (W = the same matcher on
-// −b). Horizon scores are pooled via atanh (agreement reinforces, conflict
-// cancels) into a single H[t] ∈ (−1, 1): +1 = strong M (hot), −1 = strong W
-// (cool), 0 = neutral.
+// phase-machine DP that segments the b-trace into RUNS and matches the W (and,
+// on −b, the M) run-template. Horizon scores are pooled via atanh (agreement
+// reinforces, conflict cancels) into a single H[t] ∈ (−1, 1): +1 = strong M
+// (hot), −1 = strong W (cool), 0 = neutral.
+//
+// Run model (the core logic). A "run" is a sustained move: sustainment is the
+// share of upticks (or downticks) over a trailing window — ≳70% one direction
+// reads as a sustained run. The phase machine's phases ARE runs, gated on
+// sustainment × band position, so the Viterbi DP degenerates to run-matching.
+// The W is three down-runs that ascend through the bands, with the two forced
+// up-runs between them landing the two W troughs (see scripts/wpattern-example):
+//   DR1  down, entirely below MA  → trough 1 (lower band)
+//   UR1  up   (forced connector)  → peak 1
+//   DR2  down, crosses upper→lower → trough 2 (lower band)   [split at the MA]
+//   UR2  up   (forced connector)  → peak 2
+//   DR3  down, entirely above MA  → shallow higher-low
+//   UR3  up   (breakout)
+// M is the same template on −b. Sustainment is measured per-horizon over γ·hd,
+// so patterns at a scale are built only from runs sustained at that scale.
 //
 // Causal by construction: H[t] depends only on data at times ≤ t. The only
 // filters are trailing/one-sided (causal EMA, trailing windows).
@@ -34,10 +49,13 @@ export interface MwHeatParams {
   gamma: number // vote window = γ × hd
   lFactor: number // lookback = L_factor × N × hd (reserved; DP is single-pass)
   // Phase-machine fuzzy widths (in b-units / τ-units).
-  tauMA: number // "near MA" zone half-width
-  tauBand: number // "near band" zone half-width
-  tauTurn: number // "τ ≈ 0" turning-point zone half-width
-  delta: number // crossing-detection lag (days)
+  tauMA: number // "above/below MA" sigmoid half-width (b-units)
+  tauBand: number // "near band" zone half-width (reserved)
+  tauTurn: number // "τ ≈ 0" turning-point zone half-width (reserved)
+  delta: number // crossing-detection lag (days, reserved)
+  // Run sustainment gate, in vote-units (vote = 2·uptick_fraction − 1 ∈ [−1,1]).
+  sustThresh: number // vote level a run must clear to read as "sustained" (0.4 ≈ 70% upticks)
+  sustWidth: number // sigmoid softness of that threshold
   // Composite.
   gain: number // global gain G on the atanh sum
   horizonGain: number // saturating gain applied to each horizon's f_M − f_W
@@ -57,6 +75,8 @@ export const DEFAULT_MW_PARAMS: MwHeatParams = {
   tauBand: 0.5,
   tauTurn: 0.35,
   delta: 1,
+  sustThresh: 0.4,
+  sustWidth: 0.2,
   gain: 1.3,
   horizonGain: 4,
   epsilon: 0.001,
@@ -85,7 +105,6 @@ export interface MwHeatResult {
 }
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
-const relu = (x: number) => (x > 0 ? x : 0)
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
 const atanh = (x: number) => 0.5 * Math.log((1 + x) / (1 - x))
 
@@ -184,99 +203,56 @@ function rollingVote(tau: number[], voteWindow: number): number[] {
   return out
 }
 
-// Phase-machine emission tables for the M template, expressed purely in terms of
-// the input arrays (b, τ, vote). The W detector is this matcher run on the
-// negated arrays — f_W(b) ≡ f_M(−b).
+// Run-template emission tables for the W, expressed purely in terms of the input
+// arrays (b, vote). The M detector is this matcher run on the negated arrays —
+// f_M(b) ≡ f_W(−b). Each phase IS a run: a sustainment gate (share of up/down
+// ticks over the vote window) times a band-position gate.
 const NUM_PHASES = 7
-// Partial-credit weight per phase: monotone, peaks at the completing phase P6.
-const PHASE_WEIGHT = [0.3, 0.45, 0.55, 0.7, 0.8, 0.9, 1.0]
+// Per-phase run direction: +1 = up-run (wants sustained up), −1 = down-run.
+const RUN_DIR = [-1, +1, -1, -1, +1, -1, +1] as const
+// Per-phase band requirement: −1 = below MA, +1 = above MA, 0 = connector (any).
+const RUN_BAND = [-1, 0, +1, -1, 0, +1, 0] as const
+// Partial-credit weight per phase: monotone, peaks at the completing breakout P6.
+const PHASE_WEIGHT = [0.3, 0.4, 0.5, 0.62, 0.74, 0.87, 1.0]
 
-/**
- * Position membership of day t for phase p of the M template, in b-space.
- * `bp` is b at t−Δ (for crossing tests), `bPrev` is b at t−1 (for P5 slope).
- */
-function posMembership(
-  p: number,
-  b: number,
-  bDelta: number,
-  bPrev: number,
-  P: MwHeatParams,
-): number {
+/** Band-position membership of day t for phase p (above/below the MA). */
+function posMembership(p: number, b: number, P: MwHeatParams): number {
+  const band = RUN_BAND[p]
+  if (band === 0) return 1 // connector up-run: no band constraint
   const above = sigmoid(b / P.tauMA)
-  const below = 1 - above
-  const aboveDelta = sigmoid(bDelta / P.tauMA)
-  const belowDelta = 1 - aboveDelta
-  const nearUpper = Math.exp(-(((b - 1) / P.tauBand) ** 2))
-  switch (p) {
-    case 0:
-      return below // below MA
-    case 1:
-      return above * belowDelta * sigmoid((b - bDelta) / 0.1) // cross up
-    case 2:
-      return nearUpper // near upper band
-    case 3:
-      return below * aboveDelta * sigmoid((bDelta - b) / 0.1) // cross down
-    case 4:
-      return below // trough below MA
-    case 5:
-      return below * sigmoid((b - bPrev) / 0.05) // below MA but rising
-    case 6:
-      return below // falling again, still below
-    default:
-      return 0
-  }
+  return band > 0 ? above : 1 - above
 }
 
-/** Trend membership of day t for phase p of the M template. */
-function trendMembership(p: number, tau: number, vote: number, P: MwHeatParams): number {
-  const turn = Math.exp(-((tau / P.tauTurn) ** 2))
-  switch (p) {
-    case 0:
-      return relu(vote)
-    case 1:
-      return relu(vote)
-    case 2:
-      return turn
-    case 3:
-      return relu(-vote)
-    case 4:
-      return turn
-    case 5:
-      return relu(vote)
-    case 6:
-      return relu(-vote)
-    default:
-      return 0
-  }
+/**
+ * Sustainment membership of day t for phase p: how strongly the trailing window
+ * reads as a sustained run in the phase's direction. vote = 2·uptick_fraction−1,
+ * so a down-run wants −vote past the threshold, an up-run wants +vote past it.
+ */
+function trendMembership(p: number, vote: number, P: MwHeatParams): number {
+  const dir = RUN_DIR[p]
+  return sigmoid((dir * vote - P.sustThresh) / Math.max(1e-6, P.sustWidth))
 }
 
 /**
  * Soft Viterbi forward pass scoring how well the window ending at each day tells
- * the M story. Returns f_M[t] ∈ [0, 1]. Single forward pass: A[0] restarts each
- * day, advances move exactly one phase, dwelling allowed; the path score is the
- * geometric mean of emissions (length-normalised, log-space).
+ * the W run-story. Returns f_W[t] ∈ [0, 1]. Single forward pass: A[0] restarts
+ * each day, advances move exactly one phase, dwelling allowed (a run lasts many
+ * days); the path score is the geometric mean of emissions (length-normalised,
+ * log-space).
  */
-function phaseMachine(
-  b: number[],
-  tau: number[],
-  vote: number[],
-  P: MwHeatParams,
-): number[] {
+function phaseMachine(b: number[], vote: number[], P: MwHeatParams): number[] {
   const n = b.length
   const out = new Array(n).fill(0)
   const NEG = -Infinity
   // logA[p], len[p] for the previous day.
   let prevLog = new Array(NUM_PHASES).fill(NEG)
   let prevLen = new Array(NUM_PHASES).fill(0)
-  const d = Math.max(1, Math.round(P.delta))
   for (let t = 0; t < n; t++) {
     const curLog = new Array(NUM_PHASES).fill(NEG)
     const curLen = new Array(NUM_PHASES).fill(0)
-    const bDelta = t >= d ? b[t - d] : b[t]
-    const bPrev = t >= 1 ? b[t - 1] : b[t]
     for (let p = 0; p < NUM_PHASES; p++) {
       const emis = clamp(
-        posMembership(p, b[t], bDelta, bPrev, P) * trendMembership(p, tau[t], vote[t], P),
+        posMembership(p, b[t], P) * trendMembership(p, vote[t], P),
         P.epsilon,
         1,
       )
@@ -348,11 +324,11 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
     const tau = trendOperator(smoothed, P.beta * hd)
     const vote = rollingVote(tau, P.gamma * hd)
 
-    const fM = phaseMachine(bFilled, tau, vote, P)
+    // The machine matches the W run-template; M is the same template on −b.
+    const fW = phaseMachine(bFilled, vote, P)
     const negB = bFilled.map((v) => -v)
-    const negTau = tau.map((v) => -v)
     const negVote = vote.map((v) => -v)
-    const fW = phaseMachine(negB, negTau, negVote, P)
+    const fM = phaseMachine(negB, negVote, P)
 
     const heat = new Array(n).fill(0)
     for (let i = 0; i < n; i++) {
