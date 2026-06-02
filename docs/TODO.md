@@ -66,13 +66,36 @@ run slope) share one "Run parameters" group. Next:
 - Tidy defaults and grouping; make adding a new indicator a one-entry change.
 - This registry is also what a future strategy-explorer's metric picker reads.
 
-## Later — buying-strategy explorer (fresh design)
+## Later — Hodl Explorer (after Indicator setup)
 
-A separate feature (not "DCA explorer", name TBD) that uses the metrics as
-drivers for a buying strategy and compares outcomes. To be designed from
-scratch against the owner's updated vision — do **not** revive the earlier
-heat-band DCA prototype (see `docs/experience.md`). Deferred until the
-Indicator-setup branch lands.
+The owner's buying-strategy feature (replaces the retired DCA Explorer; **do
+not** revive the heat-band prototype — see `docs/experience.md`). Builds on the
+Indicator-setup metric registry, so it comes after that branch lands.
+
+**Idea.** Seed a set of purchase dates over the price history, then live-simulate
+"buy a uniform amount on each seeded date" and compare it against a baseline of
+"buy a uniform amount on every day in the past X days."
+
+### Seeding the purchase dates
+- **Manual** — the user picks / adds individual dates (and can remove them).
+- **Pattern spreading via indicators** — an indicator (from the metric registry)
+  generates dates by spreading purchases across the days that meet a condition
+  (e.g. buy where price ÷ MA < T, or where a run is in a chosen state). The
+  indicator's params come from its registry config.
+- **Combination** — manual dates plus indicator-spread dates, merged.
+
+### Live simulation + comparison
+- **Strategy:** uniform amount on each seeded date.
+- **Baseline:** uniform amount on every day over the trailing X days (X is a knob).
+- **Compare (current worth & more):** value today, **cost basis** (avg buy
+  price), BTC accumulated, ROI %, number of buys / amount deployed, and other
+  side-by-side stats. Recompute live as the seeding or params change.
+
+### Notes
+- Reuse `useBitcoinData`; keep the simulation a pure function in `src/lib/` over
+  the fetched arrays (causal where relevant), components thin.
+- Indicator-driven seeding is exactly why **Indicator setup comes first** — the
+  explorer reads the available drivers and their configs from that registry.
 
 ## Housekeeping / ideas
 

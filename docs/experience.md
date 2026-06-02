@@ -60,8 +60,9 @@ over a rolling horizon (`dcaScore`/`dcaSweep`/`dcaTimeline` in `indicators.ts`,
 plus sweep/timeline charts). **Why it didn't work (known):** built entirely on
 the M/W heat engine that was later removed, so the driver no longer exists; and
 the framing (growth-multiple vs uniform) doesn't match the owner's updated
-vision. Superseded by a future, freshly-designed strategy explorer — **do not
-revive the code**, but the *mechanics below* are worth keeping as prior art.
+vision. Superseded by the freshly-designed **Hodl Explorer** (see
+`docs/TODO.md`) — **do not revive the code**, but the *mechanics below* are
+worth keeping as prior art.
 
 **Scoring idea (causal, scale-free).** Judge a buying *method* by how cheaply it
 bought, relative to buying every day, measured at a later vantage point — never
