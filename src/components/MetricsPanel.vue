@@ -22,6 +22,8 @@ const props = defineProps<{
   result: MwHeatResult
   /** Which horizon's b / runs to show (price ÷ MA uses the chart's own MA). */
   horizon: Horizon
+  /** Human label for the ratio's MA window (e.g. "4.0yr"). */
+  maLabel: string
   /** Graphed-range window [startPercent, endPercent] synced across the tab. */
   zoom: [number, number]
 }>()
@@ -87,7 +89,7 @@ function buildOption(): echarts.EChartsCoreOption {
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,27,42,0.95)', borderColor: '#36425f', textStyle: { color: '#e7eaf3' } },
     axisPointer: { link: [{ xAxisIndex: 'all' }], lineStyle: { color: '#8b94ac', type: 'dashed' } },
     title: [
-      { ...titleBase, top: S[0], text: 'Price ÷ MA  (log)    > 1 = above the moving average · < 1 = below (oversold)' },
+      { ...titleBase, top: S[0], text: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)` },
       { ...titleBase, top: S[1], text: `b = band position · shaded by run (green up · red down · gaps = chop)   (${d.horizon})` },
       { ...titleBase, top: S[2], text: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${d.horizon})` },
     ],
@@ -160,7 +162,7 @@ onBeforeUnmount(() => {
   resizeObserver.disconnect()
   chart.value?.dispose()
 })
-watch(() => [props.dates, props.price, props.ma, props.result, props.horizon, props.zoom], render)
+watch(() => [props.dates, props.price, props.ma, props.result, props.horizon, props.maLabel, props.zoom], render)
 </script>
 
 <template>

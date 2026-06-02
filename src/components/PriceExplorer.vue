@@ -30,6 +30,10 @@ const showDiag = ref(false) // show the heat-components diagnostic chart
 const showMetrics = ref(false) // show the metrics panel (price÷MA, b, runs)
 const showRuns = ref(false) // overlay the piecewise-linear run skeleton on the price
 const runHorizon = ref<Horizon>('weekly') // scale (window) driving runs/metrics
+// Price ÷ MA in the metrics panel uses a long, slow baseline (like the
+// Mechanics tab's 4yr MA) so the ratio traces whole cycles instead of hugging 1
+// the way a short indicator MA does.
+const ratioMaDays = ref(1460) // 4 years
 const showSignal = ref(false) // shade under price by the smoothed M/W signal
 const signalPeriod = ref(21) // smoothing window (days) for the composite signal
 const buyThreshold = ref(0.25) // buy-strength (= −composite) above this → green
@@ -81,6 +85,8 @@ const maLabel = computed(() => `${maPeriod.value}${UNIT_ABBR[maUnit.value]}`)
 const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 
 const ma = computed(() => sma(prices.value, maDays.value))
+const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
+const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 // Multi-scale M/W price-heat: blends daily/weekly/monthly lenses via atanh
 // pooling. +1 = M (hot/top), −1 = W (cool/bottom). The Bollinger period (in
@@ -263,9 +269,17 @@ const fmtUSD = (v: number | null) =>
           <option value="monthly">monthly</option>
         </select>
       </label>
-      <label v-if="showRuns || showMetrics">
+      <label v-if="showRuns || showMetrics" class="slider">
         Run sensitivity
-        <input type="number" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+        <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+        <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+      </label>
+      <label v-if="showMetrics">
+        Price ÷ MA window
+        <span class="period">
+          <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
+          <span class="unit">days</span>
+        </span>
       </label>
       <label class="checkbox">
         <input type="checkbox" v-model="showDiag" />
@@ -307,9 +321,10 @@ const fmtUSD = (v: number | null) =>
       v-if="showMetrics && dates.length"
       :dates="dates"
       :price="prices"
-      :ma="ma"
+      :ma="ratioMa"
       :result="mwResult"
       :horizon="runHorizon"
+      :ma-label="ratioMaLabel"
       v-model:zoom="zoom"
     />
 
@@ -397,6 +412,19 @@ const fmtUSD = (v: number | null) =>
 }
 .controls .checkbox input {
   width: auto;
+}
+.controls .slider {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+.controls .slider input[type='range'] {
+  width: 7rem;
+}
+.controls .slider .val {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 2.2rem;
 }
 .help {
   cursor: help;
