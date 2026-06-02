@@ -12,14 +12,14 @@
 // share of upticks (or downticks) over a trailing window — ≳70% one direction
 // reads as a sustained run. The phase machine's phases ARE runs, gated on
 // sustainment × band position, so the Viterbi DP degenerates to run-matching.
-// The W is three down-runs that ascend through the bands, with the two forced
-// up-runs between them landing the two W troughs (see scripts/wpattern-example):
-//   DR1  down, entirely below MA  → trough 1 (lower band)
-//   UR1  up   (forced connector)  → peak 1
-//   DR2  down, crosses upper→lower → trough 2 (lower band)   [split at the MA]
-//   UR2  up   (forced connector)  → peak 2
-//   DR3  down, entirely above MA  → shallow higher-low
-//   UR3  up   (breakout)
+// The W is a double bottom: two down-runs whose troughs land below the MA, the
+// second pulling back from above, completed by the breakout up-run (see
+// scripts/wpattern-example):
+//   P0 DR1  down, entirely below MA   → trough 1 (lower band)
+//   P1 UR1  up   (forced connector)   → peak 1
+//   P2 DR2a down, above MA            ┐ DR2 crosses upper→lower
+//   P3 DR2b down, below MA            ┘ → trough 2 (lower band)
+//   P4 UR2  up   (the BREAKOUT)       → confirms the W (completing phase)
 // M is the same template on −b. Sustainment is measured per-horizon over γ·hd,
 // so patterns at a scale are built only from runs sustained at that scale.
 //
@@ -207,13 +207,15 @@ function rollingVote(tau: number[], voteWindow: number): number[] {
 // arrays (b, vote). The M detector is this matcher run on the negated arrays —
 // f_M(b) ≡ f_W(−b). Each phase IS a run: a sustainment gate (share of up/down
 // ticks over the vote window) times a band-position gate.
-const NUM_PHASES = 7
+// Phases: DR1, UR1, DR2a, DR2b, UR2(breakout). The W is complete at UR2 — the
+// breakout that confirms the second trough — so the template ends there.
+const NUM_PHASES = 5
 // Per-phase run direction: +1 = up-run (wants sustained up), −1 = down-run.
-const RUN_DIR = [-1, +1, -1, -1, +1, -1, +1] as const
+const RUN_DIR = [-1, +1, -1, -1, +1] as const
 // Per-phase band requirement: −1 = below MA, +1 = above MA, 0 = connector (any).
-const RUN_BAND = [-1, 0, +1, -1, 0, +1, 0] as const
-// Partial-credit weight per phase: monotone, peaks at the completing breakout P6.
-const PHASE_WEIGHT = [0.3, 0.4, 0.5, 0.62, 0.74, 0.87, 1.0]
+const RUN_BAND = [-1, 0, +1, -1, 0] as const
+// Partial-credit weight per phase: monotone, peaks at the completing breakout P4.
+const PHASE_WEIGHT = [0.4, 0.55, 0.7, 0.82, 1.0]
 
 /** Band-position membership of day t for phase p (above/below the MA). */
 function posMembership(p: number, b: number, P: MwHeatParams): number {
