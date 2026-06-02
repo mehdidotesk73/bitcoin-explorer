@@ -105,6 +105,8 @@ export interface MwHeatHorizonDiag {
   vote: number[] // sustained-trend vote ∈ [−1, 1]
   heat: number[] // single-horizon H_s ∈ (−1, 1)
   runs: MwHeatRun[] // sustainment-gated runs the matcher reads
+  fW: number[] // W-template match score ∈ [0, 1]
+  fM: number[] // M-template match score ∈ [0, 1]
 }
 
 export interface MwHeatResult {
@@ -246,10 +248,19 @@ function segmentRuns(vote: number[], thresh: number): MwHeatRun[] {
 const NUM_PHASES = 5
 // Per-phase run direction: +1 = up-run (wants sustained up), −1 = down-run.
 const RUN_DIR = [-1, +1, -1, -1, +1] as const
-// Per-phase band requirement: −1 = below MA, +1 = above MA, 0 = connector (any).
-const RUN_BAND = [-1, 0, +1, -1, 0] as const
+// Per-phase band requirement: −1 = below MA, +1 = above MA, 0 = none.
+// Disabled (all 0): an absolute below/above-MA gate INVERTS detection for W/M
+// that sit off-centre — e.g. a continuation W inside an uptrend has its troughs
+// above the MA, where the gate starves the W template and feeds the mirror M.
+// W vs M is therefore decided by run structure + breakout direction (see the
+// dirGate in phaseMachine), not by where in the band the pattern happens to sit.
+// Kept as a hook in case band position is reintroduced later as a soft bonus.
+const RUN_BAND = [0, 0, 0, 0, 0] as const
 // Partial-credit weight per phase: monotone, peaks at the completing breakout P4.
-const PHASE_WEIGHT = [0.4, 0.55, 0.7, 0.82, 1.0]
+// Front weights are low so a single leg (e.g. one down-run) can't, on its own,
+// strongly excite the template (or its mirror) — the W only scores high once most
+// of its legs are present.
+const PHASE_WEIGHT = [0.12, 0.28, 0.5, 0.72, 1.0]
 
 /** Band-position membership of day t for phase p (above/below the MA). */
 function posMembership(p: number, b: number, P: MwHeatParams): number {
@@ -274,12 +285,27 @@ function trendMembership(p: number, vote: number, P: MwHeatParams): number {
  * the W run-story. Returns f_W[t] ∈ [0, 1]. Single forward pass: A[0] restarts
  * each day, advances move exactly one phase, dwelling allowed (a run lasts many
  * days); the path score is the geometric mean of emissions (length-normalised,
- * log-space).
+ * log-space) times the phase weight and a breakout-direction gate.
+ *
+ * Interior runs must be *sustained* (that is what makes them runs) — that is
+ * enforced inside the geometric mean via the per-day sustainment emission. The
+ * run in progress at the live edge, though, hasn't had time to prove sustainment
+ * — "whatever it is, it is" — so we do NOT require it to be sustained; a single
+ * bar already counts (its lone weak emission is diluted across the long path).
+ *
+ * What we DO require at the live edge is direction: the current run must not
+ * contradict the phase it terminates in. That is the `dirGate`, applied OUTSIDE
+ * the geometric mean (so it bites instead of being diluted). It is lenient — a
+ * run only just turning the right way already passes — but a strongly opposite
+ * move suppresses the score. This is what lets a W confirm the moment price
+ * turns up off trough 2, while stopping the mirror (M) template from
+ * "completing" on that same up-move (its breakout needs the opposite direction).
  */
-function phaseMachine(b: number[], vote: number[], P: MwHeatParams): number[] {
+export function phaseMachine(b: number[], vote: number[], P: MwHeatParams): number[] {
   const n = b.length
   const out = new Array(n).fill(0)
   const NEG = -Infinity
+  const wd = Math.max(1e-6, P.sustWidth)
   // logA[p], len[p] for the previous day.
   let prevLog = new Array(NUM_PHASES).fill(NEG)
   let prevLen = new Array(NUM_PHASES).fill(0)
@@ -311,12 +337,15 @@ function phaseMachine(b: number[], vote: number[], P: MwHeatParams): number[] {
         }
       }
     }
-    // f_M[t] = max_p phaseWeight[p] · geomean(path to p).
+    // f_W[t] = max_p phaseWeight[p] · geomean(path to p) · dirGate(p).
     let best = 0
     for (let p = 0; p < NUM_PHASES; p++) {
       if (curLen[p] <= 0 || curLog[p] === NEG) continue
       const geomean = Math.exp(curLog[p] / curLen[p])
-      const score = PHASE_WEIGHT[p] * geomean
+      // Lenient (+sustThresh) so a run just turning the phase's way already
+      // passes; only a strongly opposite live move suppresses the score.
+      const dirGate = sigmoid((RUN_DIR[p] * vote[t] + P.sustThresh) / wd)
+      const score = PHASE_WEIGHT[p] * geomean * dirGate
       if (score > best) best = score
     }
     out[t] = best
@@ -375,7 +404,7 @@ export function mwHeat(price: number[], params: Partial<MwHeatParams> = {}): MwH
       heat[i] = ma[i] == null ? 0 : clamp(Math.tanh(P.horizonGain * (fM[i] - fW[i])), -1, 1)
     }
 
-    horizons.push({ horizon, hd, bandWindow, k, ma, upper, lower, smoothed, b, tau, vote, heat, runs })
+    horizons.push({ horizon, hd, bandWindow, k, ma, upper, lower, smoothed, b, tau, vote, heat, runs, fW, fM })
   }
 
   // Composite via atanh evidence pooling: agreeing lenses reinforce.

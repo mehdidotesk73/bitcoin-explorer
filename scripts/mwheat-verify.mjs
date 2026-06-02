@@ -129,5 +129,26 @@ function randomWalk(n = 600, seed = 1, drift = 0) {
   ok('run-template: daily lens fires on the W (< −0.3)', dailyTrough < -0.3, `dailyTrough=${dailyTrough.toFixed(3)}`)
 }
 
+// --- Off-centre W: a W that breaks out must NOT read as M (no band inversion) -
+// A double bottom forming inside an uptrend keeps its troughs above the MA. The
+// detector must still call it a W (negative) at/through the breakout, not invert
+// to M (positive) because the pattern sits in the upper band.
+{
+  const legs = []
+  const push = (n, d) => { for (let k = 0; k < n; k++) legs.push(d) }
+  push(80, 0.006) // prior uptrend → MA lags below price (troughs stay above MA)
+  push(18, -0.004); push(16, 0.008) // dip 1 + recover
+  push(20, -0.004); push(16, 0.008) // dip 2 + recover (double bottom)
+  push(40, 0.007) // breakout / markup
+  let p = 100
+  const px = [p]
+  for (const d of legs) { p *= 1 + d; px.push(p) }
+  const wk = mwHeat(px, params).horizons.find((h) => h.horizon === 'weekly')
+  // The markup after the second trough (last ~30 bars) is the breakout region.
+  const region = wk.heat.slice(px.length - 30).filter(Number.isFinite)
+  const maxHeat = Math.max(...region)
+  ok('off-centre W: breakout never inverts to M (max heat < 0.05)', maxHeat < 0.05, `maxHeat=${maxHeat.toFixed(3)}`)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

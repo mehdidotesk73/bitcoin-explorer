@@ -34,9 +34,8 @@ const wWeekly = ref(0.55)
 const wMonthly = ref(0.3)
 const horizonGain = ref(4)
 // Run-detector core knobs: sustainment threshold (≈ uptick fraction a run must
-// clear) and the above/below-MA softness used for band placement.
+// clear). Doubles as the breakout-direction leniency in the matcher.
 const sustThresh = ref(0.4)
-const tauMA = ref(0.5)
 
 const MW_HEAT_HELP =
   'M/W heat colours the price by how it oscillates around its moving average. ' +
@@ -79,7 +78,6 @@ const mwResult = computed(() =>
     weights: [wDaily.value, wWeekly.value, wMonthly.value],
     horizonGain: horizonGain.value,
     sustThresh: sustThresh.value,
-    tauMA: tauMA.value,
   }),
 )
 const heat = computed(() => {
@@ -251,10 +249,6 @@ const fmtUSD = (v: number | null) =>
       <label>
         Sustainment
         <input type="number" v-model.number="sustThresh" min="0" max="0.9" step="0.05" />
-      </label>
-      <label>
-        MA softness
-        <input type="number" v-model.number="tauMA" min="0.1" max="1.5" step="0.05" />
       </label>
     </section>
 

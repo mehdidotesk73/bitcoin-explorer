@@ -95,6 +95,8 @@ function buildOption(): echarts.EChartsCoreOption {
       { name: 'τ', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.tau, symbol: 'none', lineStyle: { color: '#f7931a', width: 1 } },
       { name: 'vote', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.vote, symbol: 'none', lineStyle: { color: '#2bd4a7', width: 1.5 } },
       ...perHeat,
+      { name: 'fW', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.fW, symbol: 'none', lineStyle: { color: '#4f8ef7', width: 1, type: 'dashed', opacity: 0.7 } },
+      { name: 'fM', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: d.fM, symbol: 'none', lineStyle: { color: '#f74b4b', width: 1, type: 'dashed', opacity: 0.7 } },
       { name: 'composite', type: 'line', xAxisIndex: 2, yAxisIndex: 2, data: props.result.heat, symbol: 'none', lineStyle: { color: '#fff', width: 2 } },
     ],
   }
@@ -150,8 +152,9 @@ watch(() => [props.dates, props.result, horizon.value, props.zoom], render)
       <span class="swatch up">green</span> = sustained up-run,
       <span class="swatch down">red</span> = sustained down-run, gaps = chop. A W
       is a down-run below the MA, up, a down-run crossing to below the MA, then
-      the breakout up-run. Middle: τ (fast trend) vs vote (sustained trend).
-      Bottom: each horizon's heat + the white composite.
+      the breakout up-run. Middle: τ (fast trend), vote (sustained trend), and
+      the template match scores fW (blue dashed) vs fM (red dashed) — heat is
+      driven by their difference. Bottom: each horizon's heat + white composite.
     </p>
   </div>
 </template>
