@@ -60,10 +60,57 @@ over a rolling horizon (`dcaScore`/`dcaSweep`/`dcaTimeline` in `indicators.ts`,
 plus sweep/timeline charts). **Why it didn't work (known):** built entirely on
 the M/W heat engine that was later removed, so the driver no longer exists; and
 the framing (growth-multiple vs uniform) doesn't match the owner's updated
-vision. Superseded by a future, freshly-designed strategy explorer. The only
-salvageable idea is the *causal, scale-free* evaluation style (average
-`price[t]/price[j]` over buy-days, scored over a finite rolling horizon, vs a
-uniform benchmark) — reference, don't revive the code.
+vision. Superseded by a future, freshly-designed strategy explorer — **do not
+revive the code**, but the *mechanics below* are worth keeping as prior art.
+
+**Scoring idea (causal, scale-free).** Judge a buying *method* by how cheaply it
+bought, relative to buying every day, measured at a later vantage point — never
+peeking past the day a decision is made.
+
+- For each evaluation day `t`, look back `daysBack` (X) over the window
+  `[t−X, t]`.
+- A **method** buys on the subset of days in that window that satisfy a rule;
+  the **uniform** benchmark buys on *every* day in the window.
+- Value each set of buys at day `t`, scale-free (a growth multiple, so dollar
+  size and absolute price level drop out):
+  - `growth_method(t)  = mean over method-days j in [t−X, t] of price[t]/price[j]`
+  - `growth_uniform(t) = mean over all days   j in [t−X, t] of price[t]/price[j]`
+- The day's edge is `growth_method(t) / growth_uniform(t)`; **> 1** means the
+  method's buy-days were cheaper (higher subsequent growth) than buying daily.
+- The method's overall **score** is that ratio averaged over all evaluation
+  days. Scoring over a *finite* X-day horizon (not all the way to "today") stops
+  a handful of ancient ultra-cheap days from dominating every window.
+
+**The specific rule that was tried: a heat band.** Buy on days whose M/W heat
+falls in `[center − window, center + window]` (i.e. "buy a particular band of
+oversold-ness"). Two knobs: band **center** and **window** (entered as numeric
+inputs in the end, after sliders proved fiddly).
+
+**Reported metrics (the `Dca*` interfaces):**
+- `dcaScore` → `{ score, beatRate, methodGrowth, uniformGrowth, coverage,
+  evalDays }`. `beatRate` = fraction of eval days where method ≥ uniform;
+  `coverage` = mean (band-days / window-days), i.e. how often the rule actually
+  bought. A day needs ≥1 method-day *and* ≥1 uniform-day to be scored.
+- `dcaSweep` → sweep the band `center`, yielding `{ center, score, coverage }`
+  points — an at-a-glance curve of "which oversold band paid best," rendered by
+  `DcaSweepChart.vue`.
+- `dcaTimeline` → per-day `{ index, methodGrowth, uniformGrowth, ratio,
+  coverage }`, a "days like today" attractiveness trace rendered by
+  `DcaTimelineChart.vue`.
+
+**Design notes / lessons carried forward:**
+- *Average over all start days*, not a single lump entry — removes luck-of-the-
+  entry-date and makes the score about the *rule*, not the timing of one buy.
+- *Coverage matters as much as score*: a rule that scores 1.3 but only fires 2%
+  of the time (tiny coverage) is near-useless for steady accumulation — always
+  show both.
+- *Growth-multiple framing has a blind spot*: it measures "did I buy cheaply"
+  but **not** realised ROI, cost basis, drawdown, or "was the cash actually
+  deployable." The fresh design should simulate an actual budget/position, not
+  just average price ratios.
+- *Generalise the driver*: the band rule was hard-wired to heat. A future
+  explorer should take any causal metric (price ÷ MA, b, run state) → buy-days,
+  reusing the rolling-horizon vs-uniform scoring as one of several lenses.
 
 ---
 
