@@ -50,9 +50,10 @@ const chart = shallowRef<echarts.ECharts>()
 const fmtUSD = (v: number | null) =>
   v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
-// Map a signed heat value in [-1, +1] to a diverging colour: -1 hot red …
-// 0 neutral grey … +1 cool blue. Used for per-point line colouring (more
-// robust than a visualMap, which needs series dimension tracking).
+// Map a signed heat value in [-1, +1] to a diverging colour, following the
+// engine convention: +1 = M (top, hot red) … 0 neutral grey … −1 = W (bottom,
+// cool blue). Used for per-point line colouring (more robust than a visualMap,
+// which needs series dimension tracking).
 function heatColor(h: number): string {
   const t = Math.max(-1, Math.min(1, h))
   // Vivid endpoints with a pale midpoint so even small heat departs visibly
@@ -60,8 +61,8 @@ function heatColor(h: number): string {
   const mid = [225, 230, 240] // near-white neutral
   const end =
     t >= 0
-      ? [0, 122, 255] // cool: bright blue
-      : [255, 45, 45] // hot: bright red
+      ? [255, 45, 45] // hot: bright red (M / top)
+      : [0, 122, 255] // cool: bright blue (W / bottom)
   const f = Math.sqrt(Math.abs(t))
   const mix = (i: number) => Math.round(mid[i] + (end[i] - mid[i]) * f)
   return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
@@ -140,7 +141,7 @@ function buildOption(): echarts.EChartsCoreOption {
         ]
         if (props.showHeat && props.heat && props.heat[i] != null) {
           const h = props.heat[i]
-          const label = h > 0.05 ? 'cool / W' : h < -0.05 ? 'hot / M' : 'neutral'
+          const label = h > 0.05 ? 'hot / M' : h < -0.05 ? 'cool / W' : 'neutral'
           rows.push(`M/W heat: ${h.toFixed(2)} (${label})`)
         }
         if (props.showSignal && props.signal && props.signal[i] != null) {
