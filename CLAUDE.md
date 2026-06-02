@@ -27,7 +27,10 @@ layouts and remember there's no dev console on device — see Debugging below.
    git checkout main && git pull --ff-only origin main
    git checkout -b claude/<short-feature-name>
    ```
-   - Branches are named `claude/<feature>`.
+   - Branches are named `claude/<feature>`. Pick a name that describes what the
+     branch *does* — e.g. `claude/hodl-explorer`, `claude/metric-registry`,
+     `claude/run-scale-slider`. Avoid auto-generated names like
+     `claude/inspiring-bardeen-lHExI`.
    - **Always verify the base after branching** (this has bitten us): confirm
      `git log --oneline origin/main..HEAD` is empty and the expected files are
      present. A stale/pre-existing branch can fork from an old commit.
