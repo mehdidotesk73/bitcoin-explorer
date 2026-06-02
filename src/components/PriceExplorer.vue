@@ -278,6 +278,7 @@ const fmtUSD = (v: number | null) =>
       v-if="showDiag && dates.length"
       :dates="dates"
       :result="mwResult"
+      :signal="signal"
       v-model:zoom="zoom"
     />
 
