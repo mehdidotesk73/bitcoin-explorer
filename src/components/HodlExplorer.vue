@@ -16,11 +16,14 @@ import { sma } from '../lib/indicators'
 import { scaleDiag } from '../lib/runs'
 import {
   type Band,
-  type DriverId,
+  type SeedKind,
+  type SeedLayer,
   ratioSeries,
   windowIndices,
   selectBandBuyDates,
   simulateStrategy,
+  unionIndices,
+  snapDateToIndex,
 } from '../lib/hodl'
 
 echarts.use([
@@ -37,6 +40,7 @@ echarts.use([
 
 const GROUP = 'btc-hodl'
 const UP = '#2bd4a7'
+const AMBER = '#fbbf24'
 const BAND_FILL = 'rgba(43, 212, 167, 0.14)'
 
 // Bollinger-score driver uses a fixed monthly-ish scale, matching the Price
@@ -58,15 +62,26 @@ const emit = defineEmits<{
   refresh: []
 }>()
 
-// --- Controls ---------------------------------------------------------------
-const driver = ref<DriverId>('ratio')
+// --- Builder controls -------------------------------------------------------
+const driver = ref<SeedKind>('ratio')
 const baselineDays = ref(1460) // trailing comparison window (default 4yr)
 
-// Each driver carries its own buy band [lower, upper].
+// Each indicator driver carries its own buy band [lower, upper].
 const ratioLower = ref(0.3)
 const ratioUpper = ref(0.85)
 const bLower = ref(-4)
 const bUpper = ref(-0.5)
+
+// Manual driver: a working list of dates being assembled before "Add layer".
+const manualDates = ref<string[]>([])
+const manualDateInput = ref('')
+
+// The seed combinator: stored layers, unioned into the final strategy.
+const layers = ref<SeedLayer[]>([])
+
+// Total purchase budget in cash; defaults to the current BTC price once known.
+const totalBudget = ref(0)
+let budgetInitialised = false
 
 // MA window: synced with Price Explorer via prop + emit.
 const localMaDays = computed({
@@ -88,47 +103,131 @@ const maLabel = computed(() => {
   return yr >= 1 ? `${yr.toFixed(1)}yr` : `${props.ratioMaDays}d`
 })
 
-// The active driver's metric series + its band.
+// b-score series (fixed monthly scale).
 const bDiag = computed(() => scaleDiag(prices.value, B_SCALE_HD, { N: B_SCALE_N }))
-const metricSeries = computed<(number | null)[]>(() =>
-  driver.value === 'ratio' ? ratioSeries(prices.value, longMa.value) : bDiag.value.b,
-)
-const band = computed<Band>(() =>
-  driver.value === 'ratio'
-    ? { lower: ratioLower.value, upper: ratioUpper.value }
-    : { lower: bLower.value, upper: bUpper.value },
-)
-const metricTitle = computed(() =>
-  driver.value === 'ratio' ? `Price ÷ MA (${maLabel.value})` : `Bollinger score (b · monthly)`,
-)
 
-// Comparison window — both strategy and baseline buy only within these days.
+// Comparison window — baseline + indicator layers operate within these days.
 const windowStart = computed(() => Math.max(0, prices.value.length - baselineDays.value))
 const windowSize = computed(() => prices.value.length - windowStart.value)
 const candidates = computed(() => windowIndices(prices.value.length, baselineDays.value))
 
-const strategyIndices = computed(() =>
-  selectBandBuyDates(metricSeries.value, band.value, candidates.value),
-)
-const strategyStats = computed(() =>
-  simulateStrategy(prices.value, strategyIndices.value, 1, windowSize.value),
-)
-const baselineStats = computed(() =>
-  simulateStrategy(prices.value, candidates.value, 1, windowSize.value),
-)
-
-// Scatter data: [date, price] for each buy index (main chart).
-const strategyBuyPoints = computed(() =>
-  strategyIndices.value.map((i) => [dates.value[i], prices.value[i]]),
-)
-// Scatter data: [date, metric] for each buy index (driver chart).
-const metricBuyPoints = computed(() =>
-  strategyIndices.value.map((i) => [dates.value[i], metricSeries.value[i]]),
-)
-
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
+
+// Initialise the budget to the current price the first time data lands.
+watch(
+  latestPrice,
+  (p) => {
+    if (!budgetInitialised && p) {
+      totalBudget.value = Math.round(p)
+      budgetInitialised = true
+    }
+  },
+  { immediate: true },
+)
+
+// --- Builder: the active driver's metric series, band, and live preview -----
+const builderBand = computed<Band>(() =>
+  driver.value === 'bscore'
+    ? { lower: bLower.value, upper: bUpper.value }
+    : { lower: ratioLower.value, upper: ratioUpper.value },
+)
+const builderMetric = computed<(number | null)[]>(() =>
+  driver.value === 'bscore' ? bDiag.value.b : ratioSeries(prices.value, longMa.value),
+)
+const metricTitle = computed(() =>
+  driver.value === 'bscore' ? 'Bollinger score (b · monthly)' : `Price ÷ MA (${maLabel.value})`,
+)
+const showMetricChart = computed(() => driver.value !== 'manual')
+
+// Manual: resolve the working dates to unique sorted day indices.
+const manualPendingIndices = computed(() => {
+  const idx = manualDates.value
+    .map((d) => snapDateToIndex(dates.value, d))
+    .filter((i): i is number => i != null)
+  return [...new Set(idx)].sort((a, b) => a - b)
+})
+
+// Live preview of what the builder would add as a layer.
+const previewIndices = computed(() => {
+  if (driver.value === 'manual') return manualPendingIndices.value
+  return selectBandBuyDates(builderMetric.value, builderBand.value, candidates.value)
+})
+
+// --- Combinator: resolve each layer, union into the strategy -----------------
+function resolveLayer(layer: SeedLayer): number[] {
+  if (layer.kind === 'manual') return layer.dateIndices ?? []
+  if (layer.kind === 'ratio') {
+    const metric = ratioSeries(prices.value, sma(prices.value, layer.maDays ?? props.ratioMaDays))
+    return selectBandBuyDates(metric, layer.band!, candidates.value)
+  }
+  return selectBandBuyDates(bDiag.value.b, layer.band!, candidates.value)
+}
+function layerCount(layer: SeedLayer): number {
+  return resolveLayer(layer).length
+}
+
+const strategyIndices = computed(() => unionIndices(layers.value.map(resolveLayer)))
+
+const strategyStats = computed(() =>
+  simulateStrategy(prices.value, strategyIndices.value, totalBudget.value, windowSize.value),
+)
+const baselineStats = computed(() =>
+  simulateStrategy(prices.value, candidates.value, totalBudget.value, windowSize.value),
+)
+
+// --- Layer management -------------------------------------------------------
+function newId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `l_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+function addLayer() {
+  if (driver.value === 'manual') {
+    if (!manualPendingIndices.value.length) return
+    layers.value.push({
+      id: newId(),
+      kind: 'manual',
+      label: `Manual · ${manualPendingIndices.value.length} date(s)`,
+      dateIndices: [...manualPendingIndices.value],
+    })
+    manualDates.value = []
+    manualDateInput.value = ''
+  } else if (driver.value === 'ratio') {
+    layers.value.push({
+      id: newId(),
+      kind: 'ratio',
+      label: `Price÷MA ${ratioLower.value}–${ratioUpper.value} · ${maLabel.value}`,
+      band: { lower: ratioLower.value, upper: ratioUpper.value },
+      maDays: props.ratioMaDays,
+    })
+  } else {
+    layers.value.push({
+      id: newId(),
+      kind: 'bscore',
+      label: `b score ${bLower.value}–${bUpper.value}`,
+      band: { lower: bLower.value, upper: bUpper.value },
+    })
+  }
+}
+function removeLayer(id: string) {
+  layers.value = layers.value.filter((l) => l.id !== id)
+}
+function clearLayers() {
+  layers.value = []
+}
+
+// Manual date chips.
+function addManualDate() {
+  const d = manualDateInput.value
+  if (d && !manualDates.value.includes(d)) manualDates.value.push(d)
+  manualDateInput.value = ''
+}
+function removeManualDate(d: string) {
+  manualDates.value = manualDates.value.filter((x) => x !== d)
+}
 
 const fmtUSD = (v: number | null) =>
   v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 })
@@ -147,13 +246,16 @@ function buildPriceOption(): echarts.EChartsCoreOption {
   const p = prices.value
   const bStart = windowStart.value
 
+  const committed = strategyIndices.value.map((i) => [cats[i], p[i]])
+  const preview = previewIndices.value.map((i) => [cats[i], p[i]])
+
   return {
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: '#e7eaf3' },
     grid: { left: 60, right: 16, top: 48, bottom: 60 },
     legend: {
-      data: ['Price', `Long MA (${maLabel.value})`, 'Strategy buys', 'Baseline window'],
+      data: ['Price', `Long MA (${maLabel.value})`, 'Strategy buys', 'Preview', 'Baseline window'],
       top: 8,
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
@@ -219,18 +321,26 @@ function buildPriceOption(): echarts.EChartsCoreOption {
         z: 3,
       },
       {
+        name: 'Preview',
+        type: 'scatter',
+        data: preview,
+        symbolSize: 6,
+        itemStyle: { color: 'rgba(0,0,0,0)', borderColor: AMBER, borderWidth: 1.4 },
+        z: 4,
+      },
+      {
         name: 'Strategy buys',
         type: 'scatter',
-        data: strategyBuyPoints.value,
+        data: committed,
         symbolSize: 5,
-        itemStyle: { color: UP, opacity: 0.8 },
-        z: 4,
+        itemStyle: { color: UP, opacity: 0.85 },
+        z: 5,
       },
     ],
   }
 }
 
-// --- Driver-metric chart (with buy band shaded) -----------------------------
+// --- Driver-metric chart (buy band shaded) ----------------------------------
 const elMetric = ref<HTMLDivElement>()
 const chartMetric = shallowRef<echarts.ECharts>()
 
@@ -238,10 +348,11 @@ function buildMetricOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
   const cats = dates.value
-  const b = band.value
+  const b = builderBand.value
   const lo = Math.min(b.lower, b.upper)
   const hi = Math.max(b.lower, b.upper)
   const startDate = cats[windowStart.value]
+  const preview = previewIndices.value.map((i) => [cats[i], builderMetric.value[i]])
 
   return {
     animation: false,
@@ -262,7 +373,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       formatter: (params: any) => {
         const i = params[0]?.dataIndex
         if (i == null) return ''
-        const v = metricSeries.value[i]
+        const v = builderMetric.value[i]
         return `<strong>${cats[i]}</strong><br/>${metricTitle.value}: ${v == null ? '—' : v.toFixed(3)}`
       },
     },
@@ -286,10 +397,9 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       {
         name: metricTitle.value,
         type: 'line',
-        data: metricSeries.value,
+        data: builderMetric.value,
         symbol: 'none',
         lineStyle: { color: '#f7931a', width: 1.3 },
-        // Buy band: shade the y-range [lo, hi]; mark the comparison-window start.
         markArea: {
           silent: true,
           itemStyle: { color: BAND_FILL },
@@ -305,11 +415,11 @@ function buildMetricOption(): echarts.EChartsCoreOption {
         z: 2,
       },
       {
-        name: 'Strategy buys',
+        name: 'Preview',
         type: 'scatter',
-        data: metricBuyPoints.value,
+        data: preview,
         symbolSize: 5,
-        itemStyle: { color: UP, opacity: 0.85 },
+        itemStyle: { color: AMBER, opacity: 0.9 },
         z: 3,
       },
     ],
@@ -318,7 +428,10 @@ function buildMetricOption(): echarts.EChartsCoreOption {
 
 function render() {
   chart.value?.setOption(buildPriceOption(), { replaceMerge: ['series'] })
-  chartMetric.value?.setOption(buildMetricOption(), { replaceMerge: ['series'] })
+  if (showMetricChart.value) {
+    chartMetric.value?.setOption(buildMetricOption(), { replaceMerge: ['series'] })
+    chartMetric.value?.resize()
+  }
 }
 
 onMounted(async () => {
@@ -352,10 +465,16 @@ watch(
     props.raw,
     props.ratioMaDays,
     driver.value,
-    band.value,
+    builderBand.value,
     baselineDays.value,
+    strategyIndices.value,
+    previewIndices.value,
   ],
-  render,
+  async () => {
+    await nextTick()
+    render()
+  },
+  { deep: true },
 )
 </script>
 
@@ -372,50 +491,100 @@ watch(
       ⚠️ {{ error }} <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <!-- Controls -->
+    <!-- Builder -->
+    <section class="builder">
+      <div class="controls">
+        <label class="ctrl-label">
+          Driver
+          <select v-model="driver" class="select">
+            <option value="ratio">Price ÷ MA</option>
+            <option value="bscore">Bollinger score (b)</option>
+            <option value="manual">Manual seeding</option>
+          </select>
+        </label>
+
+        <label v-if="driver === 'ratio'" class="ctrl-label">
+          MA window
+          <span class="ctrl-row">
+            <input
+              type="number"
+              :value="localMaDays"
+              @input="localMaDays = Number(($event.target as HTMLInputElement).value)"
+              min="30"
+              max="2000"
+              step="10"
+              class="num-input"
+            />
+            <span class="unit">d · {{ maLabel }}</span>
+          </span>
+        </label>
+
+        <label class="ctrl-label" v-if="driver === 'ratio'">
+          Buy band (price ÷ MA)
+          <span class="ctrl-row">
+            <input type="number" v-model.number="ratioLower" min="0" max="3" step="0.01" class="num-input sm" />
+            <span class="unit">to</span>
+            <input type="number" v-model.number="ratioUpper" min="0" max="3" step="0.01" class="num-input sm" />
+          </span>
+        </label>
+        <label class="ctrl-label" v-else-if="driver === 'bscore'">
+          Buy band (b score)
+          <span class="ctrl-row">
+            <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
+            <span class="unit">to</span>
+            <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
+          </span>
+        </label>
+        <div class="ctrl-label" v-else>
+          Add dates
+          <span class="ctrl-row">
+            <input
+              type="date"
+              v-model="manualDateInput"
+              :min="dates[0]"
+              :max="dates[dates.length - 1]"
+              class="num-input"
+            />
+            <button class="mini" @click="addManualDate">+ Add</button>
+          </span>
+          <div class="chips" v-if="manualDates.length">
+            <span class="chip" v-for="d in manualDates" :key="d">
+              {{ d }} <button class="chip-x" @click="removeManualDate(d)">×</button>
+            </span>
+          </div>
+        </div>
+
+        <button class="add-layer" @click="addLayer" :disabled="!previewIndices.length">
+          + Add layer ({{ previewIndices.length }} day{{ previewIndices.length === 1 ? '' : 's' }})
+        </button>
+      </div>
+
+      <!-- Seed layers (the combinator) -->
+      <div class="layers" v-if="layers.length">
+        <div class="layers-head">
+          <span class="muted">Seed layers — combined into the strategy ({{ strategyIndices.length }} unique days):</span>
+          <button class="mini ghost" @click="clearLayers">Clear all</button>
+        </div>
+        <ul class="layer-list">
+          <li v-for="l in layers" :key="l.id" class="layer-item">
+            <span class="layer-kind" :class="l.kind">{{ l.kind }}</span>
+            <span class="layer-label">{{ l.label }}</span>
+            <span class="layer-count">{{ layerCount(l) }} days</span>
+            <button class="chip-x" @click="removeLayer(l.id)">×</button>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Budget + window -->
     <section class="controls">
       <label class="ctrl-label">
-        Driver
-        <select v-model="driver" class="select">
-          <option value="ratio">Price ÷ MA</option>
-          <option value="bscore">Bollinger score (b)</option>
-        </select>
-      </label>
-
-      <label v-if="driver === 'ratio'" class="ctrl-label">
-        MA window
+        Total budget (cash)
         <span class="ctrl-row">
-          <input
-            type="number"
-            :value="localMaDays"
-            @input="localMaDays = Number(($event.target as HTMLInputElement).value)"
-            min="30"
-            max="2000"
-            step="10"
-            class="num-input"
-          />
-          <span class="unit">d · {{ maLabel }}</span>
+          <span class="unit">$</span>
+          <input type="number" v-model.number="totalBudget" min="1" step="100" class="num-input" />
         </span>
       </label>
-
-      <!-- Buy band: lower / upper bounds for the active driver. -->
-      <label class="ctrl-label" v-if="driver === 'ratio'">
-        Buy band (price ÷ MA)
-        <span class="ctrl-row">
-          <input type="number" v-model.number="ratioLower" min="0" max="3" step="0.01" class="num-input sm" />
-          <span class="unit">to</span>
-          <input type="number" v-model.number="ratioUpper" min="0" max="3" step="0.01" class="num-input sm" />
-        </span>
-      </label>
-      <label class="ctrl-label" v-else>
-        Buy band (b score)
-        <span class="ctrl-row">
-          <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
-          <span class="unit">to</span>
-          <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
-        </span>
-      </label>
-
       <label class="ctrl-label">
         Window (trailing)
         <span class="ctrl-row">
@@ -429,7 +598,7 @@ watch(
     <div ref="el" class="chart"></div>
 
     <!-- Driver-metric chart with the buy band shaded -->
-    <div ref="elMetric" class="chart metric"></div>
+    <div v-show="showMetricChart" ref="elMetric" class="chart metric"></div>
 
     <!-- Stats comparison -->
     <section class="stats" v-if="strategyStats && baselineStats">
@@ -505,15 +674,16 @@ watch(
       </div>
     </section>
 
-    <section class="no-buys" v-else-if="!loading && !error && !strategyStats">
-      <p>No qualifying buy days in the window for this band. Widen the band or the window.</p>
+    <section class="no-buys" v-else-if="!loading && !error">
+      <p>Tune a driver and <strong>+ Add layer</strong> to build a strategy. Amber rings preview the current driver's buy days.</p>
     </section>
 
     <p class="hint">
-      Strategy: buy equally on every day in the trailing {{ baselineDays }} days whose
-      {{ driver === 'ratio' ? 'price ÷ MA' : 'Bollinger score' }} falls in the buy band.
-      Baseline: buy equally on every day of that same window. Same total budget on both
-      sides — the comparison is purely about <em>which</em> days.
+      Build a strategy from one or more seed layers (price ÷ MA, Bollinger score, or
+      manual dates). Each buy day gets an equal share of the total budget
+      ({{ fmtUSD(totalBudget) }} ÷ {{ strategyIndices.length || '—' }} days). The baseline
+      spends the <em>same</em> total evenly across every day of the trailing
+      {{ baselineDays }}-day window.
     </p>
   </div>
 </template>
@@ -535,12 +705,19 @@ watch(
   border-color: var(--danger);
 }
 
+.builder {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem;
+  margin-bottom: 0.75rem;
+  background: var(--bg-elev-2, var(--bg-elev));
+}
 .controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
   align-items: flex-start;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 .ctrl-label {
   display: flex;
@@ -559,10 +736,10 @@ watch(
   gap: 0.4rem;
 }
 .select {
-  width: 11rem;
+  width: 12rem;
 }
 .num-input {
-  width: 5rem;
+  width: 6rem;
 }
 .num-input.sm {
   width: 4rem;
@@ -571,10 +748,121 @@ watch(
   color: var(--text-muted);
   font-size: 0.72rem;
 }
+.mini {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+}
+.mini.ghost {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.add-layer {
+  align-self: center;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.7rem;
+  background: rgba(43, 212, 167, 0.14);
+  border: 1px solid #2bd4a7;
+  color: #2bd4a7;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.add-layer:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  color: var(--text);
+}
+.chip-x {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.layers {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+.layers-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.muted {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+.layer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+}
+.layer-kind {
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  background: var(--border);
+  color: var(--text);
+}
+.layer-kind.ratio {
+  background: rgba(247, 147, 26, 0.2);
+  color: #f7931a;
+}
+.layer-kind.bscore {
+  background: rgba(79, 142, 247, 0.2);
+  color: #4f8ef7;
+}
+.layer-kind.manual {
+  background: rgba(155, 109, 255, 0.2);
+  color: #9b6dff;
+}
+.layer-label {
+  flex: 1;
+  color: var(--text);
+}
+.layer-count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 
 .chart {
   width: 100%;
-  height: min(54vh, 460px);
+  height: min(52vh, 440px);
   margin-bottom: 0.5rem;
 }
 .chart.metric {

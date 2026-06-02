@@ -31,6 +31,50 @@ export interface HodlStats {
   totalSpent: number
 }
 
+/** Which metric drives a seed layer. */
+export type SeedKind = 'ratio' | 'bscore' | 'manual'
+
+/**
+ * One stored seed layer in the combinator. Indicator layers snapshot their band
+ * (+ MA window for ratio) so they stay fixed once added; manual layers store
+ * resolved day indices. The final strategy is the union of all layers.
+ */
+export interface SeedLayer {
+  id: string
+  kind: SeedKind
+  label: string
+  band?: Band // ratio | bscore
+  maDays?: number // ratio
+  dateIndices?: number[] // manual
+}
+
+/** Merge several index lists into one sorted, de-duplicated list. */
+export function unionIndices(lists: number[][]): number[] {
+  const set = new Set<number>()
+  for (const list of lists) for (const i of list) set.add(i)
+  return [...set].sort((a, b) => a - b)
+}
+
+/**
+ * Snap an ISO date (YYYY-MM-DD) to the nearest day index in `dates`.
+ * Daily data, so any intraday time collapses to the closest trading day.
+ */
+export function snapDateToIndex(dates: string[], iso: string): number | null {
+  if (!dates.length || !iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  let best = 0
+  let bestD = Infinity
+  for (let i = 0; i < dates.length; i++) {
+    const d = Math.abs(new Date(dates[i]).getTime() - t)
+    if (d < bestD) {
+      bestD = d
+      best = i
+    }
+  }
+  return best
+}
+
 /** price / longMa as a per-day series (null where the MA isn't defined yet). */
 export function ratioSeries(price: number[], longMa: (number | null)[]): (number | null)[] {
   return price.map((p, i) => {
