@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { MwHeatResult, Horizon } from '../lib/mwheat'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
+echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
 
 // Shared connect group: all explorer charts sync x-zoom + crosshair through it.
 const GROUP = 'btc-explorer'
@@ -43,6 +43,24 @@ const priceMa = computed(() =>
   }),
 )
 
+// Per-run average slope as a daily % change (compounded), flat-zero on the
+// choppy gaps between runs. Up-runs read positive, down-runs negative — so the
+// trace blocks out trending vs sideways stretches at a glance.
+const runSlope = computed(() => {
+  const d = diag.value
+  const out = new Array(props.price.length).fill(0)
+  if (!d) return out
+  for (const r of d.runs) {
+    const p0 = props.price[r.start]
+    const p1 = props.price[r.end]
+    const span = Math.max(1, r.end - r.start)
+    if (p0 == null || p1 == null || p0 <= 0 || p1 <= 0) continue
+    const dailyPct = (Math.exp(Math.log(p1 / p0) / span) - 1) * 100
+    for (let i = r.start; i <= r.end; i++) out[i] = dailyPct
+  }
+  return out
+})
+
 function buildOption(): echarts.EChartsCoreOption {
   const d = diag.value
   if (!d) return {}
@@ -54,10 +72,14 @@ function buildOption(): echarts.EChartsCoreOption {
       { xAxis: cats[r.end] },
     ]),
   }
-  const S = [6, 172] // header top of each panel (px)
-  const GRID = (i: number) => ({ left: 48, right: 12, top: S[i] + 40, height: 108 })
-  const titleBase = { left: 48, textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' as const } }
+  const S = [6, 184, 362] // header top of each panel (px)
+  const GRID = (i: number) => ({ left: 52, right: 12, top: S[i] + 38, height: 104 })
+  const titleBase = { left: 52, textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' as const } }
   const legendBase = { type: 'plain' as const, itemWidth: 13, itemHeight: 8, itemGap: 8, textStyle: { color: '#e7eaf3', fontSize: 9 }, inactiveColor: '#5a6480' }
+  const slopeData = runSlope.value.map((v) => ({
+    value: v,
+    itemStyle: { color: v > 0 ? '#2bd4a7' : v < 0 ? '#f74b4b' : 'transparent' },
+  }))
 
   return {
     animation: false,
@@ -66,25 +88,29 @@ function buildOption(): echarts.EChartsCoreOption {
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,27,42,0.95)', borderColor: '#36425f', textStyle: { color: '#e7eaf3' } },
     axisPointer: { link: [{ xAxisIndex: 'all' }], lineStyle: { color: '#8b94ac', type: 'dashed' } },
     title: [
-      { ...titleBase, top: S[0], text: 'Price ÷ MA    > 1 = above the moving average · < 1 = below (oversold)' },
+      { ...titleBase, top: S[0], text: 'Price ÷ MA  (log)    > 1 = above the moving average · < 1 = below (oversold)' },
       { ...titleBase, top: S[1], text: `b = band position · shaded by run (green up · red down · gaps = chop)   (${d.horizon})` },
+      { ...titleBase, top: S[2], text: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${d.horizon})` },
     ],
     legend: [
-      { ...legendBase, left: 48, top: S[0] + 20, data: ['price ÷ MA'] },
-      { ...legendBase, left: 48, top: S[1] + 20, data: ['b'] },
+      { ...legendBase, left: 52, top: S[0] + 20, data: ['price ÷ MA'] },
+      { ...legendBase, left: 52, top: S[1] + 20, data: ['b'] },
+      { ...legendBase, left: 52, top: S[2] + 20, data: ['run slope'] },
     ],
-    grid: [GRID(0), GRID(1)],
+    grid: [GRID(0), GRID(1), GRID(2)],
     xAxis: [
       { type: 'category', data: cats, gridIndex: 0, axisLabel: { show: false }, axisLine: { lineStyle: { color: AXIS } } },
-      { type: 'category', data: cats, gridIndex: 1, axisLabel: { color: AXIS, fontSize: 9 }, axisLine: { lineStyle: { color: AXIS } } },
+      { type: 'category', data: cats, gridIndex: 1, axisLabel: { show: false }, axisLine: { lineStyle: { color: AXIS } } },
+      { type: 'category', data: cats, gridIndex: 2, axisLabel: { color: AXIS, fontSize: 9 }, axisLine: { lineStyle: { color: AXIS } } },
     ],
     yAxis: [
-      { type: 'value', gridIndex: 0, scale: true, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
+      { type: 'log', gridIndex: 0, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
       { type: 'value', gridIndex: 1, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
+      { type: 'value', gridIndex: 2, axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } } },
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: props.zoom[0], end: props.zoom[1] },
-      { type: 'slider', xAxisIndex: [0, 1], start: props.zoom[0], end: props.zoom[1], bottom: 4, height: 12, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
+      { type: 'inside', xAxisIndex: [0, 1, 2], start: props.zoom[0], end: props.zoom[1] },
+      { type: 'slider', xAxisIndex: [0, 1, 2], start: props.zoom[0], end: props.zoom[1], bottom: 6, height: 12, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
     ],
     series: [
       {
@@ -97,6 +123,10 @@ function buildOption(): echarts.EChartsCoreOption {
         lineStyle: { color: '#4f8ef7', width: 1.5 },
         markLine: { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' }, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] },
         markArea: runArea,
+      },
+      {
+        name: 'run slope', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, data: slopeData, barCategoryGap: '0%',
+        markLine: { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' }, data: [{ yAxis: 0 }] },
       },
     ],
   }
@@ -173,7 +203,7 @@ watch(() => [props.dates, props.price, props.ma, props.result, horizon.value, pr
 }
 .metrics-chart {
   width: 100%;
-  height: 340px;
+  height: 540px;
 }
 .muted {
   color: var(--text-muted);
