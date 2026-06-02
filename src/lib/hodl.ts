@@ -32,7 +32,7 @@ export interface HodlStats {
 }
 
 /** Which metric drives a seed layer. */
-export type SeedKind = 'ratio' | 'bscore' | 'manual'
+export type SeedKind = 'ratio' | 'bscore' | 'manual' | 'uniform'
 
 /**
  * One stored seed layer in the combinator. Every layer is a STATIC set of day
@@ -73,6 +73,28 @@ export function snapDateToIndex(dates: string[], iso: string): number | null {
     }
   }
   return best
+}
+
+/**
+ * Uniformly-spaced buy days: every `everyX` days on a phase anchored to today.
+ * `offset` shifts that phase *forward* from today (in days), so e.g. with weekly
+ * spacing, "offset 2" lands the grid two days after today's weekday (today =
+ * Sunday → Tuesdays). The grid repeats every `everyX` days through the
+ * candidates; only candidate days on the grid are returned.
+ */
+export function uniformSpacedDates(
+  n: number,
+  everyX: number,
+  offset: number,
+  candidates: number[],
+): number[] {
+  if (!n || everyX <= 0) return []
+  const anchor = n - 1 + offset // todayIndex + offset
+  const out: number[] = []
+  for (const i of candidates) {
+    if ((((i - anchor) % everyX) + everyX) % everyX === 0) out.push(i)
+  }
+  return out
 }
 
 /** price / longMa as a per-day series (null where the MA isn't defined yet). */

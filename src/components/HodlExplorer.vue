@@ -23,7 +23,9 @@ import {
   simulateStrategy,
   unionIndices,
   snapDateToIndex,
+  uniformSpacedDates,
 } from '../lib/hodl'
+import StatsCompare from './StatsCompare.vue'
 
 echarts.use([
   LineChart,
@@ -66,15 +68,19 @@ const driver = ref<SeedKind>('ratio')
 
 // Comparison window: either trailing-X-days-from-today, or an explicit from/to.
 const windowMode = ref<'trailing' | 'range'>('trailing')
-const baselineDays = ref(1460) // trailing comparison window (default 4yr)
+const baselineDays = ref(3000) // trailing comparison window
 const fromDate = ref('')
 const toDate = ref('')
 
 // Each indicator driver carries its own buy band [lower, upper].
-const ratioLower = ref(0.3)
-const ratioUpper = ref(0.85)
+const ratioLower = ref(0)
+const ratioUpper = ref(1.5)
 const bLower = ref(-4)
-const bUpper = ref(-0.5)
+const bUpper = ref(0)
+
+// Uniform-spaced driver: buy every X days on a phase offset from today.
+const uniformEveryX = ref(7)
+const uniformOffset = ref(0)
 
 // Manual driver: a working list of dates being assembled before "Add layer".
 const manualDates = ref<string[]>([])
@@ -165,7 +171,8 @@ const builderMetric = computed<(number | null)[]>(() =>
 const metricTitle = computed(() =>
   driver.value === 'bscore' ? 'Bollinger score (b · monthly)' : `Price ÷ MA (${maLabel.value})`,
 )
-const showMetricChart = computed(() => driver.value !== 'manual')
+// Only band-on-a-metric drivers get the shaded driver chart.
+const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
 
 // Manual: resolve the working dates to unique sorted day indices.
 const manualPendingIndices = computed(() => {
@@ -175,10 +182,12 @@ const manualPendingIndices = computed(() => {
   return [...new Set(idx)].sort((a, b) => a - b)
 })
 
-// Live preview of what the builder would add as a layer (manual is filtered to
-// the window — out-of-window dates are excluded from the strategy).
+// Live preview of what the builder would add as a layer (filtered to the window
+// — out-of-window days are excluded from the strategy totals).
 const previewIndices = computed(() => {
   if (driver.value === 'manual') return manualPendingIndices.value.filter(inWindow)
+  if (driver.value === 'uniform')
+    return uniformSpacedDates(prices.value.length, uniformEveryX.value, uniformOffset.value, candidates.value)
   return selectBandBuyDates(builderMetric.value, builderBand.value, candidates.value)
 })
 
@@ -214,6 +223,10 @@ const strategyStats = computed(() =>
 )
 const baselineStats = computed(() =>
   simulateStrategy(prices.value, candidates.value, totalBudget.value, windowSize.value),
+)
+// Live builder preview, scored the same way (current builder vs baseline).
+const previewStats = computed(() =>
+  simulateStrategy(prices.value, previewIndices.value, totalBudget.value, windowSize.value),
 )
 
 // --- Layer management -------------------------------------------------------
@@ -258,6 +271,13 @@ function addLayer() {
       label: `Price÷MA ${ratioLower.value}–${ratioUpper.value} · ${maLabel.value}`,
       dateIndices: selectBandBuyDates(metric, builderBand.value, all),
     })
+  } else if (driver.value === 'uniform') {
+    layers.value.push({
+      id: newId(),
+      kind: 'uniform',
+      label: `Uniform · every ${uniformEveryX.value}d · offset ${uniformOffset.value}`,
+      dateIndices: uniformSpacedDates(n, uniformEveryX.value, uniformOffset.value, all),
+    })
   } else {
     layers.value.push({
       id: newId(),
@@ -286,9 +306,6 @@ function removeManualDate(d: string) {
 
 const fmtUSD = (v: number | null) =>
   v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 })
-const fmtPct = (v: number | null) =>
-  v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'
-const fmtBtc = (v: number | null) => (v == null ? '—' : v.toFixed(6) + ' BTC')
 
 // --- Price chart ------------------------------------------------------------
 const el = ref<HTMLDivElement>()
@@ -558,6 +575,7 @@ watch(
           <select v-model="driver" class="select">
             <option value="ratio">Price ÷ MA</option>
             <option value="bscore">Bollinger score (b)</option>
+            <option value="uniform">Uniform spaced</option>
             <option value="manual">Manual seeding</option>
           </select>
         </label>
@@ -594,7 +612,16 @@ watch(
             <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
           </span>
         </label>
-        <div class="ctrl-label" v-else>
+        <label class="ctrl-label" v-else-if="driver === 'uniform'">
+          Every X days · offset
+          <span class="ctrl-row">
+            <input type="number" v-model.number="uniformEveryX" min="1" max="365" step="1" class="num-input sm" />
+            <span class="unit">days</span>
+            <input type="number" v-model.number="uniformOffset" min="0" max="365" step="1" class="num-input sm" />
+            <span class="unit">offset</span>
+          </span>
+        </label>
+        <div class="ctrl-label" v-else-if="driver === 'manual'">
           Add dates
           <span class="ctrl-row">
             <input
@@ -649,38 +676,35 @@ watch(
     <!-- Budget + window -->
     <section class="controls">
       <label class="ctrl-label">
-        Total budget (cash)
+        Total budget
         <span class="ctrl-row">
           <span class="unit">$</span>
           <input type="number" v-model.number="totalBudget" min="1" step="100" class="num-input" />
         </span>
       </label>
 
-      <label class="ctrl-label">
-        Window mode
-        <select v-model="windowMode" class="select sm">
-          <option value="trailing">Trailing days</option>
-          <option value="range">Date range</option>
-        </select>
-      </label>
-
-      <label class="ctrl-label" v-if="windowMode === 'trailing'">
-        Window (trailing from today)
-        <span class="ctrl-row">
-          <input type="number" v-model.number="baselineDays" min="30" max="5000" step="30" class="num-input" />
-          <span class="unit">days</span>
+      <!-- Window panel: a toggle flips the input between trailing-days and a
+           from/to date range. -->
+      <div class="ctrl-label window-panel">
+        <div class="window-head">
+          <span>Comparison window</span>
+          <button
+            class="toggle"
+            @click="windowMode = windowMode === 'trailing' ? 'range' : 'trailing'"
+          >
+            {{ windowMode === 'trailing' ? 'Trailing' : 'Range' }}
+          </button>
+        </div>
+        <span v-if="windowMode === 'trailing'" class="ctrl-row">
+          <input type="number" v-model.number="baselineDays" min="30" max="6000" step="30" class="num-input" />
+          <span class="unit">days back from today</span>
         </span>
-      </label>
-      <template v-else>
-        <label class="ctrl-label">
-          From
+        <span v-else class="ctrl-row">
           <input type="date" v-model="fromDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
-        </label>
-        <label class="ctrl-label">
-          To
+          <span class="unit">→</span>
           <input type="date" v-model="toDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
-        </label>
-      </template>
+        </span>
+      </div>
     </section>
 
     <!-- Price chart with buy markers -->
@@ -689,90 +713,41 @@ watch(
     <!-- Driver-metric chart with the buy band shaded -->
     <div v-show="showMetricChart" ref="elMetric" class="chart metric"></div>
 
-    <!-- Stats comparison -->
-    <section class="stats" v-if="strategyStats && baselineStats">
-      <div class="stat-col">
-        <h3 class="col-head strategy">Strategy</h3>
-        <p class="col-sub">{{ strategyStats.numBuys }} buys · {{ (strategyStats.coverage * 100).toFixed(1) }}% of window</p>
-        <div class="stat-row">
-          <span class="stat-label">Current value</span>
-          <span class="stat-val">{{ fmtUSD(strategyStats.currentValue) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">ROI</span>
-          <span class="stat-val" :class="strategyStats.roi >= 0 ? 'pos' : 'neg'">{{ fmtPct(strategyStats.roi) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Cost basis</span>
-          <span class="stat-val">{{ fmtUSD(strategyStats.costBasis) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">BTC held</span>
-          <span class="stat-val">{{ fmtBtc(strategyStats.btcAccumulated) }}</span>
-        </div>
-      </div>
-
-      <div class="stat-col">
-        <h3 class="col-head baseline">Baseline</h3>
-        <p class="col-sub">Every day · last {{ baselineDays }} days</p>
-        <div class="stat-row">
-          <span class="stat-label">Current value</span>
-          <span class="stat-val">{{ fmtUSD(baselineStats.currentValue) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">ROI</span>
-          <span class="stat-val" :class="baselineStats.roi >= 0 ? 'pos' : 'neg'">{{ fmtPct(baselineStats.roi) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Cost basis</span>
-          <span class="stat-val">{{ fmtUSD(baselineStats.costBasis) }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">BTC held</span>
-          <span class="stat-val">{{ fmtBtc(baselineStats.btcAccumulated) }}</span>
-        </div>
-      </div>
-
-      <div class="stat-col edge">
-        <h3 class="col-head">Edge</h3>
-        <p class="col-sub">Strategy vs baseline</p>
-        <div class="stat-row">
-          <span class="stat-label">Value edge</span>
-          <span class="stat-val" :class="strategyStats.currentValue >= baselineStats.currentValue ? 'pos' : 'neg'">
-            {{ fmtPct((strategyStats.currentValue - baselineStats.currentValue) / baselineStats.currentValue) }}
-          </span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">ROI edge</span>
-          <span class="stat-val" :class="strategyStats.roi >= baselineStats.roi ? 'pos' : 'neg'">
-            {{ fmtPct(strategyStats.roi - baselineStats.roi) }}
-          </span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Cost basis edge</span>
-          <span class="stat-val" :class="strategyStats.costBasis <= baselineStats.costBasis ? 'pos' : 'neg'">
-            {{ fmtPct((baselineStats.costBasis - strategyStats.costBasis) / baselineStats.costBasis) }}
-          </span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">BTC edge</span>
-          <span class="stat-val" :class="strategyStats.btcAccumulated >= baselineStats.btcAccumulated ? 'pos' : 'neg'">
-            {{ fmtPct((strategyStats.btcAccumulated - baselineStats.btcAccumulated) / baselineStats.btcAccumulated) }}
-          </span>
-        </div>
-      </div>
-    </section>
-
+    <!-- Strategy (saved layers) vs baseline -->
+    <template v-if="strategyStats && baselineStats">
+      <h4 class="stats-head">Strategy vs baseline · saved layers</h4>
+      <StatsCompare
+        label="Strategy"
+        label-class="strategy"
+        :sub="`${strategyStats.numBuys} buys · ${(strategyStats.coverage * 100).toFixed(1)}% of window`"
+        :primary="strategyStats"
+        :baseline="baselineStats"
+        :baseline-sub="`Every day · ${windowSize} days`"
+      />
+    </template>
     <section class="no-buys" v-else-if="!loading && !error">
       <p>Tune a driver and <strong>+ Add layer</strong> to build a strategy. Amber rings preview the current driver's buy days.</p>
     </section>
 
+    <!-- Preview (live builder) vs baseline -->
+    <template v-if="previewStats && baselineStats">
+      <h4 class="stats-head">Preview vs baseline · current builder (not yet added)</h4>
+      <StatsCompare
+        label="Preview"
+        label-class="preview"
+        :sub="`${previewStats.numBuys} buys · ${(previewStats.coverage * 100).toFixed(1)}% of window`"
+        :primary="previewStats"
+        :baseline="baselineStats"
+        :baseline-sub="`Every day · ${windowSize} days`"
+      />
+    </template>
+
     <p class="hint">
-      Build a strategy from one or more seed layers (price ÷ MA, Bollinger score, or
-      manual dates). Each buy day gets an equal share of the total budget
-      ({{ fmtUSD(totalBudget) }} ÷ {{ strategyIndices.length || '—' }} days). The baseline
-      spends the <em>same</em> total evenly across every day of the trailing
-      {{ baselineDays }}-day window.
+      Build a strategy from one or more seed layers (price ÷ MA, Bollinger score,
+      uniform spacing, or manual dates). Each buy day gets an equal share of the
+      total budget ({{ fmtUSD(totalBudget) }} ÷ {{ strategyIndices.length || '—' }} days).
+      The baseline spends the <em>same</em> total evenly across every day of the
+      comparison window.
     </p>
   </div>
 </template>
@@ -829,6 +804,30 @@ watch(
 }
 .select.sm {
   width: 9rem;
+}
+.window-panel {
+  gap: 0.35rem;
+}
+.window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.toggle {
+  font-size: 0.66rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--accent-blue, #4f8ef7);
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent-blue, #4f8ef7);
+  border-radius: 1rem;
+  cursor: pointer;
+}
+.stats-head {
+  margin: 0.75rem 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 .warn {
   padding: 0.5rem 0.7rem;
@@ -955,6 +954,10 @@ watch(
   background: rgba(155, 109, 255, 0.2);
   color: #9b6dff;
 }
+.layer-kind.uniform {
+  background: rgba(43, 212, 167, 0.2);
+  color: #2bd4a7;
+}
 .layer-label {
   flex: 1;
   color: var(--text);
@@ -972,61 +975,6 @@ watch(
 .chart.metric {
   height: min(28vh, 220px);
   margin-bottom: 1rem;
-}
-
-.stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-.stat-col {
-  flex: 1;
-  min-width: 9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-elev);
-}
-.col-head {
-  margin: 0 0 0.2rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.col-head.strategy {
-  color: #2bd4a7;
-}
-.col-head.baseline {
-  color: #4f8ef7;
-}
-.col-sub {
-  margin: 0 0 0.5rem;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.15rem 0;
-  border-top: 1px solid var(--border);
-  font-size: 0.78rem;
-}
-.stat-label {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.stat-val {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.pos {
-  color: #2bd4a7;
-}
-.neg {
-  color: #f74b4b;
 }
 
 .no-buys {
