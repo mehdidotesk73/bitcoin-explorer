@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, mwHeat } from '../lib/indicators'
-import { logDebug } from '../debug'
+import { sma, bollinger } from '../lib/indicators'
+import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
+import MetricsPanel from './MetricsPanel.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -15,24 +16,75 @@ const props = defineProps<{
 
 const emit = defineEmits<{ refresh: [] }>()
 
-// --- Adjustable parameters --------------------------------------------------
+// --- Metric toggles (default view = price only) -----------------------------
+const showMa = ref(false) // MA overlay
+const showBb = ref(false) // Bollinger overlay
+const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
+const showRatio = ref(false) // price ÷ MA curve
+const showBScore = ref(false) // Bollinger (b) score curve
+
+// Per-metric config disclosure state.
+const cfgMa = ref(false)
+const cfgBb = ref(false)
+const cfgRatio = ref(false)
+const cfgRun = ref(false)
+const cfgB = ref(false)
+
+// Whether any separate-curve metric is on, and whether that panel is collapsed.
+const anyCurve = computed(() => showRatio.value || showBScore.value || showRunDetection.value)
+const curvesCollapsed = ref(false)
+
+// --- Metric parameters ------------------------------------------------------
+// MA overlay.
 const maPeriod = ref(20)
 const maUnit = ref<PeriodUnit>('day')
+// Bollinger overlay.
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
-const showHeat = ref(true) // tint the price line by the M/W heat score
-const showHeatHelp = ref(false)
-const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+// Price ÷ MA uses a long, slow baseline (like the Mechanics tab's 4yr MA) so the
+// ratio traces whole cycles instead of hugging 1 the way a short MA does.
+const ratioMaDays = ref(1460) // 4 years
 
-const MW_HEAT_HELP =
-  'M/W heat colours the price by how it oscillates around its moving average. ' +
-  'It builds a smoothed price-vs-MA oscillator (taming sharp zigzags), then ' +
-  'matches each window against the W / M shape: blue = W-bottom (two dips ' +
-  'below the MA with a recovery between → bullish), red = M-top (two pushes ' +
-  'above the MA, second weaker → bearish). Stronger, cleaner oscillations ' +
-  'colour more boldly; flat or choppy stretches stay neutral. Heuristic only — ' +
-  'not financial advice.'
+// Shared run params. Scale is a continuous (log) window in days: the slider
+// position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
+// named scale below.
+const RUN_SCALES = [
+  { name: 'daily', hd: 1 },
+  { name: 'weekly', hd: 5 },
+  { name: 'monthly', hd: 20 },
+  { name: 'seasonal', hd: 65 },
+  { name: 'yearly', hd: 250 },
+  { name: 'multi-year', hd: 1000 },
+]
+const RUN_SCALE_MAX = 1500
+const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
+const runScaleT = ref(tForHd(31)) // default scale ≈ 31d
+const runScaleDays = computed(() =>
+  Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
+)
+const runScaleLabel = computed(() => {
+  const hd = runScaleDays.value
+  let best = RUN_SCALES[0]
+  let bestD = Infinity
+  for (const s of RUN_SCALES) {
+    const dist = Math.abs(Math.log(hd) - Math.log(s.hd))
+    if (dist < bestD) {
+      bestD = dist
+      best = s
+    }
+  }
+  return `${best.name} · ${hd}d`
+})
+// Sustainment gate a run must clear. Presented as sensitivity (higher = more /
+// longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.2 → gate 0.7.
+const sustThresh = ref(0.7)
+const runSensitivity = computed({
+  get: () => +(0.9 - sustThresh.value).toFixed(2),
+  set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
+})
+
+const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // Data is daily, so week/month periods just scale the sample count.
 type PeriodUnit = 'day' | 'week' | 'month'
@@ -56,31 +108,28 @@ const maLabel = computed(() => `${maPeriod.value}${UNIT_ABBR[maUnit.value]}`)
 const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
 
 const ma = computed(() => sma(prices.value, maDays.value))
+const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
+const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
-// Signed M/W price-heat: +cool where W-bottoms dominate, -hot for M-tops.
-const heat = computed(() => {
-  const h = mwHeat(prices.value, bands.value, {
-    pivotWindow: bbDays.value >= 2 ? Math.min(bbDays.value, 20) : 5,
-  }).heat
-  // Diagnostic: surface the heat distribution to the on-screen log so we can
-  // see whether it's actually varying (and by how much) on a phone.
-  let min = Infinity
-  let max = -Infinity
-  let nonZero = 0
-  let absSum = 0
-  for (const v of h) {
-    if (v < min) min = v
-    if (v > max) max = v
-    if (Math.abs(v) > 0.02) nonZero++
-    absSum += Math.abs(v)
+
+// Runs/metrics at the selected continuous scale.
+const runDiag = computed(() =>
+  scaleDiag(prices.value, runScaleDays.value, {
+    N: Math.max(5, bbPeriod.value),
+    sustThresh: sustThresh.value,
+  }),
+)
+
+// Piecewise-linear run skeleton: anchor the price at every run boundary and
+// leave the rest null. The chart joins anchors with straight segments, so each
+// run renders as a line at its average slope, continuous across choppy gaps.
+const runOverlay = computed<(number | null)[]>(() => {
+  const out = new Array(prices.value.length).fill(null)
+  for (const r of runDiag.value.runs) {
+    out[r.start] = prices.value[r.start]
+    out[r.end] = prices.value[r.end]
   }
-  const bandsValid = bands.value.upper.filter((u) => u != null).length
-  logDebug(
-    `heat: n=${h.length} bandsValid=${bandsValid} min=${min.toFixed(2)} ` +
-      `max=${max.toFixed(2)} mean|h|=${(absSum / (h.length || 1)).toFixed(2)} ` +
-      `nonZero=${nonZero}`,
-  )
-  return h
+  return out
 })
 
 const latestPrice = computed(() =>
@@ -119,45 +168,111 @@ const fmtUSD = (v: number | null) =>
       <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <section class="controls">
-      <label>
-        MA period
-        <span class="period">
-          <input type="number" v-model.number="maPeriod" min="1" max="400" />
-          <select v-model="maUnit">
-            <option value="day">days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </span>
-      </label>
-      <label>
-        Bollinger period
-        <span class="period">
-          <input type="number" v-model.number="bbPeriod" min="1" max="400" />
-          <select v-model="bbUnit">
-            <option value="day">days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </span>
-      </label>
-      <label>
-        Bollinger σ ×
-        <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
-      </label>
-      <label class="checkbox">
-        <input type="checkbox" v-model="showHeat" />
-        M/W heat
-        <span
-          class="help"
-          :title="MW_HEAT_HELP"
-          @click="showHeatHelp = !showHeatHelp"
-        >ⓘ</span>
-      </label>
-    </section>
+    <section class="controls metrics-menu">
+      <!-- Overlay: moving average -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showMa" /> Moving average</label>
+          <button class="cfg" :class="{ open: cfgMa }" @click="cfgMa = !cfgMa" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgMa" class="metric-cfg">
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="maPeriod" min="1" max="400" />
+              <select v-model="maUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+        </div>
+      </div>
 
-    <p v-if="showHeatHelp" class="heat-help">{{ MW_HEAT_HELP }}</p>
+      <!-- Overlay: Bollinger bands -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showBb" /> Bollinger bands</label>
+          <button class="cfg" :class="{ open: cfgBb }" @click="cfgBb = !cfgBb" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgBb" class="metric-cfg">
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+              <select v-model="bbUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+          <label>
+            σ ×
+            <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Run detection: runs overlay (price) + run-slope graph -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showRunDetection" /> Run detection</label>
+          <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgRun" class="metric-cfg">
+          <label class="slider">
+            Scale
+            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+            <span class="val">{{ runScaleLabel }}</span>
+          </label>
+          <label class="slider">
+            Sensitivity
+            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Curve: price ÷ MA -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
+          <button class="cfg" :class="{ open: cfgRatio }" @click="cfgRatio = !cfgRatio" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgRatio" class="metric-cfg">
+          <label>
+            MA window
+            <span class="period">
+              <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
+              <span class="unit">days</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Curve: Bollinger score (b = band position) -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showBScore" /> Bollinger score</label>
+          <button class="cfg" :class="{ open: cfgB }" @click="cfgB = !cfgB" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgB" class="metric-cfg">
+          <p class="cfg-note">Shares the run scale &amp; sensitivity below.</p>
+          <label class="slider">
+            Scale
+            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+            <span class="val">{{ runScaleLabel }}</span>
+          </label>
+          <label class="slider">
+            Sensitivity
+            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+          </label>
+        </div>
+      </div>
+    </section>
 
     <section class="ranges">
       <span class="muted">Graphed range:</span>
@@ -177,10 +292,32 @@ const fmtUSD = (v: number | null) =>
       :lower="bands.lower"
       :ma-label="maLabel"
       :bb-label="bbLabel"
-      :heat="heat"
-      :show-heat="showHeat"
+      :show-ma="showMa"
+      :show-bb="showBb"
+      :run-overlay="runOverlay"
+      :show-runs="showRunDetection"
       v-model:zoom="zoom"
     />
+
+    <section v-if="anyCurve && dates.length" class="curves">
+      <button class="curves-toggle" @click="curvesCollapsed = !curvesCollapsed">
+        <span class="chev">{{ curvesCollapsed ? '▸' : '▾' }}</span> Additional graphs
+      </button>
+      <MetricsPanel
+        v-if="!curvesCollapsed"
+        :dates="dates"
+        :price="prices"
+        :ma="ratioMa"
+        :ma-label="ratioMaLabel"
+        :diag="runDiag"
+        :scale-label="runScaleLabel"
+        :show-ratio="showRatio"
+        :show-b="showBScore"
+        :show-run-slope="showRunDetection"
+        v-model:zoom="zoom"
+      />
+    </section>
+
     <p class="hint">
       Drag the slider under the chart (or pinch) to adjust the graphed range.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
@@ -218,6 +355,64 @@ const fmtUSD = (v: number | null) =>
   align-items: center;
   margin-bottom: 0.75rem;
 }
+.metrics-menu {
+  align-items: flex-start;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.55rem;
+  background: var(--bg-elev);
+}
+.metric-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cfg-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.curves {
+  margin-bottom: 0.5rem;
+}
+.curves-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.chev {
+  font-size: 0.7rem;
+}
+.cfg {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+}
+.cfg.open {
+  color: var(--accent-blue);
+}
+.metric-cfg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
 .controls label {
   display: flex;
   flex-direction: column;
@@ -234,32 +429,22 @@ const fmtUSD = (v: number | null) =>
   gap: 0.35rem;
   color: var(--text);
   font-size: 0.8rem;
-  align-self: flex-end;
 }
 .controls .checkbox input {
   width: auto;
 }
-.help {
-  cursor: help;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  width: 1.1rem;
-  height: 1.1rem;
-  display: inline-flex;
+.controls .slider {
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
+  gap: 0.4rem;
 }
-.heat-help {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
-  margin: 0 0 0.75rem;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
+.controls .slider input[type='range'] {
+  width: 7rem;
+}
+.controls .slider .val {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 2.2rem;
 }
 .period {
   display: flex;
