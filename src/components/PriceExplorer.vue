@@ -26,6 +26,8 @@ const bbK = ref(2)
 const showHeat = ref(true) // tint the price line by the M/W heat score
 const showHeatHelp = ref(false)
 const showDiag = ref(false) // show the heat-components diagnostic chart
+const showSignal = ref(false) // shade under price by the smoothed M/W signal
+const signalPeriod = ref(21) // smoothing window (days) for the composite signal
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // Live M/W heat tuning knobs (spec §11.5 fast-iteration loop).
@@ -126,6 +128,13 @@ const heat = computed(() => {
   return h
 })
 
+// Smoothed composite M/W signal: a trailing moving average of the heat score,
+// taming the sharp ±1 swings into a slow buy/sell trend. Sign follows the
+// engine: negative = W (bottom, bullish/buy), positive = M (top, bearish/sell).
+const signal = computed(() =>
+  sma(heat.value, Math.max(1, signalPeriod.value)).map((v) => v ?? 0),
+)
+
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
 )
@@ -199,6 +208,17 @@ const fmtUSD = (v: number | null) =>
         >ⓘ</span>
       </label>
       <label class="checkbox">
+        <input type="checkbox" v-model="showSignal" />
+        Buy/sell signal
+      </label>
+      <label v-if="showSignal">
+        Signal smoothing
+        <span class="period">
+          <input type="number" v-model.number="signalPeriod" min="1" max="200" />
+          <span class="unit">days</span>
+        </span>
+      </label>
+      <label class="checkbox">
         <input type="checkbox" v-model="showDiag" />
         Components
       </label>
@@ -226,6 +246,8 @@ const fmtUSD = (v: number | null) =>
       :bb-label="bbLabel"
       :heat="heat"
       :show-heat="showHeat"
+      :signal="signal"
+      :show-signal="showSignal"
       v-model:zoom="zoom"
     />
 

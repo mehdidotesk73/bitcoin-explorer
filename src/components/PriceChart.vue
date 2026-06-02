@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
-import { LineChart, ScatterChart } from 'echarts/charts'
+import { LineChart, ScatterChart, BarChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -14,6 +14,7 @@ import { logDebug } from '../debug'
 echarts.use([
   LineChart,
   ScatterChart,
+  BarChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
@@ -33,6 +34,10 @@ const props = defineProps<{
   heat?: number[]
   /** Tint the price line by `heat` when true. */
   showHeat?: boolean
+  /** Smoothed (moving-average) composite M/W signal per sample in [-1, +1]. */
+  signal?: number[]
+  /** Shade under the price line by `signal` when true. */
+  showSignal?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -62,6 +67,16 @@ function heatColor(h: number): string {
   return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
 }
 
+// Translucent fill colour for the smoothed buy/sell signal. Sign follows the
+// engine: negative = W (bottom → buy → green), positive = M (top → sell → red).
+// Opacity scales with strength so neutral stretches stay almost clear.
+function signalColor(s: number): string {
+  const t = Math.max(-1, Math.min(1, s))
+  const rgb = t < 0 ? '46, 204, 113' : '255, 70, 70' // green buy · red sell
+  const alpha = 0.42 * Math.sqrt(Math.abs(t))
+  return `rgba(${rgb}, ${alpha.toFixed(3)})`
+}
+
 function buildOption(): echarts.EChartsCoreOption {
   // The shaded band is drawn with two stacked series: an invisible baseline at
   // the lower band, plus the band thickness (upper − lower) rendered as an area.
@@ -83,6 +98,18 @@ function buildOption(): echarts.EChartsCoreOption {
     ? props.price.map((v, i) => ({
         value: [i, v],
         itemStyle: { color: heatColor(props.heat![i]) },
+      }))
+    : []
+
+  // Buy/sell signal: a per-sample bar from the axis up to the price, tinted by
+  // the smoothed composite signal, giving a continuous coloured zone under the
+  // price line. Per-point itemStyle reliably honours colour (like the heat dots).
+  const signalOn =
+    !!props.showSignal && !!props.signal && props.signal.length === props.price.length
+  const signalBars = signalOn
+    ? props.price.map((v, i) => ({
+        value: v,
+        itemStyle: { color: signalColor(props.signal![i]) },
       }))
     : []
 
@@ -116,6 +143,11 @@ function buildOption(): echarts.EChartsCoreOption {
           const label = h > 0.05 ? 'cool / W' : h < -0.05 ? 'hot / M' : 'neutral'
           rows.push(`M/W heat: ${h.toFixed(2)} (${label})`)
         }
+        if (props.showSignal && props.signal && props.signal[i] != null) {
+          const s = props.signal[i]
+          const label = s < -0.05 ? 'buy / W' : s > 0.05 ? 'sell / M' : 'neutral'
+          rows.push(`Buy/sell signal: ${s.toFixed(2)} (${label})`)
+        }
         return rows.join('<br/>')
       },
     },
@@ -147,6 +179,20 @@ function buildOption(): echarts.EChartsCoreOption {
       },
     ],
     series: [
+      // --- Buy/sell signal shading (drawn first, beneath the price) ---
+      ...(signalOn
+        ? [
+            {
+              name: '__signal',
+              type: 'bar' as const,
+              data: signalBars,
+              barWidth: '100%',
+              barCategoryGap: '0%',
+              silent: true,
+              z: 1,
+            },
+          ]
+        : []),
       // --- Bollinger band fill (drawn first, under everything) ---
       {
         name: '__bb_base',
@@ -272,7 +318,7 @@ onBeforeUnmount(() => {
 
 // Re-render when data or indicator parameters change.
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat],
+  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.heat, props.showHeat, props.signal, props.showSignal],
   render,
 )
 
