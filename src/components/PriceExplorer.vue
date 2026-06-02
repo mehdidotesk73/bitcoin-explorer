@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
 import { scaleDiag } from '../lib/runs'
+import {
+  METRIC_SPECS,
+  type MetricState,
+  type PeriodUnit,
+  defaultMetricState,
+  loadMetricState,
+  saveMetricState,
+} from '../lib/metricRegistry'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 
@@ -16,39 +24,35 @@ const props = defineProps<{
 
 const emit = defineEmits<{ refresh: [] }>()
 
-// --- Metric toggles (default view = price only) -----------------------------
-const showMa = ref(false) // MA overlay
-const showBb = ref(false) // Bollinger overlay
-const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
-const showRatio = ref(false) // price ÷ MA curve
-const showBScore = ref(false) // Bollinger (b) score curve
+// --- Metric state (persisted to localStorage) --------------------------------
+const metricState = ref<MetricState>(defaultMetricState())
+const cfgOpen = ref<Record<string, boolean>>({}) // which metric config is expanded
 
-// Per-metric config disclosure state.
-const cfgMa = ref(false)
-const cfgBb = ref(false)
-const cfgRatio = ref(false)
-const cfgRun = ref(false)
-const cfgB = ref(false)
+// Load initial state on mount.
+onMounted(() => {
+  metricState.value = loadMetricState()
+})
+
+// Persist state changes to localStorage.
+watch(() => metricState.value, saveMetricState, { deep: true })
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
-const anyCurve = computed(() => showRatio.value || showBScore.value || showRunDetection.value)
+const anyCurve = computed(() => {
+  return (
+    metricState.value.enabled['ratio'] ||
+    metricState.value.enabled['bscore'] ||
+    metricState.value.enabled['runSlope']
+  )
+})
 const curvesCollapsed = ref(false)
 
-// --- Metric parameters ------------------------------------------------------
-// MA overlay.
-const maPeriod = ref(20)
-const maUnit = ref<PeriodUnit>('day')
-// Bollinger overlay.
-const bbPeriod = ref(20)
-const bbUnit = ref<PeriodUnit>('day')
-const bbK = ref(2)
-// Price ÷ MA uses a long, slow baseline (like the Mechanics tab's 4yr MA) so the
-// ratio traces whole cycles instead of hugging 1 the way a short MA does.
-const ratioMaDays = ref(1460) // 4 years
+// --- Unit conversion helpers --------------------------------------------------
+const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
+const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
+const toDays = (period: number, unit: PeriodUnit) =>
+  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
 
-// Shared run params. Scale is a continuous (log) window in days: the slider
-// position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
-// named scale below.
+// --- Run scale helpers (log slider mapping + named scale snapping) ----------
 const RUN_SCALES = [
   { name: 'daily', hd: 1 },
   { name: 'weekly', hd: 5 },
@@ -58,11 +62,10 @@ const RUN_SCALES = [
   { name: 'multi-year', hd: 1000 },
 ]
 const RUN_SCALE_MAX = 1500
-const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
-const runScaleT = ref(tForHd(31)) // default scale ≈ 31d
-const runScaleDays = computed(() =>
-  Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
-)
+const runScaleDays = computed(() => {
+  const scaleT = metricState.value.params['runs']?.['scaleT'] ?? 34
+  return Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * (scaleT as number)) / 100)))
+})
 const runScaleLabel = computed(() => {
   const hd = runScaleDays.value
   let best = RUN_SCALES[0]
@@ -76,22 +79,14 @@ const runScaleLabel = computed(() => {
   }
   return `${best.name} · ${hd}d`
 })
-// Sustainment gate a run must clear. Presented as sensitivity (higher = more /
-// longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.2 → gate 0.7.
-const sustThresh = ref(0.7)
-const runSensitivity = computed({
-  get: () => +(0.9 - sustThresh.value).toFixed(2),
-  set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
+
+// Sensitivity → sustThresh conversion (sensitivity = 0.9 − sustThresh).
+const sustThresh = computed(() => {
+  const sensitivity = metricState.value.params['runs']?.['sensitivity'] ?? 0.2
+  return Math.max(0, Math.min(0.9, +(0.9 - (sensitivity as number)).toFixed(2)))
 })
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
-
-// Data is daily, so week/month periods just scale the sample count.
-type PeriodUnit = 'day' | 'week' | 'month'
-const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
-const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
-const toDays = (period: number, unit: PeriodUnit) =>
-  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
 
 function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
@@ -102,20 +97,30 @@ const filtered = computed(() => props.raw)
 const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
 const prices = computed(() => filtered.value.map((p) => p.price))
 
-const maDays = computed(() => toDays(maPeriod.value, maUnit.value))
-const bbDays = computed(() => toDays(bbPeriod.value, bbUnit.value))
+// MA overlay: compute from period + unit in metricState.
+const maPeriod = computed(() => metricState.value.params['ma']?.['period'] ?? 20)
+const maUnit = computed(() => metricState.value.periodUnits['ma.period'] ?? 'day')
+const maDays = computed(() => toDays(maPeriod.value as number, maUnit.value))
 const maLabel = computed(() => `${maPeriod.value}${UNIT_ABBR[maUnit.value]}`)
-const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
-
 const ma = computed(() => sma(prices.value, maDays.value))
-const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
-const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
-const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
+
+// Bollinger overlay: compute from period + unit + k in metricState.
+const bbPeriod = computed(() => metricState.value.params['bb']?.['period'] ?? 20)
+const bbUnit = computed(() => metricState.value.periodUnits['bb.period'] ?? 'day')
+const bbDays = computed(() => toDays(bbPeriod.value as number, bbUnit.value))
+const bbLabel = computed(() => `${bbPeriod.value}${UNIT_ABBR[bbUnit.value]}`)
+const bbK = computed(() => metricState.value.params['bb']?.['k'] ?? 2)
+const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value as number))
+
+// Price ÷ MA curve: long baseline so ratio traces regimes instead of hugging 1.
+const ratioMaDays = computed(() => metricState.value.params['ratio']?.['maDays'] ?? 1460)
+const ratioMaLabel = computed(() => `${((ratioMaDays.value as number) / 365).toFixed(1)}yr`)
+const ratioMa = computed(() => sma(prices.value, ratioMaDays.value as number))
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
   scaleDiag(prices.value, runScaleDays.value, {
-    N: Math.max(5, bbPeriod.value),
+    N: Math.max(5, bbDays.value),
     sustThresh: sustThresh.value,
   }),
 )
@@ -169,109 +174,126 @@ const fmtUSD = (v: number | null) =>
     </section>
 
     <section class="controls metrics-menu">
-      <!-- Overlay: moving average -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showMa" /> Moving average</label>
-          <button class="cfg" :class="{ open: cfgMa }" @click="cfgMa = !cfgMa" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgMa" class="metric-cfg">
-          <label>
-            Period
-            <span class="period">
-              <input type="number" v-model.number="maPeriod" min="1" max="400" />
-              <select v-model="maUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
-            </span>
-          </label>
-        </div>
-      </div>
+      <!-- Data-driven metric rendering: each metric has its spec, toggle, and collapsible config. -->
+      <template v-for="spec of Object.values(METRIC_SPECS)" :key="spec.id">
+        <div v-if="spec" class="metric">
+          <div class="metric-head">
+            <label class="checkbox">
+              <input
+                type="checkbox"
+                :checked="metricState.enabled[spec.id]"
+                @change="(e: Event) => (metricState.enabled[spec.id] = (e.target as HTMLInputElement).checked)"
+              />
+              {{ spec.label }}
+            </label>
+            <button
+              v-if="spec.params.length > 0 || spec.sharedParamGroup"
+              class="cfg"
+              :class="{ open: cfgOpen[spec.id] }"
+              @click="cfgOpen[spec.id] = !cfgOpen[spec.id]"
+              title="Configure"
+            >
+              ⚙
+            </button>
+          </div>
 
-      <!-- Overlay: Bollinger bands -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showBb" /> Bollinger bands</label>
-          <button class="cfg" :class="{ open: cfgBb }" @click="cfgBb = !cfgBb" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgBb" class="metric-cfg">
-          <label>
-            Period
-            <span class="period">
-              <input type="number" v-model.number="bbPeriod" min="1" max="400" />
-              <select v-model="bbUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
-            </span>
-          </label>
-          <label>
-            σ ×
-            <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
-          </label>
-        </div>
-      </div>
+          <!-- Config panel for this metric's params or shared-param note. -->
+          <div v-if="cfgOpen[spec.id]" class="metric-cfg">
+            <!-- If this metric shares params with another, show a note. -->
+            <p v-if="spec.sharedParamGroup" class="cfg-note">
+              Shares {{ METRIC_SPECS[spec.sharedParamGroup].label.toLowerCase() }} scale &amp; sensitivity.
+            </p>
 
-      <!-- Run detection: runs overlay (price) + run-slope graph -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showRunDetection" /> Run detection</label>
-          <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgRun" class="metric-cfg">
-          <label class="slider">
-            Scale
-            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-            <span class="val">{{ runScaleLabel }}</span>
-          </label>
-          <label class="slider">
-            Sensitivity
-            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-          </label>
-        </div>
-      </div>
+            <!-- Render each param for this metric. -->
+            <template v-for="param of spec.params" :key="param.id">
+              <!-- Period param with unit dropdown. -->
+              <label v-if="param.hasPeriodUnit" class="period-control">
+                {{ param.label }}
+                <span class="period">
+                  <input
+                    type="number"
+                    :value="metricState.params[spec.id]?.[param.id] ?? param.default"
+                    @input="(e: Event) => {
+                      const val = Number((e.target as HTMLInputElement).value);
+                      if (!metricState.params[spec.id]) metricState.params[spec.id] = {};
+                      metricState.params[spec.id][param.id] = val;
+                    }"
+                    :min="param.min"
+                    :max="param.max"
+                  />
+                  <select
+                    :value="metricState.periodUnits[`${spec.id}.${param.id}`] ?? 'day'"
+                    @change="(e: Event) => {
+                      metricState.periodUnits[`${spec.id}.${param.id}`] = (e.target as HTMLSelectElement).value as PeriodUnit;
+                    }"
+                  >
+                    <option value="day">days</option>
+                    <option value="week">weeks</option>
+                    <option value="month">months</option>
+                  </select>
+                </span>
+              </label>
 
-      <!-- Curve: price ÷ MA -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
-          <button class="cfg" :class="{ open: cfgRatio }" @click="cfgRatio = !cfgRatio" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgRatio" class="metric-cfg">
-          <label>
-            MA window
-            <span class="period">
-              <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
-              <span class="unit">days</span>
-            </span>
-          </label>
-        </div>
-      </div>
+              <!-- Slider param. -->
+              <label v-else-if="param.type === 'number' && (param.min !== undefined || param.max !== undefined)" class="slider">
+                {{ param.label }}
+                <input
+                  type="range"
+                  :value="metricState.params[spec.id]?.[param.id] ?? param.default"
+                  @input="(e: Event) => {
+                    const val = Number((e.target as HTMLInputElement).value);
+                    if (!metricState.params[spec.id]) metricState.params[spec.id] = {};
+                    metricState.params[spec.id][param.id] = val;
+                  }"
+                  :min="param.min"
+                  :max="param.max"
+                  :step="param.step ?? 0.1"
+                />
+                <span class="val">{{
+                  spec.id === 'runs' && param.id === 'scaleT'
+                    ? runScaleLabel
+                    : spec.id === 'runs' && param.id === 'sensitivity'
+                      ? ((metricState.params[spec.id]?.[param.id] ?? param.default) as number).toFixed(2)
+                      : (metricState.params[spec.id]?.[param.id] ?? param.default)
+                }}</span>
+              </label>
 
-      <!-- Curve: Bollinger score (b = band position) -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showBScore" /> Bollinger score</label>
-          <button class="cfg" :class="{ open: cfgB }" @click="cfgB = !cfgB" title="Configure">⚙</button>
+              <!-- Regular number input param. -->
+              <label v-else class="number-control">
+                {{ param.label }}
+                <span v-if="spec.id === 'ratio'" class="period">
+                  <input
+                    type="number"
+                    :value="metricState.params[spec.id]?.[param.id] ?? param.default"
+                    @input="(e: Event) => {
+                      const val = Number((e.target as HTMLInputElement).value);
+                      if (!metricState.params[spec.id]) metricState.params[spec.id] = {};
+                      metricState.params[spec.id][param.id] = val;
+                    }"
+                    :min="param.min"
+                    :max="param.max"
+                    :step="param.step"
+                  />
+                  <span class="unit">days</span>
+                </span>
+                <input
+                  v-else
+                  type="number"
+                  :value="metricState.params[spec.id]?.[param.id] ?? param.default"
+                  @input="(e: Event) => {
+                    const val = Number((e.target as HTMLInputElement).value);
+                    if (!metricState.params[spec.id]) metricState.params[spec.id] = {};
+                    metricState.params[spec.id][param.id] = val;
+                  }"
+                  :min="param.min"
+                  :max="param.max"
+                  :step="param.step"
+                />
+              </label>
+            </template>
+          </div>
         </div>
-        <div v-if="cfgB" class="metric-cfg">
-          <p class="cfg-note">Shares the run scale &amp; sensitivity below.</p>
-          <label class="slider">
-            Scale
-            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-            <span class="val">{{ runScaleLabel }}</span>
-          </label>
-          <label class="slider">
-            Sensitivity
-            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-          </label>
-        </div>
-      </div>
+      </template>
     </section>
 
     <section class="ranges">
@@ -292,10 +314,10 @@ const fmtUSD = (v: number | null) =>
       :lower="bands.lower"
       :ma-label="maLabel"
       :bb-label="bbLabel"
-      :show-ma="showMa"
-      :show-bb="showBb"
+      :show-ma="metricState.enabled['ma']"
+      :show-bb="metricState.enabled['bb']"
       :run-overlay="runOverlay"
-      :show-runs="showRunDetection"
+      :show-runs="metricState.enabled['runs']"
       v-model:zoom="zoom"
     />
 
@@ -311,9 +333,9 @@ const fmtUSD = (v: number | null) =>
         :ma-label="ratioMaLabel"
         :diag="runDiag"
         :scale-label="runScaleLabel"
-        :show-ratio="showRatio"
-        :show-b="showBScore"
-        :show-run-slope="showRunDetection"
+        :show-ratio="metricState.enabled['ratio']"
+        :show-b="metricState.enabled['bscore']"
+        :show-run-slope="metricState.enabled['runSlope']"
         v-model:zoom="zoom"
       />
     </section>
