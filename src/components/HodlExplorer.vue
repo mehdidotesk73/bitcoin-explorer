@@ -711,14 +711,6 @@ watch(
             <input type="number" v-model.number="ratioUpper" min="0" max="3" step="0.01" class="num-input sm" />
           </span>
         </label>
-        <label class="ctrl-label" v-else-if="driver === 'bscore'">
-          Buy band (b score)
-          <span class="ctrl-row">
-            <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
-            <span class="unit">to</span>
-            <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
-          </span>
-        </label>
         <div class="ctrl-label" v-if="driver === 'bscore'">
           Bollinger score
           <label class="param">
@@ -744,7 +736,15 @@ watch(
             </span>
           </label>
         </div>
-        <label class="ctrl-label" v-else-if="driver === 'uniform'">
+        <label class="ctrl-label" v-if="driver === 'bscore'">
+          Buy band (b score)
+          <span class="ctrl-row">
+            <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
+            <span class="unit">to</span>
+            <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
+          </span>
+        </label>
+        <label class="ctrl-label" v-if="driver === 'uniform'">
           Every X days · {{ uniformEveryX === 7 ? 'weekday' : 'offset' }}
           <span class="ctrl-row">
             <input type="number" v-model.number="uniformEveryX" min="1" max="365" step="1" class="num-input sm" />
