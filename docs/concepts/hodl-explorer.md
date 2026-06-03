@@ -31,8 +31,10 @@ buy-vs-hodl score. Heuristic only, not advice.
 - **Price ÷ MA** — buy days where price ÷ (long MA) falls inside a band
   `[lower, upper]` (default 0–1.5). The MA window is **shared with the Price
   Explorer**.
-- **Bollinger score (b)** — buy days where the monthly-scale band-position sits
-  in `[lower, upper]` (default −4–0, i.e. oversold).
+- **Bollinger score (b)** — buy days where the band position sits in
+  `[lower, upper]` (default −2–0, i.e. at/below the MA). Same `bandPosition`
+  engine as the Price Explorer, with the Hodl tab's **own** Window / Smoothing /
+  σ knobs.
 - **Uniform spaced** — buy every **X days** on a phase **offset** from today (for
   weekly spacing, a weekday picker). The pattern-free DCA-style control.
 - **Manual seeding** — add specific dates by hand.

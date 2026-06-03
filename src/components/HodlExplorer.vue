@@ -12,8 +12,7 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
-import { sma } from '../lib/indicators'
-import { scaleDiag } from '../lib/runs'
+import { sma, bandPosition } from '../lib/indicators'
 import {
   type Band,
   type SeedKind,
@@ -44,11 +43,6 @@ const UP = '#2bd4a7'
 const AMBER = '#fbbf24'
 const BAND_FILL = 'rgba(43, 212, 167, 0.14)'
 
-// Bollinger-score driver uses a fixed monthly-ish scale, matching the Price
-// Explorer's default run scale (hd ≈ 31d, N = 20).
-const B_SCALE_HD = 31
-const B_SCALE_N = 20
-
 const props = defineProps<{
   raw: PricePoint[]
   loading: boolean
@@ -70,8 +64,13 @@ const toDate = ref('')
 // Each indicator driver carries its own buy band [lower, upper].
 const ratioLower = ref(0)
 const ratioUpper = ref(1.5)
-const bLower = ref(-4)
+const bLower = ref(-2)
 const bUpper = ref(0)
+// Bollinger-score params — same `bandPosition` engine as the Price Explorer, but
+// the Hodl tab tunes its own Window / Smoothing / σ independently.
+const bandSmooth = ref(31) // EMA span (days)
+const bandWindow = ref(620) // mean + std window (days)
+const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.
 const uniformEveryX = ref(7)
@@ -106,7 +105,10 @@ const maLabel = computed(() => {
 })
 
 // b-score series (fixed monthly scale).
-const bDiag = computed(() => scaleDiag(prices.value, B_SCALE_HD, { N: B_SCALE_N }))
+const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindow.value, bandK.value))
+const bandLabel = computed(
+  () => `${bandWindow.value}d · ${bandK.value}σ` + (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
+)
 
 // Comparison window — baseline + all layers operate within [start, end] (incl.).
 const windowRange = computed<{ start: number; end: number }>(() => {
@@ -158,10 +160,10 @@ const builderBand = computed<Band>(() =>
     : { lower: ratioLower.value, upper: ratioUpper.value },
 )
 const builderMetric = computed<(number | null)[]>(() =>
-  driver.value === 'bscore' ? bDiag.value.b : ratioSeries(prices.value, longMa.value),
+  driver.value === 'bscore' ? bScore.value : ratioSeries(prices.value, longMa.value),
 )
 const metricTitle = computed(() =>
-  driver.value === 'bscore' ? 'Bollinger score (b · monthly)' : `Price ÷ MA (${maLabel.value})`,
+  driver.value === 'bscore' ? `Bollinger score (${bandLabel.value})` : `Price ÷ MA (${maLabel.value})`,
 )
 // Only band-on-a-metric drivers get the shaded driver chart.
 const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
@@ -179,7 +181,7 @@ const todayRatio = computed(() => {
   const m = longMa.value[todayIdx.value]
   return m != null && m > 0 ? prices.value[todayIdx.value] / m : null
 })
-const todayB = computed(() => (todayIdx.value >= 0 ? bDiag.value.b[todayIdx.value] : null))
+const todayB = computed(() => (todayIdx.value >= 0 ? bScore.value[todayIdx.value] : null))
 
 const patternSignals = computed(() => [
   {
@@ -321,8 +323,8 @@ function addLayer() {
     layers.value.push({
       id: newId(),
       kind: 'bscore',
-      label: `b score ${bLower.value}–${bUpper.value}`,
-      dateIndices: selectBandBuyDates(bDiag.value.b, builderBand.value, all),
+      label: `b score ${bLower.value}–${bUpper.value} · ${bandLabel.value}`,
+      dateIndices: selectBandBuyDates(bScore.value, builderBand.value, all),
     })
   }
 }
@@ -576,6 +578,9 @@ watch(
   () => [
     props.raw,
     localMaDays.value,
+    bandSmooth.value,
+    bandWindow.value,
+    bandK.value,
     driver.value,
     builderBand.value,
     windowMode.value,
@@ -679,6 +684,17 @@ watch(
             <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
             <span class="unit">to</span>
             <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
+          </span>
+        </label>
+        <label class="ctrl-label" v-if="driver === 'bscore'">
+          Window · smoothing · σ
+          <span class="ctrl-row">
+            <input type="number" v-model.number="bandWindow" min="2" max="3000" step="10" class="num-input sm" />
+            <span class="unit">d</span>
+            <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input sm" />
+            <span class="unit">ema</span>
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input sm" />
+            <span class="unit">σ</span>
           </span>
         </label>
         <label class="ctrl-label" v-else-if="driver === 'uniform'">
