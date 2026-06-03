@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-// Note: ratioMaDays is a shared prop (synced with Hodl Explorer via App.vue).
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
 import { scaleDiag } from '../lib/runs'
@@ -13,14 +12,9 @@ const props = defineProps<{
   error: string
   progress: FetchProgress
   lastUpdated: number | null
-  /** Shared long-MA baseline, synced with Hodl Explorer. */
-  ratioMaDays: number
 }>()
 
-const emit = defineEmits<{
-  refresh: []
-  'update:ratioMaDays': [value: number]
-}>()
+const emit = defineEmits<{ refresh: [] }>()
 
 // --- Metric toggles (default view = price only) -----------------------------
 const showMa = ref(false) // MA overlay
@@ -48,11 +42,8 @@ const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
-// Price ÷ MA: long baseline, synced with Hodl Explorer via prop + emit.
-const ratioMaDays = computed({
-  get: () => props.ratioMaDays,
-  set: (v) => emit('update:ratioMaDays', v),
-})
+// Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
+const ratioMaDays = ref(1460)
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest

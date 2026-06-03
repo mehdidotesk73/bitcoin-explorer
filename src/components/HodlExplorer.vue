@@ -54,14 +54,9 @@ const props = defineProps<{
   loading: boolean
   error: string
   progress: FetchProgress
-  /** Shared with Price Explorer — same long MA baseline. */
-  ratioMaDays: number
 }>()
 
-const emit = defineEmits<{
-  'update:ratioMaDays': [value: number]
-  refresh: []
-}>()
+const emit = defineEmits<{ refresh: [] }>()
 
 // --- Builder controls -------------------------------------------------------
 const driver = ref<SeedKind>('ratio')
@@ -93,11 +88,8 @@ const layers = ref<SeedLayer[]>([])
 const totalBudget = ref(0)
 let budgetInitialised = false
 
-// MA window: synced with Price Explorer via prop + emit.
-const localMaDays = computed({
-  get: () => props.ratioMaDays,
-  set: (v) => emit('update:ratioMaDays', v),
-})
+// MA window for the price ÷ MA driver (independent of the Price Explorer).
+const localMaDays = ref(1460)
 
 // --- Derived data -----------------------------------------------------------
 function toDateInput(ms: number): string {
@@ -106,11 +98,11 @@ function toDateInput(ms: number): string {
 
 const dates = computed(() => props.raw.map((p) => toDateInput(p.time)))
 const prices = computed(() => props.raw.map((p) => p.price))
-const longMa = computed(() => sma(prices.value, props.ratioMaDays))
+const longMa = computed(() => sma(prices.value, localMaDays.value))
 
 const maLabel = computed(() => {
-  const yr = props.ratioMaDays / 365
-  return yr >= 1 ? `${yr.toFixed(1)}yr` : `${props.ratioMaDays}d`
+  const yr = localMaDays.value / 365
+  return yr >= 1 ? `${yr.toFixed(1)}yr` : `${localMaDays.value}d`
 })
 
 // b-score series (fixed monthly scale).
@@ -311,7 +303,7 @@ function addLayer() {
   } else if (driver.value === 'ratio') {
     // Resolve over ALL history at add-time → a frozen seed independent of the
     // driver knobs (band/MA window) from here on.
-    const metric = ratioSeries(prices.value, sma(prices.value, props.ratioMaDays))
+    const metric = ratioSeries(prices.value, sma(prices.value, localMaDays.value))
     layers.value.push({
       id: newId(),
       kind: 'ratio',
@@ -583,7 +575,7 @@ onBeforeUnmount(() => {
 watch(
   () => [
     props.raw,
-    props.ratioMaDays,
+    localMaDays.value,
     driver.value,
     builderBand.value,
     windowMode.value,
