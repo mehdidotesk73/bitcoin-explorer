@@ -31,6 +31,9 @@ const props = defineProps<{
   scaleLabel: string
   showRatio: boolean
   showB: boolean
+  showPctB: boolean
+  pctB: (number | null)[]
+  pctBLabel: string
   showRunSlope: boolean
   zoom: [number, number]
 }>()
@@ -41,11 +44,12 @@ const chart = shallowRef<echarts.ECharts>()
 let suppressZoomEvent = false
 const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 
-type Kind = 'ratio' | 'b' | 'slope'
+type Kind = 'ratio' | 'b' | 'pctb' | 'slope'
 const panels = computed<Kind[]>(() => {
   const out: Kind[] = []
   if (props.showRatio) out.push('ratio')
   if (props.showB) out.push('b')
+  if (props.showPctB) out.push('pctb')
   if (props.showRunSlope) out.push('slope')
   return out
 })
@@ -103,9 +107,10 @@ function buildOption(): echarts.EChartsCoreOption {
   const TITLE: Record<Kind, string> = {
     ratio: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)`,
     b: `Bollinger score  (b = band position · shaded by run: green up · red down · gaps = chop)   (${props.scaleLabel})`,
+    pctb: `%B  (classic band position · 0 = lower band · 0.5 = MA · 1 = upper)   (${props.pctBLabel})`,
     slope: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})`,
   }
-  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', b: 'Bollinger score', slope: 'run slope' }
+  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', b: 'Bollinger score', pctb: '%B', slope: 'run slope' }
 
   const title: any[] = []
   const legend: any[] = []
@@ -139,6 +144,12 @@ function buildOption(): echarts.EChartsCoreOption {
         name: LEGEND.b, type: 'line', xAxisIndex: i, yAxisIndex: i, data: d.b, symbol: 'none',
         lineStyle: { color: '#4f8ef7', width: 1.5 },
         markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] }, markArea: runArea,
+      })
+    } else if (kind === 'pctb') {
+      series.push({
+        name: LEGEND.pctb, type: 'line', xAxisIndex: i, yAxisIndex: i, data: props.pctB, symbol: 'none',
+        lineStyle: { color: '#9b6dff', width: 1.5 },
+        markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 0.5 }, { yAxis: 1 }] },
       })
     } else {
       series.push({
@@ -196,7 +207,7 @@ onBeforeUnmount(() => {
   chart.value?.dispose()
 })
 watch(
-  () => [props.dates, props.price, props.ma, props.maLabel, props.diag, props.scaleLabel, panels.value, props.zoom],
+  () => [props.dates, props.price, props.ma, props.maLabel, props.diag, props.scaleLabel, props.pctB, props.pctBLabel, panels.value, props.zoom],
   render,
 )
 </script>

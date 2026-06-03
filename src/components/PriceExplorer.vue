@@ -22,6 +22,7 @@ const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
 const showBScore = ref(false) // Bollinger (b) score curve
+const showPctB = ref(false) // classic %B curve (independent period/unit/σ)
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
@@ -29,9 +30,12 @@ const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
 const cfgB = ref(false)
+const cfgPctB = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
-const anyCurve = computed(() => showRatio.value || showBScore.value || showRunDetection.value)
+const anyCurve = computed(
+  () => showRatio.value || showBScore.value || showPctB.value || showRunDetection.value,
+)
 const curvesCollapsed = ref(false)
 
 // --- Metric parameters ------------------------------------------------------
@@ -44,6 +48,11 @@ const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
+// Classic %B: its OWN period / unit / sigma, independent of the Bollinger
+// overlay and the run-scale Bollinger score, so the two can be compared.
+const pctbPeriod = ref(20)
+const pctbUnit = ref<PeriodUnit>('day')
+const pctbK = ref(2)
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -110,6 +119,19 @@ const ma = computed(() => sma(prices.value, maDays.value))
 const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
+
+// Classic %B = (price − lower) / (upper − lower), from its own bands.
+const pctbDays = computed(() => toDays(pctbPeriod.value, pctbUnit.value))
+const pctbLabel = computed(() => `${pctbPeriod.value}${UNIT_ABBR[pctbUnit.value]} · ${pctbK.value}σ`)
+const pctbBands = computed(() => bollinger(prices.value, pctbDays.value, pctbK.value))
+const pctB = computed<(number | null)[]>(() => {
+  const { upper, lower } = pctbBands.value
+  return prices.value.map((p, i) => {
+    const u = upper[i]
+    const l = lower[i]
+    return u != null && l != null && u > l ? (p - l) / (u - l) : null
+  })
+})
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
@@ -271,6 +293,32 @@ const fmtUSD = (v: number | null) =>
           </label>
         </div>
       </div>
+
+      <!-- Curve: classic %B (independent period / unit / sigma) -->
+      <div class="metric">
+        <div class="metric-head">
+          <label class="checkbox"><input type="checkbox" v-model="showPctB" /> %B (classic)</label>
+          <button class="cfg" :class="{ open: cfgPctB }" @click="cfgPctB = !cfgPctB" title="Configure">⚙</button>
+        </div>
+        <div v-if="cfgPctB" class="metric-cfg">
+          <p class="cfg-note">True band position vs the Bollinger score.</p>
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="pctbPeriod" min="1" max="400" />
+              <select v-model="pctbUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+          <label>
+            σ ×
+            <input type="number" v-model.number="pctbK" min="0.5" max="5" step="0.5" />
+          </label>
+        </div>
+      </div>
     </section>
 
     <section class="ranges">
@@ -312,6 +360,9 @@ const fmtUSD = (v: number | null) =>
         :scale-label="runScaleLabel"
         :show-ratio="showRatio"
         :show-b="showBScore"
+        :show-pct-b="showPctB"
+        :pct-b="pctB"
+        :pct-b-label="pctbLabel"
         :show-run-slope="showRunDetection"
         v-model:zoom="zoom"
       />
