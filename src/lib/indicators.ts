@@ -3,6 +3,21 @@
 // instantly without re-fetching.
 
 /**
+ * Causal (trailing) exponential moving average with the given `span` (in
+ * samples). Seeded with the first value. `span ≤ 1` returns the input unchanged
+ * (the smoothing coefficient becomes 1), so it doubles as a no-op at span 0.
+ */
+export function ema(values: number[], span: number): number[] {
+  const n = values.length
+  const out = new Array(n).fill(0)
+  if (n === 0) return out
+  const a = 2 / (Math.max(1, span) + 1)
+  out[0] = values[0]
+  for (let i = 1; i < n; i++) out[i] = a * values[i] + (1 - a) * out[i - 1]
+  return out
+}
+
+/**
  * Simple moving average over `period` samples. The first `period - 1` entries
  * are `null` (not enough history yet) so the output aligns 1:1 with the input.
  */

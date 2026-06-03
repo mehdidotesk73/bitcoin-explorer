@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger } from '../lib/indicators'
+import { sma, ema, bollinger } from '../lib/indicators'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -48,11 +48,13 @@ const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
-// Classic %B: its OWN period / unit / sigma, independent of the Bollinger
-// overlay and the run-scale Bollinger score, so the two can be compared.
+// %B band position with its OWN period / unit / sigma, plus a price-smoothing
+// span so it can be dialed from noisy classic %B toward the clean Bollinger
+// score (which smooths the price and uses a long window). Smoothing 0 = classic.
 const pctbPeriod = ref(20)
 const pctbUnit = ref<PeriodUnit>('day')
 const pctbK = ref(2)
+const pctbSmooth = ref(0) // EMA span (days) applied to price before %B
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -120,13 +122,20 @@ const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 
-// Classic %B = (price − lower) / (upper − lower), from its own bands.
+// %B = (smoothedPrice − lower) / (upper − lower). Bands are over RAW price (like
+// the Bollinger score); only the numerator price is EMA-smoothed by pctbSmooth.
 const pctbDays = computed(() => toDays(pctbPeriod.value, pctbUnit.value))
-const pctbLabel = computed(() => `${pctbPeriod.value}${UNIT_ABBR[pctbUnit.value]} · ${pctbK.value}σ`)
+const pctbLabel = computed(
+  () =>
+    `${pctbPeriod.value}${UNIT_ABBR[pctbUnit.value]} · ${pctbK.value}σ` +
+    (pctbSmooth.value > 0 ? ` · ema ${pctbSmooth.value}d` : ''),
+)
 const pctbBands = computed(() => bollinger(prices.value, pctbDays.value, pctbK.value))
+const pctbPrice = computed(() => ema(prices.value, pctbSmooth.value))
 const pctB = computed<(number | null)[]>(() => {
   const { upper, lower } = pctbBands.value
-  return prices.value.map((p, i) => {
+  const sp = pctbPrice.value
+  return sp.map((p, i) => {
     const u = upper[i]
     const l = lower[i]
     return u != null && l != null && u > l ? (p - l) / (u - l) : null
@@ -301,16 +310,26 @@ const fmtUSD = (v: number | null) =>
           <button class="cfg" :class="{ open: cfgPctB }" @click="cfgPctB = !cfgPctB" title="Configure">⚙</button>
         </div>
         <div v-if="cfgPctB" class="metric-cfg">
-          <p class="cfg-note">True band position vs the Bollinger score.</p>
+          <p class="cfg-note">
+            Band position. Raise Smoothing &amp; Period to converge it onto the
+            Bollinger score; Smoothing 0 = classic %B.
+          </p>
           <label>
             Period
             <span class="period">
-              <input type="number" v-model.number="pctbPeriod" min="1" max="400" />
+              <input type="number" v-model.number="pctbPeriod" min="1" max="2000" />
               <select v-model="pctbUnit">
                 <option value="day">days</option>
                 <option value="week">weeks</option>
                 <option value="month">months</option>
               </select>
+            </span>
+          </label>
+          <label>
+            Smoothing
+            <span class="period">
+              <input type="number" v-model.number="pctbSmooth" min="0" max="365" step="1" />
+              <span class="unit">days EMA</span>
             </span>
           </label>
           <label>

@@ -41,11 +41,12 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   normalised so `±1` are the ±2σ bands and `0` is the mean. Shaded by run
   direction. Its inputs are the run **scale** and the Bollinger **period** (it
   ignores the bands' unit and σ; `b ≈ 2·%B − 1` only when windows match).
-- **%B (classic).** The textbook band position `(price − lower)/(upper − lower)`
-  from its **own** Bollinger bands — independent **period / unit / σ** — so it
-  reads 0 at the lower band, 0.5 at the MA, 1 at the upper. Added alongside the
-  Bollinger score so the short, true %B can be compared against the long,
-  smoothed run-scale version.
+- **%B (band position).** `(smoothed price − lower)/(upper − lower)` from its
+  **own** Bollinger bands — independent **period / unit / σ**, plus a price
+  **smoothing** (EMA) span. Reads 0 at the lower band, 0.5 at the MA, 1 at the
+  upper. With smoothing 0 it's textbook %B (raw price, noisy); raising
+  **smoothing + period** converges it onto the clean Bollinger score (which is a
+  smoothed, long-window band position). Added so the two can be compared.
 - **Run slope.** Each run's average daily % change, as bars coloured by
   direction (green up, red down, flat/0 = chop).
 
