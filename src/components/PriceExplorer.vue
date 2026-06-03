@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger, bandPosition } from '../lib/indicators'
 import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
+import { fmtUSD } from '../lib/format'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -159,8 +160,6 @@ function setRange(days: number | 'all') {
   zoom.value = [start, 100]
 }
 
-const fmtUSD = (v: number | null) =>
-  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 </script>
 
 <template>

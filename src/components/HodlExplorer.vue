@@ -14,6 +14,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
 import { sma, bandPosition } from '../lib/indicators'
 import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
+import { fmtUSD } from '../lib/format'
 import {
   type Band,
   type SeedKind,
@@ -351,8 +352,6 @@ function removeManualDate(d: string) {
   manualDates.value = manualDates.value.filter((x) => x !== d)
 }
 
-const fmtUSD = (v: number | null) =>
-  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 })
 
 // --- Price chart ------------------------------------------------------------
 const el = ref<HTMLDivElement>()

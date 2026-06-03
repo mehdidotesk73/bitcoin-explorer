@@ -10,6 +10,7 @@ import {
   MarkLineComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { fmtUSD } from '../lib/format'
 
 echarts.use([
   LineChart,
@@ -53,10 +54,6 @@ const props = defineProps<{
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
-const fmtUSD = (v: number | null) =>
-  v == null
-    ? '—'
-    : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 10 ? 2 : 0 })
 const fmtRatio = (v: number | null) =>
   v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + '×'
 const fmtY = (v: number | null) => (props.valueFormat === 'ratio' ? fmtRatio(v) : fmtUSD(v))

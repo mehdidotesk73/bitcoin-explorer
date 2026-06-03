@@ -4,6 +4,7 @@ import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { fmtUSD } from '../lib/format'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
@@ -33,8 +34,6 @@ const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
-const fmtUSD = (v: number | null) =>
-  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
 function buildOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
