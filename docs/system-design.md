@@ -36,9 +36,10 @@ PriceExplorer   ForecastView           HodlExplorer
  (+PriceChart,   (+ForecastChart)       (+StatsCompare)
   MetricsPanel)
             │
-   shared pure lib + composables:
-   indicators.ts · runs.ts · forecast.ts · hodl.ts · metricRegistry.ts
-   format.ts · chartTheme.ts · period.ts · usePriceSeries.ts · useBandScore.ts
+   pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
+   spec / registry:  metricRegistry.ts
+   shared helpers:   format.ts · chartTheme.ts · period.ts
+   composables:      usePriceSeries.ts · useBandScore.ts
 ```
 
 > _TODO: add a richer module-dependency diagram and call out the
