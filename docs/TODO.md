@@ -48,6 +48,15 @@
       only. **Removed:** the M/W composite heat tint, the buy/hold signal, and
       the Components diagnostic (`mwHeat`, `phaseMachine`, `MwHeatDiagnostic`).
 
+- [x] Conceptual help docs + in-app help button. Authored
+      `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
+      describing each page's purpose, controls, how it works, and assumptions —
+      readable by an AI agent *and* rendered in-app. Added a dependency-free
+      Markdown renderer (`lib/markdown.ts`), a `HelpModal.vue` that imports the
+      docs via `?raw` and renders them with a per-page nav, and a **? Help**
+      button in the top-right of the header that opens the modal on the active
+      page's doc.
+
 ## Next branch — Buy/Hodl indicator
 
 A card pinned to the top of the **Hodl Explorer** that answers, for **today's

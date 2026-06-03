@@ -117,6 +117,21 @@ inputs in the end, after sliders proved fiddly).
 
 ## Version history
 
+### 2026-06-03 — Conceptual help docs + in-app help button
+- **Added:** `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
+  — conceptual documentation of each page (purpose, controls, how it works,
+  assumptions/caveats), written to be read by both an AI agent and an end user.
+  These files are the single source: a **? Help** button (top-right of the
+  header) opens `HelpModal.vue`, which imports them via Vite `?raw` and renders
+  them with a small per-page nav, defaulting to the active tab's doc.
+- **Added:** `lib/markdown.ts` — a tiny, dependency-free Markdown→HTML renderer
+  (headings, paragraphs, fenced/inline code, bold/italic, links, hr, nested
+  lists). Chosen over a library because the sandbox can't reach npm and the docs
+  are trusted, app-authored content.
+- **Why this shape:** keeping the docs as plain `.md` in `docs/concepts/` (not
+  inline in components) means they stay diff-able, agent-readable, and reusable;
+  the app renders the same files rather than a duplicated copy.
+
 ### 2026-06-02 — Run/scale metric framework (replaces composite heat)
 Merge of the metric-framework work. Changes vs previous version:
 - **Added:** `lib/runs.ts` (`scaleDiag(price, hd)` → b, trend vote, runs at one

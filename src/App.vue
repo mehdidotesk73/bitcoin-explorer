@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import PriceExplorer from './components/PriceExplorer.vue'
 import ForecastView from './components/ForecastView.vue'
 import HodlExplorer from './components/HodlExplorer.vue'
+import HelpModal from './components/HelpModal.vue'
 import { useBitcoinData } from './lib/useBitcoinData'
 import { debugState, logDebug } from './debug'
 import { setupPWAUpdates } from './pwa'
@@ -40,12 +41,23 @@ const tab = ref<Tab>('explorer')
 
 // Shared long-MA window — synced between Price Explorer and Hodl Explorer.
 const ratioMaDays = ref(1460)
+
+// In-app help: a modal that renders the conceptual docs for each page.
+const showHelp = ref(false)
+const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
+  tab.value === 'forecast' ? 'mechanics' : tab.value === 'hodl' ? 'hodl' : 'explorer',
+)
 </script>
 
 <template>
   <main class="app">
     <header>
-      <h1>₿ Bitcoin Price Explorer</h1>
+      <div class="title-row">
+        <h1>₿ Bitcoin Price Explorer</h1>
+        <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
+          ? Help
+        </button>
+      </div>
       <nav class="tabs">
         <button :class="{ active: tab === 'explorer' }" @click="tab = 'explorer'">
           Price Explorer
@@ -101,6 +113,8 @@ const ratioMaDays = ref(1460)
         </li>
       </ul>
     </footer>
+
+    <HelpModal :open="showHelp" :initial-doc="helpDoc" @close="showHelp = false" />
   </main>
 </template>
 
@@ -110,9 +124,30 @@ const ratioMaDays = ref(1460)
   margin: 0 auto;
   padding: max(1rem, env(safe-area-inset-top)) 1rem 2rem;
 }
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
 header h1 {
   font-size: 1.4rem;
   margin: 0 0 0.6rem;
+}
+.help-btn {
+  flex-shrink: 0;
+  background: var(--bg-elev-2, transparent);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius, 0.4rem);
+  cursor: pointer;
+  margin-bottom: 0.6rem;
+}
+.help-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-blue);
 }
 .tabs {
   display: flex;
