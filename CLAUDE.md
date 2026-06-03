@@ -112,7 +112,7 @@ src/
     useBitcoinData.ts      shared fetch/cache composable, fed to both tabs
     indicators.ts          SMA, Bollinger bands (pure functions over arrays)
     runs.ts                scaleDiag(price, hd): b, trend vote, runs at one scale
-    forecast.ts            forecast engine: fits + projection (see forecast-model.md)
+    forecast.ts            forecast engine: fits + projection (see system-design.md §5.2)
   components/
     PriceExplorer.vue      Price Explorer tab: metric toggles + configs
     PriceChart.vue         echarts price chart + overlays (MA, Bollinger, runs)
@@ -122,7 +122,8 @@ src/
 docs/
   TODO.md                  living backlog (Done / Next branch / Housekeeping)
   experience.md            what didn't work + per-merge version history
-  forecast-model.md        the forecast model spec
+  system-design.md         developer/system docs (incl. forecast model §5.2)
+  concepts/*.md            per-page user docs (rendered into the Help modal)
 .github/workflows/deploy.yml   GitHub Pages production deploy
 netlify.toml                   preview-deploy config
 ```
@@ -157,4 +158,6 @@ netlify.toml                   preview-deploy config
 
 - `docs/TODO.md` — current backlog and what's been done.
 - `docs/experience.md` — dead ends (with reasons) + version history.
-- `docs/forecast-model.md` — the Price Mechanics / forecast model spec.
+- `docs/system-design.md` — developer/system documentation; the forecast-model
+  spec lives in §5.2 (other sections are placeholders, tracked in `TODO.md`).
+- `docs/concepts/*.md` — per-page user docs, also rendered into the Help modal.

@@ -1,6 +1,6 @@
 // Bitcoin "price mechanics" forecast engine.
 //
-// Implements the model distilled in docs/forecast-model.md:
+// Implements the model spec'd in docs/system-design.md §5.2:
 //
 //   projected_price = model_ma  ×  model_price_over_ma
 //

@@ -126,9 +126,10 @@ rebrand, CI gate + Vitest). Extracted shared modules: `lib/format.ts`
 and `lib/useBandScore.ts` (the Bollinger-score state + series, was duplicated
 verbatim across the Price Explorer and Hodl Explorer; each call keeps its own
 params). No behaviour change except `fmtUSD` now uses auto precision everywhere.
-Also reconciled `docs/TODO.md` (merged work → Done) and refreshed
-`docs/forecast-model.md` framing (it's the spec for the *built* tab; kept, not
-folded into the help doc — different detail levels).
+Also reconciled `docs/TODO.md` (merged work → Done) and started
+`docs/system-design.md` — a scalable developer/system doc; the forecast model
+(formerly `forecast-model.md`) is reorganised into §5.2, with placeholder
+sections for the rest of the system (tracked in `TODO.md`).
 
 ### 2026-06-03 — Conceptual help docs + in-app help button
 - **Added:** `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`

@@ -97,6 +97,16 @@ Single-source-of-truth pass — concrete duplication removed across components:
       refs + `bandPosition` series + labels), was fully duplicated across the
       Price Explorer and Hodl Explorer; each call keeps its own params.
 
+## Docs
+
+- [ ] **Fill the `system-design.md` placeholders.** The developer/system doc has
+      the forecast model (§5.2) fleshed out; the rest are _TODO_ stubs — §2 data
+      layer, §3 lib, §4 composables, §5.1 Price Explorer, §5.3 Hodl Explorer, §6
+      charting, §7 state/persistence, §8 build/CI/testing, §9 glossary. Flesh out
+      each (a richer module-dependency diagram too).
+- [ ] **Backfill `experience.md` version history** — it skipped several merges
+      between the metric-framework entry and the recent consolidation.
+
 ## Later / ideas
 
 - **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into

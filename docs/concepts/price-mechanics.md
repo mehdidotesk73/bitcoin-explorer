@@ -79,4 +79,5 @@ controlling peak width).
   advice.
 
 For the full equations, calibrated constants, and the fitting method behind this
-tab, see the spec in [`docs/forecast-model.md`](../forecast-model.md).
+tab, see §5.2 of the developer docs
+([`docs/system-design.md`](../system-design.md)).
