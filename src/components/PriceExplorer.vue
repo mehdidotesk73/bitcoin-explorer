@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger, bandPosition } from '../lib/indicators'
+import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -50,7 +51,8 @@ const ratioMaDays = ref(1460)
 // mean+std, a price-smoothing EMA span (days), and an independent σ-multiplier k.
 // Defaults reproduce the old run-scale Bollinger score (s≈31, W≈620, k=2).
 const bandSmooth = ref(31) // EMA span (days) on the price
-const bandWindow = ref(620) // mean + std window (days)
+const bandPeriod = ref(620) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('day')
 const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
@@ -93,13 +95,6 @@ const runSensitivity = computed({
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
-// Data is daily, so week/month periods just scale the sample count.
-type PeriodUnit = 'day' | 'week' | 'month'
-const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
-const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
-const toDays = (period: number, unit: PeriodUnit) =>
-  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
-
 function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
@@ -120,10 +115,13 @@ const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 
 // Band position: b = (EMA_s(price) − SMA_W) / (k·STD_W), centered at 0; ±1 = bands.
+const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
 const bandLabel = computed(
-  () => `${bandWindow.value}d · ${bandK.value}σ` + (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
+  () =>
+    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
+    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
 )
-const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindow.value, bandK.value))
+const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
@@ -277,10 +275,14 @@ const fmtUSD = (v: number | null) =>
             Smoothing 0 + short window = classic %B.
           </p>
           <label>
-            Window
+            Period
             <span class="period">
-              <input type="number" v-model.number="bandWindow" min="2" max="3000" step="10" />
-              <span class="unit">days</span>
+              <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
+              <select v-model="bandUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
             </span>
           </label>
           <label>

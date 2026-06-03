@@ -13,6 +13,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
 import { sma, bandPosition } from '../lib/indicators'
+import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
 import {
   type Band,
   type SeedKind,
@@ -69,7 +70,8 @@ const bUpper = ref(0)
 // Bollinger-score params — same `bandPosition` engine as the Price Explorer, but
 // the Hodl tab tunes its own Window / Smoothing / σ independently.
 const bandSmooth = ref(31) // EMA span (days)
-const bandWindow = ref(620) // mean + std window (days)
+const bandPeriod = ref(620) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('day')
 const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.
@@ -105,9 +107,12 @@ const maLabel = computed(() => {
 })
 
 // b-score series (fixed monthly scale).
-const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindow.value, bandK.value))
+const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
+const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
 const bandLabel = computed(
-  () => `${bandWindow.value}d · ${bandK.value}σ` + (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
+  () =>
+    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
+    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
 )
 
 // Comparison window — baseline + all layers operate within [start, end] (incl.).
@@ -579,7 +584,8 @@ watch(
     props.raw,
     localMaDays.value,
     bandSmooth.value,
-    bandWindow.value,
+    bandPeriod.value,
+    bandUnit.value,
     bandK.value,
     driver.value,
     builderBand.value,
@@ -687,10 +693,14 @@ watch(
           </span>
         </label>
         <label class="ctrl-label" v-if="driver === 'bscore'">
-          Window · smoothing · σ
+          Period · smoothing · σ
           <span class="ctrl-row">
-            <input type="number" v-model.number="bandWindow" min="2" max="3000" step="10" class="num-input sm" />
-            <span class="unit">d</span>
+            <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input sm" />
+            <select v-model="bandUnit" class="num-input sm">
+              <option value="day">d</option>
+              <option value="week">w</option>
+              <option value="month">mo</option>
+            </select>
             <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input sm" />
             <span class="unit">ema</span>
             <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input sm" />
