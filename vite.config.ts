@@ -30,20 +30,37 @@ export default defineConfig({
       // We register the SW ourselves (src/pwa.ts) to add periodic update
       // checks and auto-reload, so don't also auto-inject a registration.
       injectRegister: false,
-      // Generate icons + favicons from a single source SVG.
+      // Generate icons + favicons from a single source image.
       pwaAssets: {
-        image: 'public/logo.svg',
+        image: 'public/app-icon.jpeg',
       },
       manifest: {
-        name: 'Bitcoin Price Explorer',
-        short_name: 'BTC Explorer',
-        description: 'Bitcoin price with moving average and Bollinger bands, adjustable.',
+        name: 'bitcoin1460',
+        short_name: 'bitcoin1460',
+        description: 'Bitcoin price explorer, forecast, and hodl-strategy sandbox.',
         theme_color: '#0b0f18',
         background_color: '#0b0f18',
         display: 'standalone',
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,csv}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpeg,jpg,ico,woff2,csv}'],
+        // Cache Google Fonts so the title text stays styled offline.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts-stylesheets' },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
       devOptions: {
         // Enables the service worker in `vite dev` for testing.

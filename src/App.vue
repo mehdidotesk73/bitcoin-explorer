@@ -53,7 +53,9 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   <main class="app">
     <header>
       <div class="title-row">
-        <h1>₿ Bitcoin Price Explorer</h1>
+        <h1 class="app-title">
+          <span class="t-bitcoin">bitcoin</span><span class="t-1460">1460</span>
+        </h1>
         <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
           ? Help
         </button>
@@ -124,18 +126,48 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   margin: 0 auto;
   padding: max(1rem, env(safe-area-inset-top)) 1rem 2rem;
 }
+/* Centered title banner with the help button pinned right (empty 1fr balances). */
 .title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
 }
-header h1 {
-  font-size: 1.4rem;
-  margin: 0 0 0.6rem;
+.app-title {
+  grid-column: 2;
+  justify-self: center;
+  margin: 0;
+  font-size: clamp(1.05rem, 4vw, 1.5rem);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.t-bitcoin {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+  font-weight: 700;
+  color: #cbd1dc; /* silver fallback */
+}
+/* Metallic silver where text-clipping gradients are supported. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .t-bitcoin {
+    background: linear-gradient(180deg, #f4f6fa 0%, #c3c8d2 46%, #8b93a3 56%, #e6e9ef 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+.t-1460 {
+  font-family: 'Orbitron', ui-monospace, monospace;
+  font-weight: 700;
+  color: #f7931a;
+  margin-left: 0.3em;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
 }
 .help-btn {
-  flex-shrink: 0;
+  grid-column: 3;
+  justify-self: end;
+  align-self: start;
   background: var(--bg-elev-2, transparent);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -143,7 +175,6 @@ header h1 {
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius, 0.4rem);
   cursor: pointer;
-  margin-bottom: 0.6rem;
 }
 .help-btn:hover {
   color: var(--text);
