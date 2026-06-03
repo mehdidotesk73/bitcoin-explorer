@@ -30,9 +30,9 @@ export default defineConfig({
       // We register the SW ourselves (src/pwa.ts) to add periodic update
       // checks and auto-reload, so don't also auto-inject a registration.
       injectRegister: false,
-      // Generate icons + favicons from a single source SVG.
+      // Generate icons + favicons from a single source image.
       pwaAssets: {
-        image: 'public/logo.svg',
+        image: 'public/app-icon.jpeg',
       },
       manifest: {
         name: 'bitcoin1460',
@@ -43,7 +43,7 @@ export default defineConfig({
         display: 'standalone',
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,csv}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpeg,jpg,ico,woff2,csv}'],
       },
       devOptions: {
         // Enables the service worker in `vite dev` for testing.

@@ -43,7 +43,7 @@ const tab = ref<Tab>('explorer')
 const ratioMaDays = ref(1460)
 
 // Base-path-aware URL for the public logo asset (works under GitHub Pages base).
-const logoUrl = import.meta.env.BASE_URL + 'logo.svg'
+const logoUrl = import.meta.env.BASE_URL + 'app-icon.jpeg'
 
 // In-app help: a modal that renders the conceptual docs for each page.
 const showHelp = ref(false)
