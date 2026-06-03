@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger, bandPosition } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
+import { sma, bollinger } from '../lib/indicators'
+import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
+import { fmtUSD } from '../lib/format'
+import { usePriceSeries } from '../lib/usePriceSeries'
+import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -47,13 +50,6 @@ const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
-// Band position (the clean "Bollinger score" family): one window (days) for the
-// mean+std, a price-smoothing EMA span (days), and an independent σ-multiplier k.
-// Defaults reproduce the old run-scale Bollinger score (s≈31, W≈620, k=2).
-const bandSmooth = ref(31) // EMA span (days) on the price
-const bandPeriod = ref(20) // mean + std period (in bandUnit)
-const bandUnit = ref<PeriodUnit>('month')
-const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -95,14 +91,8 @@ const runSensitivity = computed({
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
-function toDateInput(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
-}
-
 // --- Derived series (recomputed instantly on parameter change) --------------
-const filtered = computed(() => props.raw)
-const dates = computed(() => filtered.value.map((p) => toDateInput(p.time)))
-const prices = computed(() => filtered.value.map((p) => p.price))
+const { prices, dates } = usePriceSeries(() => props.raw)
 
 const maDays = computed(() => toDays(maPeriod.value, maUnit.value))
 const bbDays = computed(() => toDays(bbPeriod.value, bbUnit.value))
@@ -114,15 +104,16 @@ const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 
-// Band position: b = (EMA_s(price) − SMA_W) / (k·STD_W), centered at 0; ±1 = bands.
-const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
-const bandLabel = computed(
-  () =>
-    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
-    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
-)
-const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
-const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
+// Band position ("Bollinger score") — own Period/unit/σ/smoothing + series.
+const {
+  smooth: bandSmooth,
+  period: bandPeriod,
+  unit: bandUnit,
+  k: bandK,
+  label: bandLabel,
+  smoothLabel: bandSmoothLabel,
+  series: bandSeries,
+} = useBandScore(prices)
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
@@ -150,7 +141,7 @@ const latestPrice = computed(() =>
 
 // --- Graphed-range presets --------------------------------------------------
 function setRange(days: number | 'all') {
-  const n = filtered.value.length
+  const n = prices.value.length
   if (!n || days === 'all') {
     zoom.value = [0, 100]
     return
@@ -159,8 +150,6 @@ function setRange(days: number | 'all') {
   zoom.value = [start, 100]
 }
 
-const fmtUSD = (v: number | null) =>
-  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 </script>
 
 <template>

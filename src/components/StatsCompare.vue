@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { HodlStats } from '../lib/hodl'
+import { fmtUSD, fmtPct, fmtBtc } from '../lib/format'
 
 const props = defineProps<{
   /** Primary column label (e.g. "Strategy" or "Preview"). */
@@ -14,12 +15,6 @@ const props = defineProps<{
   /** Sub-line under the baseline heading. */
   baselineSub: string
 }>()
-
-const fmtUSD = (v: number | null) =>
-  v == null ? '—' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 })
-const fmtPct = (v: number | null) =>
-  v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%'
-const fmtBtc = (v: number | null) => (v == null ? '—' : v.toFixed(6) + ' BTC')
 
 const edge = computed(() => {
   const p = props.primary

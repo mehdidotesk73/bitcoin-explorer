@@ -18,6 +18,8 @@ import {
   type DistributionType,
   type ForecastConfig,
 } from '../lib/forecast'
+import { fmtUSD } from '../lib/format'
+import { usePriceSeries } from '../lib/usePriceSeries'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -26,7 +28,7 @@ const props = defineProps<{
 
 // --- Base series ------------------------------------------------------------
 const times = computed(() => props.raw.map((p) => p.time))
-const prices = computed(() => props.raw.map((p) => p.price))
+const { prices } = usePriceSeries(() => props.raw)
 
 const maWindow = ref(DEFAULT_MA_WINDOW)
 const dayZero = ref(DEFAULT_DAY_ZERO)
@@ -324,10 +326,6 @@ const slopeWindowLabel = computed(() => {
   return preset ? preset.label.toLowerCase() : `${slopeWindowDays.value}-day`
 })
 
-const fmtUSD = (v: number | null) =>
-  v == null
-    ? '—'
-    : '$' + v.toLocaleString('en-US', { maximumFractionDigits: v < 10 ? 2 : 0 })
 const fmtNum = (v: number) =>
   Math.abs(v) > 1e-3 && Math.abs(v) < 1e6
     ? v.toLocaleString('en-US', { maximumFractionDigits: 6 })
