@@ -42,8 +42,8 @@ const tab = ref<Tab>('explorer')
 // Shared long-MA window — synced between Price Explorer and Hodl Explorer.
 const ratioMaDays = ref(1460)
 
-// Base-path-aware URL for the public logo asset (works under GitHub Pages base).
-const logoUrl = import.meta.env.BASE_URL + 'app-icon.jpeg'
+// Base-path-aware URL for the public title-banner asset (GitHub Pages base).
+const titleUrl = import.meta.env.BASE_URL + 'title-logo.jpeg'
 
 // In-app help: a modal that renders the conceptual docs for each page.
 const showHelp = ref(false)
@@ -56,9 +56,8 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   <main class="app">
     <header>
       <div class="title-row">
-        <h1 class="brand" aria-label="bitcoin1460">
-          <img :src="logoUrl" class="brand-logo" alt="" aria-hidden="true" />
-          <span class="brand-text"><span class="brand-mark">₿</span>1460</span>
+        <h1 class="app-title">
+          <img :src="titleUrl" class="title-banner" alt="bitcoin1460" />
         </h1>
         <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
           ? Help
@@ -130,36 +129,32 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   margin: 0 auto;
   padding: max(1rem, env(safe-area-inset-top)) 1rem 2rem;
 }
+/* Centered title banner with the help button pinned right (empty 1fr balances). */
 .title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-header h1 {
-  font-size: 1.4rem;
-  margin: 0 0 0.6rem;
-}
-.brand {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 0.5rem;
+  margin-bottom: 0.6rem;
 }
-.brand-logo {
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 0.4rem;
+.app-title {
+  grid-column: 2;
+  justify-self: center;
+  margin: 0;
+  line-height: 0;
+}
+.title-banner {
   display: block;
-}
-.brand-text {
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-.brand-mark {
-  color: #f7931a;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: clamp(52px, 15vw, 92px);
+  border-radius: 0.5rem;
 }
 .help-btn {
-  flex-shrink: 0;
+  grid-column: 3;
+  justify-self: end;
+  align-self: start;
   background: var(--bg-elev-2, transparent);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -167,7 +162,6 @@ header h1 {
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius, 0.4rem);
   cursor: pointer;
-  margin-bottom: 0.6rem;
 }
 .help-btn:hover {
   color: var(--text);
