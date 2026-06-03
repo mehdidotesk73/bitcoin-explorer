@@ -30,7 +30,9 @@ const props = defineProps<{
   diag: ScaleDiag
   scaleLabel: string
   showRatio: boolean
-  showB: boolean
+  showBand: boolean
+  band: (number | null)[]
+  bandLabel: string
   showRunSlope: boolean
   zoom: [number, number]
 }>()
@@ -41,11 +43,11 @@ const chart = shallowRef<echarts.ECharts>()
 let suppressZoomEvent = false
 const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 
-type Kind = 'ratio' | 'b' | 'slope'
+type Kind = 'ratio' | 'band' | 'slope'
 const panels = computed<Kind[]>(() => {
   const out: Kind[] = []
   if (props.showRatio) out.push('ratio')
-  if (props.showB) out.push('b')
+  if (props.showBand) out.push('band')
   if (props.showRunSlope) out.push('slope')
   return out
 })
@@ -102,10 +104,10 @@ function buildOption(): echarts.EChartsCoreOption {
 
   const TITLE: Record<Kind, string> = {
     ratio: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)`,
-    b: `Bollinger score  (b = band position · shaded by run: green up · red down · gaps = chop)   (${props.scaleLabel})`,
+    band: `Bollinger score  (0 = MA · ±1 = ±kσ bands · shaded by run: green up · red down · gaps = chop)   (${props.bandLabel})`,
     slope: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})`,
   }
-  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', b: 'Bollinger score', slope: 'run slope' }
+  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', band: 'Bollinger score', slope: 'run slope' }
 
   const title: any[] = []
   const legend: any[] = []
@@ -134,9 +136,9 @@ function buildOption(): echarts.EChartsCoreOption {
         name: LEGEND.ratio, type: 'line', xAxisIndex: i, yAxisIndex: i, data: priceMa.value, symbol: 'none',
         lineStyle: { color: '#f7931a', width: 1.4 }, markLine: { ...dash, data: [{ yAxis: 1 }] },
       })
-    } else if (kind === 'b') {
+    } else if (kind === 'band') {
       series.push({
-        name: LEGEND.b, type: 'line', xAxisIndex: i, yAxisIndex: i, data: d.b, symbol: 'none',
+        name: LEGEND.band, type: 'line', xAxisIndex: i, yAxisIndex: i, data: props.band, symbol: 'none',
         lineStyle: { color: '#4f8ef7', width: 1.5 },
         markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] }, markArea: runArea,
       })
@@ -196,7 +198,7 @@ onBeforeUnmount(() => {
   chart.value?.dispose()
 })
 watch(
-  () => [props.dates, props.price, props.ma, props.maLabel, props.diag, props.scaleLabel, panels.value, props.zoom],
+  () => [props.dates, props.price, props.ma, props.maLabel, props.diag, props.scaleLabel, props.band, props.bandLabel, panels.value, props.zoom],
   render,
 )
 </script>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { renderMarkdown } from '../lib/markdown'
+import { marked } from 'marked'
 import overviewMd from '../../docs/concepts/overview.md?raw'
 import explorerMd from '../../docs/concepts/price-explorer.md?raw'
 import mechanicsMd from '../../docs/concepts/price-mechanics.md?raw'
@@ -30,9 +30,10 @@ watch(
   },
 )
 
+// Trusted, app-authored markdown → HTML via marked (GFM). Synchronous parse.
 const html = computed(() => {
   const doc = DOCS.find((d) => d.id === active.value) ?? DOCS[0]
-  return renderMarkdown(doc.md)
+  return marked.parse(doc.md, { async: false }) as string
 })
 
 function onKey(e: KeyboardEvent) {

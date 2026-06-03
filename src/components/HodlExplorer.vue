@@ -12,8 +12,8 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
-import { sma } from '../lib/indicators'
-import { scaleDiag } from '../lib/runs'
+import { sma, bandPosition } from '../lib/indicators'
+import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
 import {
   type Band,
   type SeedKind,
@@ -44,24 +44,14 @@ const UP = '#2bd4a7'
 const AMBER = '#fbbf24'
 const BAND_FILL = 'rgba(43, 212, 167, 0.14)'
 
-// Bollinger-score driver uses a fixed monthly-ish scale, matching the Price
-// Explorer's default run scale (hd ≈ 31d, N = 20).
-const B_SCALE_HD = 31
-const B_SCALE_N = 20
-
 const props = defineProps<{
   raw: PricePoint[]
   loading: boolean
   error: string
   progress: FetchProgress
-  /** Shared with Price Explorer — same long MA baseline. */
-  ratioMaDays: number
 }>()
 
-const emit = defineEmits<{
-  'update:ratioMaDays': [value: number]
-  refresh: []
-}>()
+const emit = defineEmits<{ refresh: [] }>()
 
 // --- Builder controls -------------------------------------------------------
 const driver = ref<SeedKind>('ratio')
@@ -75,8 +65,14 @@ const toDate = ref('')
 // Each indicator driver carries its own buy band [lower, upper].
 const ratioLower = ref(0)
 const ratioUpper = ref(1.5)
-const bLower = ref(-4)
+const bLower = ref(-2)
 const bUpper = ref(0)
+// Bollinger-score params — same `bandPosition` engine as the Price Explorer, but
+// the Hodl tab tunes its own Window / Smoothing / σ independently.
+const bandSmooth = ref(31) // EMA span (days)
+const bandPeriod = ref(20) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('month')
+const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.
 const uniformEveryX = ref(7)
@@ -93,11 +89,8 @@ const layers = ref<SeedLayer[]>([])
 const totalBudget = ref(0)
 let budgetInitialised = false
 
-// MA window: synced with Price Explorer via prop + emit.
-const localMaDays = computed({
-  get: () => props.ratioMaDays,
-  set: (v) => emit('update:ratioMaDays', v),
-})
+// MA window for the price ÷ MA driver (independent of the Price Explorer).
+const localMaDays = ref(1460)
 
 // --- Derived data -----------------------------------------------------------
 function toDateInput(ms: number): string {
@@ -106,15 +99,22 @@ function toDateInput(ms: number): string {
 
 const dates = computed(() => props.raw.map((p) => toDateInput(p.time)))
 const prices = computed(() => props.raw.map((p) => p.price))
-const longMa = computed(() => sma(prices.value, props.ratioMaDays))
+const longMa = computed(() => sma(prices.value, localMaDays.value))
 
 const maLabel = computed(() => {
-  const yr = props.ratioMaDays / 365
-  return yr >= 1 ? `${yr.toFixed(1)}yr` : `${props.ratioMaDays}d`
+  const yr = localMaDays.value / 365
+  return yr >= 1 ? `${yr.toFixed(1)}yr` : `${localMaDays.value}d`
 })
 
 // b-score series (fixed monthly scale).
-const bDiag = computed(() => scaleDiag(prices.value, B_SCALE_HD, { N: B_SCALE_N }))
+const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
+const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
+const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
+const bandLabel = computed(
+  () =>
+    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
+    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
+)
 
 // Comparison window — baseline + all layers operate within [start, end] (incl.).
 const windowRange = computed<{ start: number; end: number }>(() => {
@@ -166,10 +166,10 @@ const builderBand = computed<Band>(() =>
     : { lower: ratioLower.value, upper: ratioUpper.value },
 )
 const builderMetric = computed<(number | null)[]>(() =>
-  driver.value === 'bscore' ? bDiag.value.b : ratioSeries(prices.value, longMa.value),
+  driver.value === 'bscore' ? bScore.value : ratioSeries(prices.value, longMa.value),
 )
 const metricTitle = computed(() =>
-  driver.value === 'bscore' ? 'Bollinger score (b · monthly)' : `Price ÷ MA (${maLabel.value})`,
+  driver.value === 'bscore' ? `Bollinger score (${bandLabel.value})` : `Price ÷ MA (${maLabel.value})`,
 )
 // Only band-on-a-metric drivers get the shaded driver chart.
 const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
@@ -187,7 +187,7 @@ const todayRatio = computed(() => {
   const m = longMa.value[todayIdx.value]
   return m != null && m > 0 ? prices.value[todayIdx.value] / m : null
 })
-const todayB = computed(() => (todayIdx.value >= 0 ? bDiag.value.b[todayIdx.value] : null))
+const todayB = computed(() => (todayIdx.value >= 0 ? bScore.value[todayIdx.value] : null))
 
 const patternSignals = computed(() => [
   {
@@ -311,7 +311,7 @@ function addLayer() {
   } else if (driver.value === 'ratio') {
     // Resolve over ALL history at add-time → a frozen seed independent of the
     // driver knobs (band/MA window) from here on.
-    const metric = ratioSeries(prices.value, sma(prices.value, props.ratioMaDays))
+    const metric = ratioSeries(prices.value, sma(prices.value, localMaDays.value))
     layers.value.push({
       id: newId(),
       kind: 'ratio',
@@ -329,8 +329,8 @@ function addLayer() {
     layers.value.push({
       id: newId(),
       kind: 'bscore',
-      label: `b score ${bLower.value}–${bUpper.value}`,
-      dateIndices: selectBandBuyDates(bDiag.value.b, builderBand.value, all),
+      label: `b score ${bLower.value}–${bUpper.value} · ${bandLabel.value}`,
+      dateIndices: selectBandBuyDates(bScore.value, builderBand.value, all),
     })
   }
 }
@@ -357,6 +357,29 @@ const fmtUSD = (v: number | null) =>
 // --- Price chart ------------------------------------------------------------
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
+
+// Shared graphed-range, kept in sync between the price chart and the driver-
+// metric chart (echarts.connect alone doesn't carry the slider range to the
+// second chart). Both charts read this for their dataZoom start/end.
+const zoom = ref<[number, number]>([0, 100])
+let suppressZoom = false
+const nearZ = (a: number, b: number) => Math.abs(a - b) < 0.05
+function currentRange(c?: echarts.ECharts): [number, number] {
+  const dz = (c?.getOption() as any)?.dataZoom?.[0]
+  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
+}
+function onZoom(src?: echarts.ECharts) {
+  if (suppressZoom || !src) return
+  const [s, e] = currentRange(src)
+  if (nearZ(s, zoom.value[0]) && nearZ(e, zoom.value[1])) return
+  zoom.value = [s, e]
+  const other = src === chart.value ? chartMetric.value : chart.value
+  if (other) {
+    suppressZoom = true
+    other.dispatchAction({ type: 'dataZoom', start: s, end: e })
+    suppressZoom = false
+  }
+}
 
 function buildPriceOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
@@ -409,8 +432,8 @@ function buildPriceOption(): echarts.EChartsCoreOption {
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
-      { type: 'inside', start: 0, end: 100 },
-      { type: 'slider', start: 0, end: 100, bottom: 8, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
+      { type: 'inside', start: zoom.value[0], end: zoom.value[1] },
+      { type: 'slider', start: zoom.value[0], end: zoom.value[1], bottom: 8, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
     ],
     series: [
       {
@@ -512,7 +535,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       axisLabel: { color: AXIS, fontSize: 9 },
       splitLine: { lineStyle: { color: SPLIT } },
     },
-    dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+    dataZoom: [{ type: 'inside', start: zoom.value[0], end: zoom.value[1] }],
     series: [
       {
         name: metricTitle.value,
@@ -565,6 +588,9 @@ onMounted(async () => {
   }
   render()
   echarts.connect(GROUP)
+  // Keep the two charts' graphed range locked together.
+  chart.value?.on('datazoom', () => onZoom(chart.value))
+  chartMetric.value?.on('datazoom', () => onZoom(chartMetric.value))
   await nextTick()
   chart.value?.resize()
   chartMetric.value?.resize()
@@ -583,7 +609,11 @@ onBeforeUnmount(() => {
 watch(
   () => [
     props.raw,
-    props.ratioMaDays,
+    localMaDays.value,
+    bandSmooth.value,
+    bandPeriod.value,
+    bandUnit.value,
+    bandK.value,
     driver.value,
     builderBand.value,
     windowMode.value,
@@ -681,7 +711,32 @@ watch(
             <input type="number" v-model.number="ratioUpper" min="0" max="3" step="0.01" class="num-input sm" />
           </span>
         </label>
-        <label class="ctrl-label" v-else-if="driver === 'bscore'">
+        <div class="ctrl-label" v-if="driver === 'bscore'">
+          Bollinger score
+          <label class="param">
+            Period
+            <span class="ctrl-row">
+              <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input" />
+              <select v-model="bandUnit" class="param-sel">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+          <label class="param">
+            σ ×
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input" />
+          </label>
+          <label class="param">
+            Smoothing
+            <span class="ctrl-row">
+              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input" />
+              <span class="unit">{{ bandSmoothLabel }}</span>
+            </span>
+          </label>
+        </div>
+        <label class="ctrl-label" v-if="driver === 'bscore'">
           Buy band (b score)
           <span class="ctrl-row">
             <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
@@ -689,7 +744,7 @@ watch(
             <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
           </span>
         </label>
-        <label class="ctrl-label" v-else-if="driver === 'uniform'">
+        <label class="ctrl-label" v-if="driver === 'uniform'">
           Every X days · {{ uniformEveryX === 7 ? 'weekday' : 'offset' }}
           <span class="ctrl-row">
             <input type="number" v-model.number="uniformEveryX" min="1" max="365" step="1" class="num-input sm" />
@@ -956,6 +1011,18 @@ watch(
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+/* Vertically-stacked parameter rows inside a card (matches the Price Explorer). */
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.param .num-input {
+  width: 4rem;
+}
+.param-sel {
+  width: auto;
 }
 .select {
   width: 12rem;

@@ -39,9 +39,6 @@ onMounted(init)
 type Tab = 'explorer' | 'forecast' | 'hodl'
 const tab = ref<Tab>('explorer')
 
-// Shared long-MA window — synced between Price Explorer and Hodl Explorer.
-const ratioMaDays = ref(1460)
-
 // In-app help: a modal that renders the conceptual docs for each page.
 const showHelp = ref(false)
 const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
@@ -80,8 +77,6 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
       :error="error"
       :progress="progress"
       :last-updated="lastUpdated"
-      :ratio-ma-days="ratioMaDays"
-      @update:ratio-ma-days="ratioMaDays = $event"
       @refresh="refresh"
     />
     <ForecastView v-else-if="tab === 'forecast'" :raw="raw" :loading="loading" />
@@ -91,8 +86,6 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
       :loading="loading"
       :error="error"
       :progress="progress"
-      :ratio-ma-days="ratioMaDays"
-      @update:ratio-ma-days="ratioMaDays = $event"
       @refresh="refresh"
     />
 

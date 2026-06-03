@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-// Note: ratioMaDays is a shared prop (synced with Hodl Explorer via App.vue).
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, bollinger } from '../lib/indicators'
+import { sma, bollinger, bandPosition } from '../lib/indicators'
+import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -13,31 +13,28 @@ const props = defineProps<{
   error: string
   progress: FetchProgress
   lastUpdated: number | null
-  /** Shared long-MA baseline, synced with Hodl Explorer. */
-  ratioMaDays: number
 }>()
 
-const emit = defineEmits<{
-  refresh: []
-  'update:ratioMaDays': [value: number]
-}>()
+const emit = defineEmits<{ refresh: [] }>()
 
 // --- Metric toggles (default view = price only) -----------------------------
 const showMa = ref(false) // MA overlay
 const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
-const showBScore = ref(false) // Bollinger (b) score curve
+const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
 const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
-const cfgB = ref(false)
+const cfgBand = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
-const anyCurve = computed(() => showRatio.value || showBScore.value || showRunDetection.value)
+const anyCurve = computed(
+  () => showRatio.value || showBand.value || showRunDetection.value,
+)
 const curvesCollapsed = ref(false)
 
 // --- Metric parameters ------------------------------------------------------
@@ -48,11 +45,15 @@ const maUnit = ref<PeriodUnit>('day')
 const bbPeriod = ref(20)
 const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
-// Price ÷ MA: long baseline, synced with Hodl Explorer via prop + emit.
-const ratioMaDays = computed({
-  get: () => props.ratioMaDays,
-  set: (v) => emit('update:ratioMaDays', v),
-})
+// Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
+const ratioMaDays = ref(1460)
+// Band position (the clean "Bollinger score" family): one window (days) for the
+// mean+std, a price-smoothing EMA span (days), and an independent σ-multiplier k.
+// Defaults reproduce the old run-scale Bollinger score (s≈31, W≈620, k=2).
+const bandSmooth = ref(31) // EMA span (days) on the price
+const bandPeriod = ref(20) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('month')
+const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -94,13 +95,6 @@ const runSensitivity = computed({
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
-// Data is daily, so week/month periods just scale the sample count.
-type PeriodUnit = 'day' | 'week' | 'month'
-const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
-const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
-const toDays = (period: number, unit: PeriodUnit) =>
-  Math.max(1, Math.round(period * UNIT_DAYS[unit]))
-
 function toDateInput(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
@@ -119,6 +113,16 @@ const ma = computed(() => sma(prices.value, maDays.value))
 const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
+
+// Band position: b = (EMA_s(price) − SMA_W) / (k·STD_W), centered at 0; ±1 = bands.
+const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
+const bandLabel = computed(
+  () =>
+    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
+    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
+)
+const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
+const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
@@ -260,23 +264,38 @@ const fmtUSD = (v: number | null) =>
         </div>
       </div>
 
-      <!-- Curve: Bollinger score (b = band position) -->
+      <!-- Curve: band position (smoothed-%B / Bollinger-score family) -->
       <div class="metric">
         <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showBScore" /> Bollinger score</label>
-          <button class="cfg" :class="{ open: cfgB }" @click="cfgB = !cfgB" title="Configure">⚙</button>
+          <label class="checkbox"><input type="checkbox" v-model="showBand" /> Bollinger score</label>
+          <button class="cfg" :class="{ open: cfgBand }" @click="cfgBand = !cfgBand" title="Configure">⚙</button>
         </div>
-        <div v-if="cfgB" class="metric-cfg">
-          <p class="cfg-note">Shares the run scale &amp; sensitivity below.</p>
-          <label class="slider">
-            Scale
-            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-            <span class="val">{{ runScaleLabel }}</span>
+        <div v-if="cfgBand" class="metric-cfg">
+          <p class="cfg-note">
+            (EMA·price − MA) ÷ k·σ over one window. 0 = MA, ±1 = ±kσ bands.
+            Smoothing 0 + short window = classic %B.
+          </p>
+          <label>
+            Period
+            <span class="period">
+              <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
+              <select v-model="bandUnit">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
           </label>
-          <label class="slider">
-            Sensitivity
-            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+          <label>
+            σ ×
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
+          </label>
+          <label>
+            Smoothing
+            <span class="period">
+              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
+              <span class="unit">{{ bandSmoothLabel }}</span>
+            </span>
           </label>
         </div>
       </div>
@@ -320,7 +339,9 @@ const fmtUSD = (v: number | null) =>
         :diag="runDiag"
         :scale-label="runScaleLabel"
         :show-ratio="showRatio"
-        :show-b="showBScore"
+        :show-band="showBand"
+        :band="bandSeries"
+        :band-label="bandLabel"
         :show-run-slope="showRunDetection"
         v-model:zoom="zoom"
       />
