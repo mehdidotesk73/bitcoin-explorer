@@ -134,24 +134,24 @@ The only workflow today is `deploy.yml` (Pages deploy on push to `main`). There
 is no PR gate, no lint/format config, no test suite, and no Node-version pin —
 so a broken build can (and once did) reach history. Prioritised backlog:
 
-- [ ] **CI gate on PRs (do first).** Add `.github/workflows/ci.yml` that runs on
-      pull_request → `main`: `npm ci` then `npm run build` (this already does
-      `vue-tsc -b && vite build`, so it catches TS *and* Vue template errors).
-      Use Node 22 + `cache: npm` to match `deploy.yml`. Make it a **required
-      status check** in branch protection so PRs can't merge red. This is the
-      single highest-value item — it's the gate `CLAUDE.md` already assumes.
+- [x] **CI gate on PRs.** `.github/workflows/ci.yml` runs on pull_request → `main`
+      (and push to `main`): `npm ci`, `npm run test:run`, then `npm run build`
+      (`vue-tsc -b && vite build`, catching TS + Vue template errors). Node 22 +
+      `cache: npm` to match `deploy.yml`; `concurrency` cancels superseded runs.
+      **Remaining manual step:** mark the `build` check **required** in
+      Settings → Branches → branch protection so red PRs can't merge.
+- [x] **Unit tests (Vitest).** Seeded `src/lib/*.test.ts` (13 tests): `hodl.ts`
+      math (`simulateStrategy` ROI/cost-basis/BTC) + `selectBandBuyDates` /
+      `windowIndices` / `unionIndices` / `snapDateToIndex` / `uniformSpacedDates`;
+      `indicators.ts` `sma`/`ema`/`bollinger`/`bandPosition` incl. a **causality**
+      assertion (mutating `price[>i]` doesn't change `b` at `i`). Run via
+      `npm run test:run`, wired into CI. Tests excluded from the production
+      type-check (`tsconfig.app.json`). Next: `forecast.ts` invariants.
 - [ ] **Lint + format.** No ESLint/Prettier exists yet, but an auto-formatter is
       clearly in the loop (files keep getting reformatted). Codify it: add
       `eslint` (vue + @typescript-eslint) and `prettier` with a committed config,
       `npm run lint` / `npm run format:check` scripts, and run both in CI so
       style is deterministic instead of incidental.
-- [ ] **Unit tests (Vitest).** `src/lib/` is pure functions over arrays — ideal
-      to test and currently untested. High-value cases: `hodl.ts`
-      (`simulateStrategy` math: known price path → known ROI/cost basis/BTC;
-      `selectBandBuyDates`, `windowIndices`, `unionIndices`, `snapDateToIndex`);
-      `runs.ts`/`indicators.ts` **causality** (mutating `price[>i]` must not
-      change the decision at `i`); `forecast.ts` fit/projection invariants. Add
-      `npm run test` to the CI gate.
 - [ ] **Pin the Node version.** Add `.nvmrc` (22) and an `engines` field so local
       dev matches CI/deploy and avoids "works on my machine" drift.
 - [ ] **Automated dependency updates.** Add `.github/dependabot.yml` for `npm`
