@@ -1,5 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="96" fill="#42b883"/>
-  <path d="M256 128 L368 320 L304 320 L256 232 L208 320 L144 320 Z" fill="#ffffff"/>
-  <path d="M208 320 L256 408 L304 320 L256 232 Z" fill="#35495e"/>
+  <!-- Minimal bitcoin1460 mark: orange tile + geometric ₿ -->
+  <rect width="512" height="512" rx="112" fill="#f7931a"/>
+  <g fill="#ffffff">
+    <!-- B body: stem + two bowls -->
+    <rect x="150" y="150" width="56" height="212" rx="10"/>
+    <circle cx="236" cy="206" r="58"/>
+    <circle cx="236" cy="306" r="66"/>
+  </g>
+  <!-- counters punched back to the tile colour -->
+  <g fill="#f7931a">
+    <circle cx="246" cy="206" r="26"/>
+    <circle cx="248" cy="306" r="32"/>
+  </g>
+  <!-- the two ₿ prongs, extending above and below the body -->
+  <g fill="#ffffff">
+    <rect x="162" y="120" width="22" height="272" rx="11"/>
+    <rect x="194" y="120" width="22" height="272" rx="11"/>
+  </g>
 </svg>

@@ -35,9 +35,9 @@ export default defineConfig({
         image: 'public/logo.svg',
       },
       manifest: {
-        name: 'Bitcoin Price Explorer',
-        short_name: 'BTC Explorer',
-        description: 'Bitcoin price with moving average and Bollinger bands, adjustable.',
+        name: 'bitcoin1460',
+        short_name: 'bitcoin1460',
+        description: 'Bitcoin price explorer, forecast, and hodl-strategy sandbox.',
         theme_color: '#0b0f18',
         background_color: '#0b0f18',
         display: 'standalone',

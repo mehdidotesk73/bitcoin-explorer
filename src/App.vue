@@ -42,6 +42,9 @@ const tab = ref<Tab>('explorer')
 // Shared long-MA window — synced between Price Explorer and Hodl Explorer.
 const ratioMaDays = ref(1460)
 
+// Base-path-aware URL for the public logo asset (works under GitHub Pages base).
+const logoUrl = import.meta.env.BASE_URL + 'logo.svg'
+
 // In-app help: a modal that renders the conceptual docs for each page.
 const showHelp = ref(false)
 const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
@@ -53,7 +56,10 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   <main class="app">
     <header>
       <div class="title-row">
-        <h1>₿ Bitcoin Price Explorer</h1>
+        <h1 class="brand" aria-label="bitcoin1460">
+          <img :src="logoUrl" class="brand-logo" alt="" aria-hidden="true" />
+          <span class="brand-text"><span class="brand-mark">₿</span>1460</span>
+        </h1>
         <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
           ? Help
         </button>
@@ -133,6 +139,24 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
 header h1 {
   font-size: 1.4rem;
   margin: 0 0 0.6rem;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.brand-logo {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.4rem;
+  display: block;
+}
+.brand-text {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.brand-mark {
+  color: #f7931a;
 }
 .help-btn {
   flex-shrink: 0;
