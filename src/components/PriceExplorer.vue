@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger, bandPosition } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
+import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -121,6 +121,7 @@ const bandLabel = computed(
     `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
     (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
 )
+const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
 const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
 
 // Runs/metrics at the selected continuous scale.
@@ -286,15 +287,15 @@ const fmtUSD = (v: number | null) =>
             </span>
           </label>
           <label>
+            σ ×
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
+          </label>
+          <label>
             Smoothing
             <span class="period">
               <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
-              <span class="unit">days EMA</span>
+              <span class="unit">{{ bandSmoothLabel }}</span>
             </span>
-          </label>
-          <label>
-            σ ×
-            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
           </label>
         </div>
       </div>

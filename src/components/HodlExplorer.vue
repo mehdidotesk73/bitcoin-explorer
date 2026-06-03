@@ -13,7 +13,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
 import { sma, bandPosition } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
+import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
 import {
   type Band,
   type SeedKind,
@@ -108,6 +108,7 @@ const maLabel = computed(() => {
 
 // b-score series (fixed monthly scale).
 const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
+const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
 const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
 const bandLabel = computed(
   () =>
@@ -693,7 +694,7 @@ watch(
           </span>
         </label>
         <label class="ctrl-label" v-if="driver === 'bscore'">
-          Period · smoothing · σ
+          Period · σ · smoothing
           <span class="ctrl-row">
             <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input sm" />
             <select v-model="bandUnit" class="num-input sm">
@@ -701,10 +702,10 @@ watch(
               <option value="week">w</option>
               <option value="month">mo</option>
             </select>
-            <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input sm" />
-            <span class="unit">ema</span>
             <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input sm" />
             <span class="unit">σ</span>
+            <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input sm" />
+            <span class="unit">{{ bandSmoothLabel }}</span>
           </span>
         </label>
         <label class="ctrl-label" v-else-if="driver === 'uniform'">
