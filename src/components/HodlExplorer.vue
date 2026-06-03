@@ -15,6 +15,7 @@ import type { PricePoint, FetchProgress } from '../api/bitcoin'
 import { sma, bandPosition } from '../lib/indicators'
 import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
 import { fmtUSD } from '../lib/format'
+import { AXIS, SPLIT, UP, AMBER, BAND_FILL } from '../lib/chartTheme'
 import {
   type Band,
   type SeedKind,
@@ -41,9 +42,6 @@ echarts.use([
 ])
 
 const GROUP = 'btc-hodl'
-const UP = '#2bd4a7'
-const AMBER = '#fbbf24'
-const BAND_FILL = 'rgba(43, 212, 167, 0.14)'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -381,8 +379,6 @@ function onZoom(src?: echarts.ECharts) {
 }
 
 function buildPriceOption(): echarts.EChartsCoreOption {
-  const AXIS = '#8b94ac'
-  const SPLIT = 'rgba(54, 66, 95, 0.45)'
   const cats = dates.value
   const p = prices.value
   const { start: bStart, end: bEnd } = windowRange.value
@@ -486,8 +482,6 @@ const elMetric = ref<HTMLDivElement>()
 const chartMetric = shallowRef<echarts.ECharts>()
 
 function buildMetricOption(): echarts.EChartsCoreOption {
-  const AXIS = '#8b94ac'
-  const SPLIT = 'rgba(54, 66, 95, 0.45)'
   const cats = dates.value
   const b = builderBand.value
   const lo = Math.min(b.lower, b.upper)

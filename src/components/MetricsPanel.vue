@@ -5,16 +5,11 @@ import { LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ScaleDiag } from '../lib/runs'
+import { AXIS, SPLIT, UP, DOWN, UP_RUN, DOWN_RUN } from '../lib/chartTheme'
 
 echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
 
 const GROUP = 'btc-explorer'
-const AXIS = '#8b94ac'
-const SPLIT = 'rgba(54, 66, 95, 0.45)'
-const UP_RUN = 'rgba(43, 212, 167, 0.16)'
-const DOWN_RUN = 'rgba(247, 75, 75, 0.14)'
-const UP = '#2bd4a7'
-const DOWN = '#f74b4b'
 
 // Per-panel layout (px).
 const TOP = 6

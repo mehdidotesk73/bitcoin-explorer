@@ -11,6 +11,7 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
+import { AXIS, SPLIT } from '../lib/chartTheme'
 
 echarts.use([
   LineChart,
@@ -57,9 +58,6 @@ const chart = shallowRef<echarts.ECharts>()
 const fmtRatio = (v: number | null) =>
   v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + '×'
 const fmtY = (v: number | null) => (props.valueFormat === 'ratio' ? fmtRatio(v) : fmtUSD(v))
-
-const AXIS = '#8b94ac'
-const SPLIT = 'rgba(54, 66, 95, 0.45)'
 
 const DAY_MS = 86_400_000
 

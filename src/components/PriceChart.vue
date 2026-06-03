@@ -5,6 +5,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
+import { AXIS, SPLIT } from '../lib/chartTheme'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
@@ -36,9 +37,6 @@ const chart = shallowRef<echarts.ECharts>()
 
 
 function buildOption(): echarts.EChartsCoreOption {
-  const AXIS = '#8b94ac'
-  const SPLIT = 'rgba(54, 66, 95, 0.45)'
-
   const maOn = !!props.showMa
   const bbOn = !!props.showBb
   const runsOn =
