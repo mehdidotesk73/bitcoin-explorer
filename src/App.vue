@@ -54,7 +54,7 @@ const ratioMaDays = ref(1460)
           Price Mechanics
         </button>
         <button :class="{ active: tab === 'hodl' }" @click="tab = 'hodl'">
-          Hodl
+          Hodl Explorer
         </button>
       </nav>
     </header>

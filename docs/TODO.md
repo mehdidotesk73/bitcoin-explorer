@@ -48,6 +48,25 @@
       only. **Removed:** the M/W composite heat tint, the buy/hold signal, and
       the Components diagnostic (`mwHeat`, `phaseMachine`, `MwHeatDiagnostic`).
 
+## Next branch — Buy/Hodl indicator
+
+A card pinned to the top of the **Hodl Explorer** that answers, for **today's
+price**, "is this a buy day or a hodl day?" — judged by each currently-tuned
+pattern.
+
+- **Now (shipped as a stub):** evaluates today's price against each band-based
+  driver as currently tuned — Price ÷ MA and Bollinger score (b) — and shows a
+  per-pattern **BUY** (today's value sits in the accumulation band) or **HODL**
+  verdict, plus a "N of M patterns say buy" summary. Pure/causal, reads only the
+  latest data point. Lives in `HodlExplorer.vue` (`patternSignals`, `inBand`).
+- **Future:** widen beyond the explorer's two band patterns into a collection of
+  market-macro behaviours/patterns, each filtering for its own condition, then
+  pool them into a single **buy-vs-hodl score** (weighting, agreement, regime
+  awareness). Surface the contributing patterns so the score is explainable.
+- **Caveat to keep visible:** these are pattern-based pickers over history;
+  Bitcoin is not guaranteed to repeat past/present patterns — heuristic, not
+  advice.
+
 ## Next branch — Indicator setup
 
 > Deferred to a follow-up branch, to be started after the current

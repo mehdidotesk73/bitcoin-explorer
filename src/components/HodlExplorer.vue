@@ -174,6 +174,39 @@ const metricTitle = computed(() =>
 // Only band-on-a-metric drivers get the shaded driver chart.
 const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
 
+// --- Buy / Hodl indicator ---------------------------------------------------
+// For each *currently tuned* pattern, is today's price inside its buy band? If
+// so, today reads as a "buy" day for that pattern; otherwise "hodl". This is a
+// thin first cut — a future version can pool many macro patterns into a score.
+const inBand = (v: number | null, lo: number, hi: number) =>
+  v != null && v >= Math.min(lo, hi) && v <= Math.max(lo, hi)
+
+const todayIdx = computed(() => prices.value.length - 1)
+const todayDate = computed(() => (todayIdx.value >= 0 ? dates.value[todayIdx.value] : ''))
+const todayRatio = computed(() => {
+  const m = longMa.value[todayIdx.value]
+  return m != null && m > 0 ? prices.value[todayIdx.value] / m : null
+})
+const todayB = computed(() => (todayIdx.value >= 0 ? bDiag.value.b[todayIdx.value] : null))
+
+const patternSignals = computed(() => [
+  {
+    id: 'ratio',
+    label: `Price ÷ MA (${maLabel.value})`,
+    value: todayRatio.value,
+    band: { lower: ratioLower.value, upper: ratioUpper.value },
+    buy: inBand(todayRatio.value, ratioLower.value, ratioUpper.value),
+  },
+  {
+    id: 'bscore',
+    label: 'Bollinger score (b)',
+    value: todayB.value,
+    band: { lower: bLower.value, upper: bUpper.value },
+    buy: inBand(todayB.value, bLower.value, bUpper.value),
+  },
+])
+const buyVotes = computed(() => patternSignals.value.filter((p) => p.buy).length)
+
 // Weekday picker for weekly (every-7) uniform spacing. The grid lands on the
 // weekday of (today + offset), so map a chosen weekday back to that offset.
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -581,8 +614,38 @@ watch(
       ⚠️ {{ error }} <button @click="emit('refresh')">Retry</button>
     </section>
 
+    <!-- Buy / Hodl indicator: does today land in each tuned pattern's buy band? -->
+    <section class="indicator" v-if="latestPrice">
+      <div class="indicator-head">
+        <h3>Buy / Hodl indicator</h3>
+        <span class="muted">today {{ todayDate }} · {{ buyVotes }} of {{ patternSignals.length }} patterns say buy</span>
+      </div>
+      <div class="signal-row">
+        <div class="signal" v-for="p in patternSignals" :key="p.id">
+          <span class="signal-label">{{ p.label }}</span>
+          <span class="signal-val">
+            {{ p.value == null ? '—' : p.value.toFixed(3) }}
+            <span class="muted">in [{{ p.band.lower }}, {{ p.band.upper }}]</span>
+          </span>
+          <span class="verdict" :class="p.value == null ? 'na' : p.buy ? 'buy' : 'hodl'">
+            {{ p.value == null ? 'n/a' : p.buy ? 'BUY' : 'HODL' }}
+          </span>
+        </div>
+      </div>
+      <p class="indicator-note">
+        Reflects the patterns as currently tuned below. A “buy” means today's price sits in
+        that pattern's accumulation band; otherwise hodl. Heuristic only — not advice.
+      </p>
+    </section>
+
     <!-- Builder -->
     <section class="builder">
+      <p class="driver-note">
+        Drivers are <strong>tunable, pattern-based price pickers</strong> — they flag
+        historical days matching a rule you set. Bitcoin is <strong>not guaranteed</strong>
+        to repeat its past or present patterns in the future; treat results as exploration,
+        not prediction.
+      </p>
       <div class="controls">
         <label class="ctrl-label">
           Driver
@@ -786,6 +849,82 @@ watch(
 .status.error {
   background: var(--danger-bg);
   border-color: var(--danger);
+}
+
+.indicator {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--bg-elev);
+}
+.indicator-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.indicator-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.4rem;
+}
+.signal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 14rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.55rem;
+  background: var(--bg-elev-2, var(--bg-elev));
+}
+.signal-label {
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.signal-val {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.verdict {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 0.3rem;
+}
+.verdict.buy {
+  background: rgba(43, 212, 167, 0.2);
+  color: #2bd4a7;
+}
+.verdict.hodl {
+  background: rgba(155, 109, 255, 0.18);
+  color: #9b6dff;
+}
+.verdict.na {
+  background: var(--border);
+  color: var(--text-muted);
+}
+.indicator-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.driver-note {
+  margin: 0 0 0.6rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.45;
 }
 
 .builder {
