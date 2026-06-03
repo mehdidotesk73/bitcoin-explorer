@@ -39,9 +39,11 @@ or how stretched price is from its long-term baseline (price ÷ MA).
 - **Bollinger score.** A clean band-position metric:
   `b = (EMAₛ(price) − MA_W) / (k · σ_W)` over a single window `W`, centered at 0
   (`0` = on the MA, `±1` = the ±kσ bands). Three honest, independent knobs:
-  - **Window** (days) — one lookback for the mean *and* σ (default 620).
-  - **Smoothing** (days, EMA on the price) — the main noise control (default 31).
-  - **σ × (k)** — band width, independent of the window (default 2).
+  - **Period** (days / weeks / months) — one lookback for the mean *and* σ
+    (default 20 months).
+  - **σ × (k)** — band width, independent of the period (default 2).
+  - **Smoothing** (days, EMA on the price) — the main noise control, labelled by
+    horizon (default 31 → "monthly · 31d"); 0 = none.
 
   It subsumes both earlier curves: **smoothing 0 + short window = classic %B**
   (just read as `(b+1)/2`); the long, smoothed defaults give the clean wave. Run

@@ -70,8 +70,8 @@ const bUpper = ref(0)
 // Bollinger-score params — same `bandPosition` engine as the Price Explorer, but
 // the Hodl tab tunes its own Window / Smoothing / σ independently.
 const bandSmooth = ref(31) // EMA span (days)
-const bandPeriod = ref(620) // mean + std period (in bandUnit)
-const bandUnit = ref<PeriodUnit>('day')
+const bandPeriod = ref(20) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('month')
 const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.

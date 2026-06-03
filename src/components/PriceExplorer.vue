@@ -51,8 +51,8 @@ const ratioMaDays = ref(1460)
 // mean+std, a price-smoothing EMA span (days), and an independent σ-multiplier k.
 // Defaults reproduce the old run-scale Bollinger score (s≈31, W≈620, k=2).
 const bandSmooth = ref(31) // EMA span (days) on the price
-const bandPeriod = ref(620) // mean + std period (in bandUnit)
-const bandUnit = ref<PeriodUnit>('day')
+const bandPeriod = ref(20) // mean + std period (in bandUnit)
+const bandUnit = ref<PeriodUnit>('month')
 const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
