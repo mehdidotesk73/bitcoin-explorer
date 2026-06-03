@@ -1,4 +1,4 @@
-# Forecast tab — TODO
+# Project TODO
 
 ## Done
 
@@ -57,76 +57,54 @@
       button in the top-right of the header that opens the modal on the active
       page's doc.
 
-## Next branch — Buy/Hodl indicator
+- [x] Indicator setup — metric registry. `lib/metricRegistry.ts` (id, label,
+      kind, param schema, shared-param groups) drives the Price Explorer's metric
+      toggles from data; enabled metrics + params persist (localStorage / URL).
 
-A card pinned to the top of the **Hodl Explorer** that answers, for **today's
-price**, "is this a buy day or a hodl day?" — judged by each currently-tuned
-pattern.
+- [x] Hodl Explorer (own tab) — buying-strategy sandbox. Seed-layer combinator in
+      `lib/hodl.ts`: drivers (price ÷ MA band, Bollinger-score band, uniform
+      spacing, manual dates) resolve to frozen layers unioned into a strategy;
+      trailing-days **or** from/to comparison window; shared cash budget;
+      strategy-vs-baseline **and** live preview-vs-baseline stats
+      (`StatsCompare.vue`); a Buy/Hodl indicator card (per-pattern BUY/HODL for
+      today). Price + driver-metric charts x-synced. Out-of-window manual dates
+      flagged and excluded.
 
-- **Now (shipped as a stub):** evaluates today's price against each band-based
-  driver as currently tuned — Price ÷ MA and Bollinger score (b) — and shows a
-  per-pattern **BUY** (today's value sits in the accumulation band) or **HODL**
-  verdict, plus a "N of M patterns say buy" summary. Pure/causal, reads only the
-  latest data point. Lives in `HodlExplorer.vue` (`patternSignals`, `inBand`).
-- **Future:** widen beyond the explorer's two band patterns into a collection of
-  market-macro behaviours/patterns, each filtering for its own condition, then
-  pool them into a single **buy-vs-hodl score** (weighting, agreement, regime
-  awareness). Surface the contributing patterns so the score is explainable.
-- **Caveat to keep visible:** these are pattern-based pickers over history;
-  Bitcoin is not guaranteed to repeat past/present patterns — heuristic, not
+- [x] Bollinger score → single source of truth: `lib/indicators.ts` →
+      `bandPosition = (EMAₛ(price) − SMA_W) / (k·σ_W)`, centered (±1 = ±kσ bands),
+      with independent **Period (unit) / σ / Smoothing** (named-horizon label).
+      Replaced the old run-scale `scaleDiag` score and the separate classic-%B
+      curve (%B is just smoothing 0 + a short window). Used by both the Price
+      Explorer curve and the Hodl `bscore` driver, each with its **own** params;
+      the long-MA window is likewise decoupled per tab.
+
+- [x] Misc merged cleanups: help rendering switched to `marked`; rebrand to
+      **bitcoin1460** (app icon + Ubuntu/Orbitron title); shared period helpers
+      in `lib/period.ts` (`toDays`, `UNIT_ABBR`, `namedScaleLabel`).
+
+## Code consolidation (current branch)
+
+Single-source-of-truth pass — concrete duplication found across components:
+
+- [ ] `lib/format.ts` — `fmtUSD` / `fmtPct` / `fmtBtc` (currently copied in 6
+      components). Replace all copies with one import.
+- [ ] `lib/chartTheme.ts` — shared ECharts colours (`AXIS`, `SPLIT`, the
+      orange/blue/green/red palette) instead of per-file constants.
+- [ ] `usePriceSeries(raw)` composable — `dates` / `prices` / `toDateInput`
+      (duplicated in PriceExplorer + HodlExplorer; `prices` also in ForecastView).
+- [ ] `useBandScore()` composable — the Bollinger-score state (Period/unit/σ/
+      smoothing refs + `bandPosition` series + labels), fully duplicated across
+      the Price Explorer and Hodl Explorer.
+
+## Later / ideas
+
+- **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into
+  a collection of market/macro patterns and pool them into one explainable
+  buy-vs-hodl score (weighting, agreement, regime awareness). Heuristic, not
   advice.
-
-## Next branch — Indicator setup
-
-> Deferred to a follow-up branch, to be started after the current
-> metric-framework branch is merged.
-
-### Indicator setup (do first)
-
-The Price Explorer now has a metric-toggle framework: each metric is toggled
-on/off, has its own collapsible config, and run-based metrics (b, runs overlay,
-run slope) share one "Run parameters" group. Next:
-
-- Promote the ad-hoc metric list into a small registry/spec (id, label, kind =
-  overlay | curve, param schema, shared-param group) so metrics + their configs
-  render from data instead of hand-written rows.
-- Persist enabled metrics + params (localStorage / URL) so a view is shareable.
-- Tidy defaults and grouping; make adding a new indicator a one-entry change.
-- This registry is also what a future strategy-explorer's metric picker reads.
-
-## Later — Hodl Explorer (after Indicator setup)
-
-The owner's buying-strategy feature (replaces the retired DCA Explorer; **do
-not** revive the heat-band prototype — see `docs/experience.md`). Builds on the
-Indicator-setup metric registry, so it comes after that branch lands.
-
-**Idea.** Seed a set of purchase dates over the price history, then live-simulate
-"buy a uniform amount on each seeded date" and compare it against a baseline of
-"buy a uniform amount on every day in the past X days."
-
-### Seeding the purchase dates
-- **Manual** — the user picks / adds individual dates (and can remove them).
-- **Pattern spreading via indicators** — an indicator (from the metric registry)
-  generates dates by spreading purchases across the days that meet a condition
-  (e.g. buy where price ÷ MA < T, or where a run is in a chosen state). The
-  indicator's params come from its registry config.
-- **Combination** — manual dates plus indicator-spread dates, merged.
-
-### Live simulation + comparison
-- **Same total budget** on both sides, split uniformly across that side's
-  buy-days — so the comparison is purely about *which* days, not how much.
-- **Strategy:** budget ÷ (number of seeded dates) on each seeded date.
-- **Baseline:** budget ÷ X on each of the trailing X days, counted back from
-  today (X is a knob).
-- **Compare (current worth & more):** value today, **cost basis** (avg buy
-  price), BTC accumulated, ROI %, number of buys / amount deployed, and other
-  side-by-side stats. Recompute live as the seeding or params change.
-
-### Notes
-- Reuse `useBitcoinData`; keep the simulation a pure function in `src/lib/` over
-  the fetched arrays (causal where relevant), components thin.
-- Indicator-driven seeding is exactly why **Indicator setup comes first** — the
-  explorer reads the available drivers and their configs from that registry.
+- **Indicator-registry-driven Hodl seeding.** Let the Hodl drivers read from the
+  Price Explorer's metric registry so any indicator can spread buy-dates.
+- **`forecast.ts` unit tests** — fit/projection invariants, to extend the CI net.
 
 ## DevOps / CI
 

@@ -77,3 +77,6 @@ controlling peak width).
 - **R² measures historical fit, not forecast accuracy.** These are explicit
   scenarios, not probabilities — there are no confidence bands. A what-if, not
   advice.
+
+For the full equations, calibrated constants, and the fitting method behind this
+tab, see the spec in [`docs/forecast-model.md`](../forecast-model.md).

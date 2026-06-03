@@ -1,13 +1,13 @@
-# Bitcoin Forecast Model — Concept Outline
+# Bitcoin Forecast Model — Spec
 
-This document distills the forecasting approach from the
-[`bitcoin-model`](https://github.com/mehdidotesk73/bitcoin-model) repository into
-a single reference: the metrics it builds, the assumptions it makes, and the
-equations that combine into a final price forecast. It's meant as the spec we
-review **before** building an interactive forecast tab into this app.
+The detailed reference for the **Price Mechanics** tab: the metrics it builds,
+the assumptions it makes, and the equations that combine into a final price
+forecast. Distilled from the
+[`bitcoin-model`](https://github.com/mehdidotesk73/bitcoin-model) repository.
 
-> **Status:** review draft. Confirm the concepts/equations below are correct,
-> then we implement it as a new tab.
+> **Status:** implemented. This is the math spec behind `lib/forecast.ts`
+> (`fitParams` / `projectForecast`) and the Price Mechanics tab — the concise,
+> user-facing overview lives in [`docs/concepts/price-mechanics.md`](concepts/price-mechanics.md).
 
 ---
 
@@ -235,9 +235,9 @@ uncertainty — there is no probabilistic confidence band.
 
 ---
 
-## 10. What the user should be able to adjust (proposed for the app)
+## 10. User-adjustable controls (as implemented)
 
-When we implement this as an interactive tab, these are the natural controls:
+The Price Mechanics tab exposes these controls:
 
 - **MA window** (default 1,460 days).
 - **Value-growth model:** exponential / power-law / linear (min·max·median·mean).
