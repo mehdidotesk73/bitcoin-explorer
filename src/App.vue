@@ -138,7 +138,7 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   grid-column: 2;
   justify-self: center;
   margin: 0;
-  font-size: clamp(1.7rem, 7vw, 2.7rem);
+  font-size: clamp(1.05rem, 4vw, 1.5rem);
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -162,7 +162,7 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   color: #f7931a;
   margin-left: 0.3em;
   letter-spacing: 0.02em;
-  text-shadow: 0 0 14px rgba(247, 147, 26, 0.4);
+  text-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
 }
 .help-btn {
   grid-column: 3;
