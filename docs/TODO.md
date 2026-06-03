@@ -82,19 +82,20 @@
       **bitcoin1460** (app icon + Ubuntu/Orbitron title); shared period helpers
       in `lib/period.ts` (`toDays`, `UNIT_ABBR`, `namedScaleLabel`).
 
-## Code consolidation (current branch)
+## Code consolidation
 
-Single-source-of-truth pass — concrete duplication found across components:
+Single-source-of-truth pass — concrete duplication removed across components:
 
-- [ ] `lib/format.ts` — `fmtUSD` / `fmtPct` / `fmtBtc` (currently copied in 6
-      components). Replace all copies with one import.
-- [ ] `lib/chartTheme.ts` — shared ECharts colours (`AXIS`, `SPLIT`, the
-      orange/blue/green/red palette) instead of per-file constants.
-- [ ] `usePriceSeries(raw)` composable — `dates` / `prices` / `toDateInput`
-      (duplicated in PriceExplorer + HodlExplorer; `prices` also in ForecastView).
-- [ ] `useBandScore()` composable — the Bollinger-score state (Period/unit/σ/
-      smoothing refs + `bandPosition` series + labels), fully duplicated across
-      the Price Explorer and Hodl Explorer.
+- [x] `lib/format.ts` — `fmtUSD` / `fmtPct` / `fmtBtc` (was copied in 6
+      components). `fmtUSD` standardized on auto precision (cents <$10, else 0).
+- [x] `lib/chartTheme.ts` — shared ECharts colour tokens (`AXIS`, `SPLIT`,
+      `UP`/`DOWN`/`UP_RUN`/`DOWN_RUN`, `AMBER`, `BAND_FILL`, line colours)
+      instead of per-file constants.
+- [x] `lib/usePriceSeries.ts` — `prices` / `dates` / `toDateInput`
+      (was in PriceExplorer + HodlExplorer; ForecastView now shares `prices`).
+- [x] `lib/useBandScore.ts` — the Bollinger-score state (Period/unit/σ/smoothing
+      refs + `bandPosition` series + labels), was fully duplicated across the
+      Price Explorer and Hodl Explorer; each call keeps its own params.
 
 ## Later / ideas
 

@@ -117,6 +117,19 @@ inputs in the end, after sliders proved fiddly).
 
 ## Version history
 
+### 2026-06-03 — Code consolidation (single source of truth)
+De-duplication pass after the feature run (Indicator setup, Hodl Explorer,
+Bollinger-score unification onto `bandPosition`, marked help renderer, bitcoin1460
+rebrand, CI gate + Vitest). Extracted shared modules: `lib/format.ts`
+(`fmtUSD`/`fmtPct`/`fmtBtc`, was copied in 6 components), `lib/chartTheme.ts`
+(ECharts colour tokens), `lib/usePriceSeries.ts` (`prices`/`dates`/`toDateInput`),
+and `lib/useBandScore.ts` (the Bollinger-score state + series, was duplicated
+verbatim across the Price Explorer and Hodl Explorer; each call keeps its own
+params). No behaviour change except `fmtUSD` now uses auto precision everywhere.
+Also reconciled `docs/TODO.md` (merged work → Done) and refreshed
+`docs/forecast-model.md` framing (it's the spec for the *built* tab; kept, not
+folded into the help doc — different detail levels).
+
 ### 2026-06-03 — Conceptual help docs + in-app help button
 - **Added:** `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
   — conceptual documentation of each page (purpose, controls, how it works,
