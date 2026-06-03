@@ -358,6 +358,29 @@ const fmtUSD = (v: number | null) =>
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
+// Shared graphed-range, kept in sync between the price chart and the driver-
+// metric chart (echarts.connect alone doesn't carry the slider range to the
+// second chart). Both charts read this for their dataZoom start/end.
+const zoom = ref<[number, number]>([0, 100])
+let suppressZoom = false
+const nearZ = (a: number, b: number) => Math.abs(a - b) < 0.05
+function currentRange(c?: echarts.ECharts): [number, number] {
+  const dz = (c?.getOption() as any)?.dataZoom?.[0]
+  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
+}
+function onZoom(src?: echarts.ECharts) {
+  if (suppressZoom || !src) return
+  const [s, e] = currentRange(src)
+  if (nearZ(s, zoom.value[0]) && nearZ(e, zoom.value[1])) return
+  zoom.value = [s, e]
+  const other = src === chart.value ? chartMetric.value : chart.value
+  if (other) {
+    suppressZoom = true
+    other.dispatchAction({ type: 'dataZoom', start: s, end: e })
+    suppressZoom = false
+  }
+}
+
 function buildPriceOption(): echarts.EChartsCoreOption {
   const AXIS = '#8b94ac'
   const SPLIT = 'rgba(54, 66, 95, 0.45)'
@@ -409,8 +432,8 @@ function buildPriceOption(): echarts.EChartsCoreOption {
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
-      { type: 'inside', start: 0, end: 100 },
-      { type: 'slider', start: 0, end: 100, bottom: 8, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
+      { type: 'inside', start: zoom.value[0], end: zoom.value[1] },
+      { type: 'slider', start: zoom.value[0], end: zoom.value[1], bottom: 8, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
     ],
     series: [
       {
@@ -512,7 +535,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       axisLabel: { color: AXIS, fontSize: 9 },
       splitLine: { lineStyle: { color: SPLIT } },
     },
-    dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+    dataZoom: [{ type: 'inside', start: zoom.value[0], end: zoom.value[1] }],
     series: [
       {
         name: metricTitle.value,
@@ -565,6 +588,9 @@ onMounted(async () => {
   }
   render()
   echarts.connect(GROUP)
+  // Keep the two charts' graphed range locked together.
+  chart.value?.on('datazoom', () => onZoom(chart.value))
+  chartMetric.value?.on('datazoom', () => onZoom(chartMetric.value))
   await nextTick()
   chart.value?.resize()
   chartMetric.value?.resize()
