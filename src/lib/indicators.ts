@@ -18,6 +18,48 @@ export function ema(values: number[], span: number): number[] {
 }
 
 /**
+ * Centered band position (the clean "Bollinger score" family). For each day:
+ *
+ *     b = ( EMA_s(price) − SMA_W(price) ) / ( k · STD_W(price) )
+ *
+ * - `smoothSpan` (s): EMA span applied to the price (numerator); 0 = raw.
+ * - `window` (W): one trailing window for the mean AND population std.
+ * - `k`: independent σ-multiplier — `b = ±1` lands on the ±kσ bands.
+ *
+ * Centered at 0 (price on the mean), and `b = 2·%B − 1` for any k. `null` until
+ * the window warms up or when σ is 0.
+ */
+export function bandPosition(
+  values: number[],
+  smoothSpan: number,
+  window: number,
+  k: number,
+): (number | null)[] {
+  const n = values.length
+  const out: (number | null)[] = new Array(n).fill(null)
+  if (n === 0 || k <= 0) return out
+  const w = Math.max(1, Math.round(window))
+  const smoothed = ema(values, smoothSpan)
+  let sum = 0
+  let sumSq = 0
+  for (let i = 0; i < n; i++) {
+    sum += values[i]
+    sumSq += values[i] * values[i]
+    if (i >= w) {
+      sum -= values[i - w]
+      sumSq -= values[i - w] * values[i - w]
+    }
+    if (i >= w - 1) {
+      const mean = sum / w
+      const sd = Math.sqrt(Math.max(0, sumSq / w - mean * mean))
+      const denom = k * sd
+      out[i] = denom > 0 ? (smoothed[i] - mean) / denom : null
+    }
+  }
+  return out
+}
+
+/**
  * Simple moving average over `period` samples. The first `period - 1` entries
  * are `null` (not enough history yet) so the output aligns 1:1 with the input.
  */

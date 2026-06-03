@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
-import { sma, ema, bollinger } from '../lib/indicators'
+import { sma, bollinger, bandPosition } from '../lib/indicators'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
@@ -21,20 +21,18 @@ const showMa = ref(false) // MA overlay
 const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
-const showBScore = ref(false) // Bollinger (b) score curve
-const showPctB = ref(false) // classic %B curve (independent period/unit/σ)
+const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
 const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
-const cfgB = ref(false)
-const cfgPctB = ref(false)
+const cfgBand = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
 const anyCurve = computed(
-  () => showRatio.value || showBScore.value || showPctB.value || showRunDetection.value,
+  () => showRatio.value || showBand.value || showRunDetection.value,
 )
 const curvesCollapsed = ref(false)
 
@@ -48,13 +46,12 @@ const bbUnit = ref<PeriodUnit>('day')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
-// %B band position with its OWN period / unit / sigma, plus a price-smoothing
-// span so it can be dialed from noisy classic %B toward the clean Bollinger
-// score (which smooths the price and uses a long window). Smoothing 0 = classic.
-const pctbPeriod = ref(20)
-const pctbUnit = ref<PeriodUnit>('day')
-const pctbK = ref(2)
-const pctbSmooth = ref(0) // EMA span (days) applied to price before %B
+// Band position (the clean "Bollinger score" family): one window (days) for the
+// mean+std, a price-smoothing EMA span (days), and an independent σ-multiplier k.
+// Defaults reproduce the old run-scale Bollinger score (s≈31, W≈620, k=2).
+const bandSmooth = ref(31) // EMA span (days) on the price
+const bandWindow = ref(620) // mean + std window (days)
+const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -122,25 +119,11 @@ const ratioMa = computed(() => sma(prices.value, ratioMaDays.value))
 const ratioMaLabel = computed(() => `${(ratioMaDays.value / 365).toFixed(1)}yr`)
 const bands = computed(() => bollinger(prices.value, bbDays.value, bbK.value))
 
-// %B = (smoothedPrice − lower) / (upper − lower). Bands are over RAW price (like
-// the Bollinger score); only the numerator price is EMA-smoothed by pctbSmooth.
-const pctbDays = computed(() => toDays(pctbPeriod.value, pctbUnit.value))
-const pctbLabel = computed(
-  () =>
-    `${pctbPeriod.value}${UNIT_ABBR[pctbUnit.value]} · ${pctbK.value}σ` +
-    (pctbSmooth.value > 0 ? ` · ema ${pctbSmooth.value}d` : ''),
+// Band position: b = (EMA_s(price) − SMA_W) / (k·STD_W), centered at 0; ±1 = bands.
+const bandLabel = computed(
+  () => `${bandWindow.value}d · ${bandK.value}σ` + (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
 )
-const pctbBands = computed(() => bollinger(prices.value, pctbDays.value, pctbK.value))
-const pctbPrice = computed(() => ema(prices.value, pctbSmooth.value))
-const pctB = computed<(number | null)[]>(() => {
-  const { upper, lower } = pctbBands.value
-  const sp = pctbPrice.value
-  return sp.map((p, i) => {
-    const u = upper[i]
-    const l = lower[i]
-    return u != null && l != null && u > l ? (p - l) / (u - l) : null
-  })
-})
+const bandSeries = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindow.value, bandK.value))
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
@@ -282,59 +265,34 @@ const fmtUSD = (v: number | null) =>
         </div>
       </div>
 
-      <!-- Curve: Bollinger score (b = band position) -->
+      <!-- Curve: band position (smoothed-%B / Bollinger-score family) -->
       <div class="metric">
         <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showBScore" /> Bollinger score</label>
-          <button class="cfg" :class="{ open: cfgB }" @click="cfgB = !cfgB" title="Configure">⚙</button>
+          <label class="checkbox"><input type="checkbox" v-model="showBand" /> Band position</label>
+          <button class="cfg" :class="{ open: cfgBand }" @click="cfgBand = !cfgBand" title="Configure">⚙</button>
         </div>
-        <div v-if="cfgB" class="metric-cfg">
-          <p class="cfg-note">Shares the run scale &amp; sensitivity below.</p>
-          <label class="slider">
-            Scale
-            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-            <span class="val">{{ runScaleLabel }}</span>
-          </label>
-          <label class="slider">
-            Sensitivity
-            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Curve: classic %B (independent period / unit / sigma) -->
-      <div class="metric">
-        <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showPctB" /> %B (classic)</label>
-          <button class="cfg" :class="{ open: cfgPctB }" @click="cfgPctB = !cfgPctB" title="Configure">⚙</button>
-        </div>
-        <div v-if="cfgPctB" class="metric-cfg">
+        <div v-if="cfgBand" class="metric-cfg">
           <p class="cfg-note">
-            Band position. Raise Smoothing &amp; Period to converge it onto the
-            Bollinger score; Smoothing 0 = classic %B.
+            (EMA·price − MA) ÷ k·σ over one window. 0 = MA, ±1 = ±kσ bands.
+            Smoothing 0 + short window = classic %B.
           </p>
           <label>
-            Period
+            Window
             <span class="period">
-              <input type="number" v-model.number="pctbPeriod" min="1" max="2000" />
-              <select v-model="pctbUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
+              <input type="number" v-model.number="bandWindow" min="2" max="3000" step="10" />
+              <span class="unit">days</span>
             </span>
           </label>
           <label>
             Smoothing
             <span class="period">
-              <input type="number" v-model.number="pctbSmooth" min="0" max="365" step="1" />
+              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
               <span class="unit">days EMA</span>
             </span>
           </label>
           <label>
             σ ×
-            <input type="number" v-model.number="pctbK" min="0.5" max="5" step="0.5" />
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
           </label>
         </div>
       </div>
@@ -378,10 +336,9 @@ const fmtUSD = (v: number | null) =>
         :diag="runDiag"
         :scale-label="runScaleLabel"
         :show-ratio="showRatio"
-        :show-b="showBScore"
-        :show-pct-b="showPctB"
-        :pct-b="pctB"
-        :pct-b-label="pctbLabel"
+        :show-band="showBand"
+        :band="bandSeries"
+        :band-label="bandLabel"
         :show-run-slope="showRunDetection"
         v-model:zoom="zoom"
       />

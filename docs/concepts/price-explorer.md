@@ -36,17 +36,16 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   years), on a **log** axis. Above 1 = price is above its baseline; below 1 =
   oversold relative to baseline. The long window is what makes whole cycles
   legible instead of the ratio hugging 1.
-- **Bollinger score (b).** A band-position of the **smoothed** price against a
-  *long, run-scale-linked* band (window = period × scale ≈ 620 d by default),
-  normalised so `±1` are the ±2σ bands and `0` is the mean. Shaded by run
-  direction. Its inputs are the run **scale** and the Bollinger **period** (it
-  ignores the bands' unit and σ; `b ≈ 2·%B − 1` only when windows match).
-- **%B (band position).** `(smoothed price − lower)/(upper − lower)` from its
-  **own** Bollinger bands — independent **period / unit / σ**, plus a price
-  **smoothing** (EMA) span. Reads 0 at the lower band, 0.5 at the MA, 1 at the
-  upper. With smoothing 0 it's textbook %B (raw price, noisy); raising
-  **smoothing + period** converges it onto the clean Bollinger score (which is a
-  smoothed, long-window band position). Added so the two can be compared.
+- **Band position.** The clean "Bollinger-score" family in one metric:
+  `b = (EMAₛ(price) − MA_W) / (k · σ_W)` over a single window `W`, centered at 0
+  (`0` = on the MA, `±1` = the ±kσ bands). Three honest, independent knobs:
+  - **Window** (days) — one lookback for the mean *and* σ (default 620).
+  - **Smoothing** (days, EMA on the price) — the main noise control (default 31).
+  - **σ × (k)** — band width, independent of the window (default 2).
+
+  It subsumes both earlier curves: **smoothing 0 + short window = classic %B**
+  (just read as `(b+1)/2`); the long, smoothed defaults give the clean wave. Run
+  direction is shaded behind it. (`b = 2·%B − 1` for any k.)
 - **Run slope.** Each run's average daily % change, as bars coloured by
   direction (green up, red down, flat/0 = chop).
 
