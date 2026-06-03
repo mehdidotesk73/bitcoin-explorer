@@ -42,9 +42,6 @@ const tab = ref<Tab>('explorer')
 // Shared long-MA window — synced between Price Explorer and Hodl Explorer.
 const ratioMaDays = ref(1460)
 
-// Base-path-aware URL for the public title-banner asset (GitHub Pages base).
-const titleUrl = import.meta.env.BASE_URL + 'title-logo.jpeg'
-
 // In-app help: a modal that renders the conceptual docs for each page.
 const showHelp = ref(false)
 const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
@@ -57,7 +54,7 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
     <header>
       <div class="title-row">
         <h1 class="app-title">
-          <img :src="titleUrl" class="title-banner" alt="bitcoin1460" />
+          <span class="t-bitcoin">bitcoin</span><span class="t-1460">1460</span>
         </h1>
         <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
           ? Help
@@ -141,15 +138,31 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   grid-column: 2;
   justify-self: center;
   margin: 0;
-  line-height: 0;
+  font-size: clamp(1.7rem, 7vw, 2.7rem);
+  line-height: 1.1;
+  white-space: nowrap;
 }
-.title-banner {
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: clamp(52px, 15vw, 92px);
-  border-radius: 0.5rem;
+.t-bitcoin {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+  font-weight: 700;
+  color: #cbd1dc; /* silver fallback */
+}
+/* Metallic silver where text-clipping gradients are supported. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .t-bitcoin {
+    background: linear-gradient(180deg, #f4f6fa 0%, #c3c8d2 46%, #8b93a3 56%, #e6e9ef 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+.t-1460 {
+  font-family: 'Orbitron', ui-monospace, monospace;
+  font-weight: 700;
+  color: #f7931a;
+  margin-left: 0.3em;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 14px rgba(247, 147, 26, 0.4);
 }
 .help-btn {
   grid-column: 3;
