@@ -1,20 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- Minimal bitcoin1460 mark: orange tile + geometric ₿ -->
-  <rect width="512" height="512" rx="112" fill="#f7931a"/>
-  <g fill="#ffffff">
-    <!-- B body: stem + two bowls -->
-    <rect x="150" y="150" width="56" height="212" rx="10"/>
-    <circle cx="236" cy="206" r="58"/>
-    <circle cx="236" cy="306" r="66"/>
-  </g>
-  <!-- counters punched back to the tile colour -->
+  <!-- bitcoin1460 mark: minimal seven-segment "1460" in a square -->
+  <rect width="512" height="512" rx="72" fill="#11161f"/>
+  <rect x="20" y="20" width="472" height="472" rx="54" fill="none" stroke="#f7931a" stroke-opacity="0.18" stroke-width="6"/>
   <g fill="#f7931a">
-    <circle cx="246" cy="206" r="26"/>
-    <circle cx="248" cy="306" r="32"/>
-  </g>
-  <!-- the two ₿ prongs, extending above and below the body -->
-  <g fill="#ffffff">
-    <rect x="162" y="120" width="22" height="272" rx="11"/>
-    <rect x="194" y="120" width="22" height="272" rx="11"/>
+    <!-- 1 -->
+    <polygon points="114,187 122,195 122,242 114,250 106,242 106,195"/>
+    <polygon points="114,262 122,270 122,317 114,325 106,317 106,270"/>
+    <!-- 4 -->
+    <polygon points="142,187 150,195 150,242 142,250 134,242 134,195"/>
+    <polygon points="212,187 220,195 220,242 212,250 204,242 204,195"/>
+    <polygon points="148,256 156,248 198,248 206,256 198,264 156,264"/>
+    <polygon points="212,262 220,270 220,317 212,325 204,317 204,270"/>
+    <!-- 6 -->
+    <polygon points="246,181 254,173 296,173 304,181 296,189 254,189"/>
+    <polygon points="240,187 248,195 248,242 240,250 232,242 232,195"/>
+    <polygon points="246,256 254,248 296,248 304,256 296,264 254,264"/>
+    <polygon points="240,262 248,270 248,317 240,325 232,317 232,270"/>
+    <polygon points="310,262 318,270 318,317 310,325 302,317 302,270"/>
+    <polygon points="246,331 254,323 296,323 304,331 296,339 254,339"/>
+    <!-- 0 -->
+    <polygon points="344,181 352,173 394,173 402,181 394,189 352,189"/>
+    <polygon points="338,187 346,195 346,242 338,250 330,242 330,195"/>
+    <polygon points="408,187 416,195 416,242 408,250 400,242 400,195"/>
+    <polygon points="338,262 346,270 346,317 338,325 330,317 330,270"/>
+    <polygon points="408,262 416,270 416,317 408,325 400,317 400,270"/>
+    <polygon points="344,331 352,323 394,323 402,331 394,339 352,339"/>
   </g>
 </svg>
