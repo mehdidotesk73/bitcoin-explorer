@@ -52,6 +52,8 @@ layouts and remember there's no dev console on device — see Debugging below.
      **private/incognito tab**.
 
 5. **PR via GitHub.** Open a PR into `main` with a what/why/testing summary.
+   - **First run the pre-merge doc gate** (step 7) — the multi-select question
+     asking which docs to update before merge.
    - Use the GitHub MCP tools (`mcp__github__*`) — there is **no `gh` CLI** and
      no direct API. Prefer MCP for PRs/branches/files when local pushes fail.
    - Do **not** merge — the user merges. Keep PR comments frugal.
@@ -59,15 +61,30 @@ layouts and remember there's no dev console on device — see Debugging below.
 6. **Merge + test production.** The user merges in the GitHub UI. Merging to
    `main` triggers the **GitHub Pages** production deploy (see Deploys).
 
-7. **Checkpoint the docs.** On the same change:
-   - **`docs/TODO.md`:** move the finished item to Done (one-paragraph summary +
-     key function names); queue follow-ups under Next branch.
+7. **Checkpoint the docs (every merge / branch removal).** Four surfaces are the
+   project's memory — keep the ones a branch touches current:
+   - **`docs/TODO.md`:** move finished items to Done (one-paragraph summary + key
+     function names); queue follow-ups; record new placeholders/backlog.
    - **`docs/experience.md`:** on every **merge**, add a Version-history entry
      summarising the changes vs the previous version (added / removed / defaults
      / docs). On every **branch removal / abandonment**, add a "What didn't
      work" entry — what was tried, whether we know *why* it didn't work, and the
      reason (or honestly "direction felt unideal"). This is how we avoid
      re-walking dead ends.
+   - **`docs/system-design.md`** (developer/system docs): if the branch changed
+     architecture, a `lib`/module, a feature's design, or a convention, update
+     the relevant section **and** the system map; flesh out / adjust any
+     placeholder it touched.
+   - **`docs/concepts/*.md`** (user/help docs, rendered in the Help modal): if
+     the branch changed a page's UI or behaviour, update that page's doc.
+
+   **Pre-merge doc gate — run this every time, do not skip.** When you judge a
+   branch **ready to merge**, *before* opening/finalising the PR you MUST pose an
+   `AskUserQuestion` with **`multiSelect: true`** listing the four doc surfaces
+   above (Developer docs · Content/help docs · TODO · experience), asking which
+   to **update now, before merge**. Selecting none = "keep working on the branch
+   / skip docs." Update exactly the selected docs, rebuild, then proceed to the
+   PR/merge. Never declare a branch merge-ready without running this gate.
 
 ### Reverts / fixing main
 
