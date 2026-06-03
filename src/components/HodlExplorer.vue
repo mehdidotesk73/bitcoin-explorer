@@ -719,21 +719,31 @@ watch(
             <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
           </span>
         </label>
-        <label class="ctrl-label" v-if="driver === 'bscore'">
-          Period · σ · smoothing
-          <span class="ctrl-row">
-            <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input sm" />
-            <select v-model="bandUnit" class="num-input sm">
-              <option value="day">d</option>
-              <option value="week">w</option>
-              <option value="month">mo</option>
-            </select>
-            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input sm" />
-            <span class="unit">σ</span>
-            <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input sm" />
-            <span class="unit">{{ bandSmoothLabel }}</span>
-          </span>
-        </label>
+        <div class="ctrl-label" v-if="driver === 'bscore'">
+          Bollinger score
+          <label class="param">
+            Period
+            <span class="ctrl-row">
+              <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input" />
+              <select v-model="bandUnit" class="param-sel">
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
+            </span>
+          </label>
+          <label class="param">
+            σ ×
+            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input" />
+          </label>
+          <label class="param">
+            Smoothing
+            <span class="ctrl-row">
+              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input" />
+              <span class="unit">{{ bandSmoothLabel }}</span>
+            </span>
+          </label>
+        </div>
         <label class="ctrl-label" v-else-if="driver === 'uniform'">
           Every X days · {{ uniformEveryX === 7 ? 'weekday' : 'offset' }}
           <span class="ctrl-row">
@@ -1001,6 +1011,18 @@ watch(
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+/* Vertically-stacked parameter rows inside a card (matches the Price Explorer). */
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.param .num-input {
+  width: 4rem;
+}
+.param-sel {
+  width: auto;
 }
 .select {
   width: 12rem;
