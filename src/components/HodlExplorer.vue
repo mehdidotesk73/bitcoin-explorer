@@ -12,9 +12,10 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { PricePoint, FetchProgress } from '../api/bitcoin'
-import { sma, bandPosition } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from '../lib/period'
+import { sma } from '../lib/indicators'
 import { fmtUSD } from '../lib/format'
+import { usePriceSeries } from '../lib/usePriceSeries'
+import { useBandScore } from '../lib/useBandScore'
 import { AXIS, SPLIT, UP, AMBER, BAND_FILL } from '../lib/chartTheme'
 import {
   type Band,
@@ -66,12 +67,6 @@ const ratioLower = ref(0)
 const ratioUpper = ref(1.5)
 const bLower = ref(-2)
 const bUpper = ref(0)
-// Bollinger-score params — same `bandPosition` engine as the Price Explorer, but
-// the Hodl tab tunes its own Window / Smoothing / σ independently.
-const bandSmooth = ref(31) // EMA span (days)
-const bandPeriod = ref(20) // mean + std period (in bandUnit)
-const bandUnit = ref<PeriodUnit>('month')
-const bandK = ref(2) // σ-multiplier; ±1 = the ±kσ bands
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.
 const uniformEveryX = ref(7)
@@ -92,12 +87,7 @@ let budgetInitialised = false
 const localMaDays = ref(1460)
 
 // --- Derived data -----------------------------------------------------------
-function toDateInput(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
-}
-
-const dates = computed(() => props.raw.map((p) => toDateInput(p.time)))
-const prices = computed(() => props.raw.map((p) => p.price))
+const { prices, dates } = usePriceSeries(() => props.raw)
 const longMa = computed(() => sma(prices.value, localMaDays.value))
 
 const maLabel = computed(() => {
@@ -105,15 +95,17 @@ const maLabel = computed(() => {
   return yr >= 1 ? `${yr.toFixed(1)}yr` : `${localMaDays.value}d`
 })
 
-// b-score series (fixed monthly scale).
-const bandWindowDays = computed(() => toDays(bandPeriod.value, bandUnit.value))
-const bandSmoothLabel = computed(() => namedScaleLabel(bandSmooth.value))
-const bScore = computed(() => bandPosition(prices.value, bandSmooth.value, bandWindowDays.value, bandK.value))
-const bandLabel = computed(
-  () =>
-    `${bandPeriod.value}${UNIT_ABBR[bandUnit.value]} · ${bandK.value}σ` +
-    (bandSmooth.value > 0 ? ` · ema ${bandSmooth.value}d` : ''),
-)
+// Bollinger-score metric — own Period/unit/σ/smoothing + series (independent of
+// the Price Explorer's). `series` is the Hodl driver's `bScore`.
+const {
+  smooth: bandSmooth,
+  period: bandPeriod,
+  unit: bandUnit,
+  k: bandK,
+  label: bandLabel,
+  smoothLabel: bandSmoothLabel,
+  series: bScore,
+} = useBandScore(prices)
 
 // Comparison window — baseline + all layers operate within [start, end] (incl.).
 const windowRange = computed<{ start: number; end: number }>(() => {
