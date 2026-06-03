@@ -268,7 +268,7 @@ const fmtUSD = (v: number | null) =>
       <!-- Curve: band position (smoothed-%B / Bollinger-score family) -->
       <div class="metric">
         <div class="metric-head">
-          <label class="checkbox"><input type="checkbox" v-model="showBand" /> Band position</label>
+          <label class="checkbox"><input type="checkbox" v-model="showBand" /> Bollinger score</label>
           <button class="cfg" :class="{ open: cfgBand }" @click="cfgBand = !cfgBand" title="Configure">⚙</button>
         </div>
         <div v-if="cfgBand" class="metric-cfg">

@@ -36,7 +36,7 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   years), on a **log** axis. Above 1 = price is above its baseline; below 1 =
   oversold relative to baseline. The long window is what makes whole cycles
   legible instead of the ratio hugging 1.
-- **Band position.** The clean "Bollinger-score" family in one metric:
+- **Bollinger score.** A clean band-position metric:
   `b = (EMAₛ(price) − MA_W) / (k · σ_W)` over a single window `W`, centered at 0
   (`0` = on the MA, `±1` = the ±kσ bands). Three honest, independent knobs:
   - **Window** (days) — one lookback for the mean *and* σ (default 620).

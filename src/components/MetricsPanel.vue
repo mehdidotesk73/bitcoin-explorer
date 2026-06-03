@@ -104,10 +104,10 @@ function buildOption(): echarts.EChartsCoreOption {
 
   const TITLE: Record<Kind, string> = {
     ratio: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)`,
-    band: `Band position  (0 = MA · ±1 = ±kσ bands · shaded by run: green up · red down · gaps = chop)   (${props.bandLabel})`,
+    band: `Bollinger score  (0 = MA · ±1 = ±kσ bands · shaded by run: green up · red down · gaps = chop)   (${props.bandLabel})`,
     slope: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})`,
   }
-  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', band: 'band position', slope: 'run slope' }
+  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', band: 'Bollinger score', slope: 'run slope' }
 
   const title: any[] = []
   const legend: any[] = []
