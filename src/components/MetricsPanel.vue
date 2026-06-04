@@ -30,8 +30,13 @@ const props = defineProps<{
   bandLabel: string
   showRunSlope: boolean
   zoom: [number, number]
+  /** Externally-driven hovered day index (crosshair bridge); null = none. */
+  hoverIndex?: number | null
 }>()
-const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
+const emit = defineEmits<{
+  'update:zoom': [value: [number, number]]
+  hover: [number | null]
+}>()
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -169,6 +174,34 @@ async function render() {
   chart.value.resize()
 }
 
+// --- Crosshair bridge -------------------------------------------------------
+// Report the hovered day index up to the parent and mirror the parent's index
+// (driven by the price chart) onto this panel. The point can land in any of the
+// stacked grids, so try each until one yields a valid index. `selfHover` stops
+// the source panel from re-applying its own hover.
+let selfHover = false
+function pixelToIndex(px: number, py: number): number | null {
+  const c = chart.value
+  if (!c) return null
+  const n = props.dates.length
+  for (let g = 0; g < panels.value.length; g++) {
+    const r = c.convertFromPixel({ gridIndex: g }, [px, py]) as number[] | null
+    if (r) {
+      const idx = Math.round(r[0])
+      if (idx >= 0 && idx < n) return idx
+    }
+  }
+  return null
+}
+watch(
+  () => props.hoverIndex,
+  (idx) => {
+    if (!chart.value || selfHover) return
+    if (idx == null) chart.value.dispatchAction({ type: 'hideTip' })
+    else chart.value.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
+  },
+)
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
@@ -184,6 +217,16 @@ onMounted(() => {
     const end = dz.end ?? 100
     if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
     emit('update:zoom', [start, end])
+  })
+  const zr = chart.value.getZr()
+  zr.on('mousemove', (ev: any) => {
+    const idx = pixelToIndex(ev.offsetX, ev.offsetY)
+    selfHover = idx != null
+    emit('hover', idx)
+  })
+  zr.on('globalout', () => {
+    selfHover = false
+    emit('hover', null)
   })
   resizeObserver.observe(el.value)
 })

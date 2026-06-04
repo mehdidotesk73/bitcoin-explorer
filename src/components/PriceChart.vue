@@ -28,9 +28,14 @@ const props = defineProps<{
   showRuns?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
+  /** Externally-driven hovered day index (crosshair bridge); null = none. */
+  hoverIndex?: number | null
 }>()
 
-const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
+const emit = defineEmits<{
+  'update:zoom': [value: [number, number]]
+  hover: [number | null]
+}>()
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -65,10 +70,9 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
-    // Explicit root axisPointer (matching MetricsPanel) so the crosshair links
-    // both ways across the `btc-explorer` connect group. Without it this chart
-    // only broadcasts a tooltip, leaving the separate-curve panels' crosshairs
-    // partially unsynced.
+    // Crosshair line styling (the cross-chart sync is driven explicitly by the
+    // hover bridge below, not by echarts.connect, which didn't reliably mirror
+    // the pointer from the separate-curve panels back to here).
     axisPointer: {
       link: [{ xAxisIndex: 'all' }],
       lineStyle: { color: '#8b94ac', type: 'dashed' },
@@ -209,10 +213,32 @@ function currentZoom(): [number, number] {
   return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
 }
 
+// --- Crosshair bridge -------------------------------------------------------
+// Report the hovered day index to the parent, and mirror the parent's index
+// (driven by a sibling chart) onto this one via showTip/hideTip. `selfHover`
+// stops the source chart from re-applying its own hover.
+let selfHover = false
+function pixelToIndex(px: number, py: number): number | null {
+  const c = chart.value
+  if (!c) return null
+  const r = c.convertFromPixel({ gridIndex: 0 }, [px, py]) as number[] | null
+  if (!r) return null
+  const idx = Math.round(r[0])
+  return idx >= 0 && idx < props.dates.length ? idx : null
+}
+watch(
+  () => props.hoverIndex,
+  (idx) => {
+    if (!chart.value || selfHover) return
+    if (idx == null) chart.value.dispatchAction({ type: 'hideTip' })
+    else chart.value.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
+  },
+)
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
-  chart.value.group = 'btc-explorer' // sync x-zoom + crosshair with the other panels
+  chart.value.group = 'btc-explorer' // sync x-zoom with the other panels
   render()
   echarts.connect('btc-explorer')
   // Keep the parent's zoom model in sync when the user drags/pinches, but only
@@ -222,6 +248,16 @@ onMounted(() => {
     const [start, end] = currentZoom()
     if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
     emit('update:zoom', [start, end])
+  })
+  const zr = chart.value.getZr()
+  zr.on('mousemove', (ev: any) => {
+    const idx = pixelToIndex(ev.offsetX, ev.offsetY)
+    selfHover = idx != null
+    emit('hover', idx)
+  })
+  zr.on('globalout', () => {
+    selfHover = false
+    emit('hover', null)
   })
   resizeObserver.observe(el.value)
 })
