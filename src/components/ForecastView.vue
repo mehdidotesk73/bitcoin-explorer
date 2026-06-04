@@ -764,9 +764,13 @@ const fmtNum = (v: number) =>
   font-size: 0.7rem;
   opacity: 0.7;
 }
-/* Tighten the header's bottom margin when the body is hidden. */
+/* Slim the panel down to just its header when collapsed. */
+.params.collapsed {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
 .params.collapsed h3 {
-  margin-bottom: 0.2rem;
+  margin: 0;
 }
 .params h4 {
   margin: 0.5rem 0 0.4rem;
