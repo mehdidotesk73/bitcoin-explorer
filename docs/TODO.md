@@ -163,23 +163,36 @@ Workshop) that new apps can assemble from.
 - **Page shell** — title bar, help button, tab nav, footer build-stamp/debug
   panel. One instance: `App.vue` (`.app`, `.title-row`, `nav.tabs`,
   `footer.debug`). This is the "one big page container" the rest nests under.
-- **Tabs / segmented control** — a set of mutually-exclusive buttons with an
-  `.active` state. Three near-identical re-impls: main nav (`App.vue nav.tabs`),
-  forecast chart switcher (`ForecastView` `.chart-tabs`), Hodl driver-chart
-  switcher; plus the 2-state Trailing/Range `.toggle` button (`HodlExplorer`).
+- **Tabs** — a set of mutually-exclusive buttons, each **bound to one container**;
+  selecting a tab shows its container and hides the siblings. So a tab strip is
+  really *a driver of container visibility* (see Container, below) with a clean
+  buttons↔container interface, not a bespoke widget. Genuine tabs: main nav
+  (`App.vue nav.tabs`, drives the three page containers), the forecast chart
+  switcher (`ForecastView` `.chart-tabs`) and the Hodl driver-chart switcher
+  (both pick which graph container shows). **Not a tab:** the Trailing/Range
+  `.toggle` (`HodlExplorer`) — that's a stateful toggle *button* flipping between
+  two comparison-window containers; it belongs under Buttons + Container
+  visibility, just driven by a 2-state toggle instead of a tab strip.
 - **Container / panel** *(highest-variation category)* — a bordered, optionally
-  themed, optionally collapsible box with a header. Variants seen:
+  themed box with a header, and these orthogonal functionalities: **conditional
+  visibility** (shown/hidden by an external driver — a tab, a toggle button, or a
+  state flag), **collapsibility** (expand/collapse its own body), **theme**, and
+  **size**. Variants seen:
   - `.metrics-section` (`PriceExplorer`) — violet theme, **whole-face tap** to
     collapse, header shows chevron + active-summary + hint.
   - `.params` / `.calibration` (`ForecastView`) — bordered card, **header-tap**
     collapse (chevron + hint); `.calibration` is the violet-accent variant.
   - `.metric` (`PriceExplorer`) — per-metric card whose body is toggled by a
     **gear icon** (`.cfg`), header = checkbox-label + `InfoTip` + gear.
+  - The Trailing vs Range comparison-window panels (`HodlExplorer`) — two
+    containers, **visibility driven** by the Trailing/Range toggle button.
+  - The per-graph chart containers — **visibility driven** by the chart tabs.
   - `.indicator` (`HodlExplorer` Buy/Hodl), `.window-panel`, `.ctrl-label`
     groups, StatsCompare `.stat-col` — bordered groupings, mostly non-collapsing.
-  - Variation axes to fold into props: **theme** (default / violet / accent),
-    **collapse mode** (none / header-tap / icon), **header slots** (title, sub-
-    note, hint, summary, trailing action), background tint, edge colour.
+  - Variation axes to fold into props/variants: **visibility** (always / driven),
+    **collapse mode** (none / header-tap / icon), **theme** (default / violet /
+    accent), **size** (compact / regular), **header slots** (title, sub-note,
+    hint, summary, trailing action).
 - **Labelled field** — a label (often with an `InfoTip`) above/beside a control,
   sometimes with a **unit adornment**. Everywhere: `.controls label`,
   `.ctrl-label`, `.param-grid label`, the `.period` composite (number + unit
@@ -191,7 +204,8 @@ Workshop) that new apps can assemble from.
 - **Buttons** — one base style (`style.css`) + many ad-hoc variants: primary/
   accent (`.reset` violet), icon-only (`.cfg` gear, `.peak-remove` ×), ghost/
   text (`.curves-toggle`), chip/segmented (`.toggle`, tab buttons), plus
-  `.help-btn`, `+ Add layer`, `Retry`, `.debug-toggle`, `Copy log`.
+  `.help-btn`, `+ Add layer`, `Retry`, `.debug-toggle`, `Copy log`. Includes the
+  **stateful toggle button** (Trailing/Range) that drives container visibility.
 - **Stat / indicator row + status badge** — `label · value · BUY/HODL pill`
   (`HodlExplorer` `.indicator`) and `label · value` (`StatsCompare`). The
   BUY/HODL/`.active` pill is a reusable **badge**.
@@ -205,22 +219,45 @@ Workshop) that new apps can assemble from.
 - **Status / banner** — `.status`, `.status.error` (loading/retry), footer
   debug panel.
 
+### Variants over per-instance tuning
+
+Rather than hand-tuning padding, sizing, and background transparency on each
+component, the components where those properties matter expose a small fixed set
+of **premade variants**, and call sites pick one instead of overriding CSS:
+
+- **Size:** `compact` / `regular` (e.g. the collapsed panels we just hand-slimmed
+  become `size="compact"`; dense control rows vs. roomy sections).
+- **Emphasis / style:** `ghost` / `regular` / `bold` (e.g. `.curves-toggle` is
+  ghost, a normal button is regular, the violet `.reset` / primary action is
+  bold). Maps cleanly onto buttons, and the `theme` axis on containers.
+
+This is the mechanism behind "tokens + utility classes": a variant is just a
+named bundle of tokens, so there's one place to change what `compact` or `bold`
+means and no magic numbers sprinkled across scoped styles.
+
 ### Suggested abstraction order (foundation → leaves → template)
 
-1. **Design tokens + utility classes first.** Promote the repeated colours,
-   radii, spacing, the violet-accent container theme, and the button variants
-   into CSS custom properties + a few utility classes (extends the existing
-   `:root` vars and `lib/chartTheme.ts`). Cheap, low-risk, and everything else
-   builds on it.
-2. **`<Panel>`** — the collapsible themed container. Props: `title`, `subtitle`,
-   `theme`, `collapsible` (`none|header|icon`), `defaultCollapsed`, summary/
-   action slots. Migrate `metrics-section`, `params`/`calibration`, `metric`.
+1. **Design tokens + variants + utility classes first.** Promote the repeated
+   colours, radii, spacing, the violet-accent container theme, and the button
+   styles into CSS custom properties + the `size` (compact/regular) and `emphasis`
+   (ghost/regular/bold) variant bundles + a few utility classes (extends the
+   existing `:root` vars and `lib/chartTheme.ts`). Cheap, low-risk, and everything
+   else consumes these instead of magic numbers. **Buttons stay native** —
+   variants ship as CSS classes (`btn btn-bold btn-compact`), no `<Button>`
+   wrapper.
+2. **`<Panel>`** — the themed container. Props: `title`, `subtitle`, `theme`,
+   `size`, `collapsible` (`none|header|icon`), `defaultCollapsed`, plus a
+   `visible` flag so an external driver can show/hide it; summary/action slots.
+   Migrate `metrics-section`, `params`/`calibration`, `metric`.
    Biggest dedupe and kills the collapse-pattern drift.
 3. **`<Field>` / `<LabeledControl>`** — label + optional `InfoTip` + control +
    unit adornment, in row or column layout. Folds the tooltip-wrap fix in
    structurally and removes the most boilerplate.
-4. **`<SegmentedControl>` / `<Tabs>`** — unify main nav, chart switchers, and the
-   Trailing/Range toggle behind one `v-model`-driven component.
+4. **`<Tabs>` (visibility selector).** A `v-model`-driven tab strip whose only job
+   is "which bound container is visible." Unify main nav + the two chart
+   switchers. The Trailing/Range case is *not* part of this — it's a stateful
+   toggle button (a Button variant) driving the same `Panel.visible` interface, so
+   tabs and toggles share one clean buttons↔container contract.
 5. **`<Badge>` + `<StatRow>`** — the value/pill rows in the indicator and stats.
 6. **Chart concerns as composables, not one mega-component** — extract
    `useCrosshairBridge()` and a small `useEChart()` setup helper; optionally a
@@ -236,16 +273,18 @@ Workshop) that new apps can assemble from.
   abstractions. They're the most duplicated, the most drift-prone (this branch
   alone touched all three by hand), and each has obvious, bounded props. Start
   here.
-- **Worth it, smaller:** `<SegmentedControl>`, `<Badge>`/`<StatRow>`, and pulling
-  the crosshair bridge into a composable (removes a real copy-paste between two
+- **Worth it, smaller:** `<Tabs>`, `<Badge>`/`<StatRow>`, and pulling the
+  crosshair bridge into a composable (removes a real copy-paste between two
   charts).
+- **Decided (agreed):**
+  - **No `<Button>` wrapper.** Native `<button>` + CSS variant classes give 90%
+    of the value with none of the prop-plumbing; only componentise if a button
+    grows real behaviour.
+  - **Charts stay separate components** sharing *composables* (`useCrosshairBridge`,
+    `useEChart`), not one generic `<Chart>` god-component — the charts genuinely
+    differ (axes, overlays, stacked grids, crosshair math) and one abstraction
+    would be lossy.
 - **Likely over-engineering (defer / avoid):**
-  - A `<Button>` wrapper around every native button — CSS variant classes give
-    90% of the value with none of the prop-plumbing; only componentise if a
-    button grows real behaviour.
-  - A single generic `<Chart>` component — the charts are genuinely different
-    (axes, overlays, stacked grids, crosshair math). One abstraction would be
-    lossy; share *helpers*, not a god-component.
   - A full theming engine / many container themes before there are consumers —
     ship 2–3 themes (default / violet / danger), not a configurable palette.
   - Registry/slot-driven page assembly *now* — it's the end-state vision, but
