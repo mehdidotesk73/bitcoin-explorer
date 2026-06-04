@@ -107,6 +107,79 @@ Single-source-of-truth pass — concrete duplication removed across components:
 - [ ] **Backfill `experience.md` version history** — it skipped several merges
       between the metric-framework entry and the recent consolidation.
 
+## Version freshness / reload (branch: `claude/version-freshness-check`)
+
+**Problem.** "Reload latest" in the footer is unreliable. It leans entirely on the
+service worker noticing a new precache manifest (`registration.update()` every 60s,
+then `updateServiceWorker(true)` + `location.reload()`). Failure modes:
+
+- **Silent no-op.** If the SW believes it's current — or the newer bundle hasn't been
+  *published* yet — `reloadLatest()` just reloads the same build. No feedback, so it
+  "seems not to work."
+- **Publish lag is invisible.** A merge to `main` kicks the Pages build, then Pages
+  publishes. During that window the app can't tell "a newer commit exists but isn't
+  live yet" from "you're already up to date."
+- **Sticky iOS PWA cache** compounds both.
+
+**Solution sketch — explicit version manifests + comparison.** Stop guessing from SW
+internals; make freshness *data* the app can read and compare against its own baked-in
+commit (`__BUILD_ID__`). Track two signals the user called out:
+
+1. **Latest *published* version** — what the live origin is actually serving. Emit a
+   `version.json` (`{ commit, builtAt }`) into `dist` at build time (tiny Vite plugin /
+   build step reusing the existing `git rev-parse` + build-time stamp). The app fetches
+   `<base>/version.json?t=<now>` with `cache: 'no-store'`, network-first, **excluded
+   from the SW precache** (workbox `navigateFallbackDenylist` / glob exclusion) so it
+   reflects reality, not cache. `published.commit !== __BUILD_ID__` ⇒ a newer build is
+   live → offer a *meaningful* reload; `===` ⇒ tell the user they're current instead of
+   silently reloading.
+2. **Latest *built* version** — the commit the most recent build/merge produced, which
+   may not be published yet. Source options (decide in step 2 below): the workflow
+   writes the commit to a file readable by the app (`raw.githubusercontent.com/<repo>/
+   main/version-built.json`, or a small `build-status` branch/artifact), **or** query the
+   GitHub commits API for `main`. Comparing *built* vs *published* surfaces "build in
+   progress / publishing…" state.
+
+**Resulting UX.** Footer can show three honest states: *Up to date* · *Update ready —
+Reload* (published > loaded) · *Building/publishing…* (built > published). `reloadLatest`
+checks `version.json` first and only force-swaps + reloads when a newer build is genuinely
+live; otherwise it reports "already on latest" rather than faking a reload.
+
+**Gotchas to respect:** keep `version.json` out of the precache and always `no-store`;
+unauthenticated GitHub API is 60 req/hr/IP, so a 60s poll must hit a *static* file, not
+the API (or poll far less often); confirm the deployed origin can reach
+`raw.githubusercontent.com` (public, fine) — note the sandbox can't, so this is
+device-validated. The `__BUILD_ID__` we already bake is the comparison key, so no new
+identity scheme is needed.
+
+## Price Explorer — collapsible metrics menu + crosshair sync fix
+
+**Containerize the metric toggles.** Today `PriceExplorer.vue` renders the metric
+on/off rows (`<div class="metric">` × Moving average / Bollinger / Run detection /
+Price ÷ MA / Bollinger score / Run slope) as a flat always-open list inside
+`<section class="controls metrics-menu">`. Nest them all into a single collapsible
+container — same disclosure pattern already used for the separate-curve panel
+(`curves-toggle` / `curvesCollapsed`) — so the menu can fold away once metrics are
+chosen, reclaiming vertical space on mobile. Keep each metric's own ⚙ config
+disclosure inside.
+
+**Fix the explorer crosshair sync (do it alongside the containerization).** The
+crosshair is inconsistent: hovering the **main** chart drives the crosshair on the
+separate-curve panels, but the link is incomplete on the third/last panel and the
+reverse direction doesn't fully propagate. Architecture to keep in mind:
+- Two connected ECharts instances in one group: `PriceChart.vue` (main) and
+  `MetricsPanel.vue`, joined by `echarts.connect('btc-explorer')` (each sets
+  `chart.group = 'btc-explorer'`).
+- `MetricsPanel.vue` is a **single** instance with *N* stacked grids (one per active
+  separate curve), linked internally by `axisPointer: { link: [{ xAxisIndex: 'all' }] }`.
+- **Prime suspect:** `PriceChart.vue` sets `tooltip.trigger: 'axis'` but defines **no
+  explicit root `axisPointer`**, so the cross-instance pointer it emits/receives is
+  under-specified. Add a matching root `axisPointer` (with `link`) to `PriceChart.vue`
+  and make the two instances' axisPointer config symmetric so the pointer flows both
+  ways across all panels.
+- Validate per panel count (1/2/3 separate curves active) since the bug shows up on the
+  last grid; device screenshots will be needed (charts don't render headless here).
+
 ## Later / ideas
 
 - **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into

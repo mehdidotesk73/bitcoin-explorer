@@ -5,6 +5,7 @@ import ForecastView from './components/ForecastView.vue'
 import HodlExplorer from './components/HodlExplorer.vue'
 import HelpModal from './components/HelpModal.vue'
 import { useBitcoinData } from './lib/useBitcoinData'
+import { useVersionCheck } from './lib/useVersionCheck'
 import { debugState, logDebug } from './debug'
 import { setupPWAUpdates } from './pwa'
 
@@ -31,6 +32,27 @@ async function copyLog() {
 // Keep the installed PWA current: auto-reload on new deploys, plus a manual
 // button as a guaranteed way to escape a stale cache.
 const { reloadLatest } = setupPWAUpdates()
+
+// Compare the loaded build against the one the live origin is serving, so the
+// "Reload latest" button can give honest feedback instead of silently
+// reloading into the same version.
+const { status: versionStatus, published, checkNow } = useVersionCheck()
+const reloadMsg = ref('')
+
+async function onReloadLatest() {
+  reloadMsg.value = 'Checking…'
+  const status = await checkNow()
+  if (status === 'current') {
+    // Confirmed up to date — say so rather than faking a reload.
+    reloadMsg.value = 'Already on the latest build ✓'
+    setTimeout(() => (reloadMsg.value = ''), 2500)
+    return
+  }
+  // A newer build is live (update-ready) — or we couldn't reach version.json
+  // (unknown), in which case fall back to the old force-swap-and-reload path.
+  reloadMsg.value = 'Updating…'
+  await reloadLatest()
+}
 
 // Shared price data, fetched/cached once and handed to every tab.
 const { raw, loading, error, progress, lastUpdated, refresh, init } = useBitcoinData()
@@ -97,7 +119,18 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
         </span>
         <span class="chev">{{ showDebug ? '▲' : '▼' }}</span>
       </button>
-      <button class="reload-btn" @click="reloadLatest">Reload latest</button>
+      <button
+        class="reload-btn"
+        :class="{ 'update-ready': versionStatus === 'update-ready' }"
+        @click="onReloadLatest"
+      >
+        {{ versionStatus === 'update-ready' ? 'Update ready — Reload' : 'Reload latest' }}
+      </button>
+      <span v-if="reloadMsg" class="reload-msg">{{ reloadMsg }}</span>
+      <span v-else-if="versionStatus === 'current'" class="reload-msg muted">Up to date</span>
+      <span v-else-if="versionStatus === 'update-ready'" class="reload-msg muted">
+        latest published: {{ published?.commit }}
+      </span>
       <button v-if="showDebug" class="reload-btn" @click="copyLog">
         {{ copied ? 'Copied ✓' : 'Copy log' }}
       </button>
@@ -226,6 +259,17 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   margin-left: 0.6rem;
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
+}
+/* Draw the eye when a newer build is actually live and waiting. */
+.reload-btn.update-ready {
+  border-color: var(--accent-blue);
+  color: var(--text);
+  font-weight: 600;
+}
+.reload-msg {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  vertical-align: middle;
 }
 .chev {
   margin-left: 0.3rem;
