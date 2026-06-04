@@ -78,12 +78,12 @@
       **bitcoin1460** (app icon + Ubuntu/Orbitron title); shared period helpers
       in `lib/period.ts` (`toDays`, `UNIT_ABBR`, `namedScaleLabel`).
 
-- [x] Price Explorer — collapsible metrics menu + crosshair-sync fix. Wrapped the
-      metric toggles in a single **Metrics** disclosure (`menuCollapsed`), which
-      lists the active metrics when folded (mobile space). Fixed the inconsistent
-      crosshair by giving `PriceChart.vue` an explicit root `axisPointer`
-      (`link: [{ xAxisIndex: 'all' }]`) matching `MetricsPanel.vue`, so the
-      pointer links both ways across the `echarts.connect('btc-explorer')` group.
+- [x] Price Explorer — collapsible metrics menu + crosshair-sync fix. Metric
+      toggles live in a purple, click-to-collapse **Metrics** container
+      (`menuCollapsed`; lists active metrics when folded). Crosshair synced via a
+      shared `hoverIndex` + a self-drawn `graphic` line on each chart
+      (`convertToPixel`), after ECharts `axisPointer.link` / programmatic `showTip`
+      wouldn't propagate the pointer across the stacked separate-curve grids.
 
 ## Code consolidation
 

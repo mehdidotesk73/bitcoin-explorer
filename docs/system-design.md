@@ -45,10 +45,12 @@ tabs; each tab pulls pure logic from `lib/*` (and composables) but the libs
 import **nothing** from components — the arrow only points one way. This is what
 keeps logic testable in isolation (§8) and recomputable without a refetch.
 
-**Chart sync groups.** Within a tab, ECharts `connect` groups keep crosshair +
-x-zoom in lockstep: **`btc-explorer`** (Price Explorer's `PriceChart` +
-`MetricsPanel`) and **`btc-hodl`** (Hodl Explorer's price + driver-metric
-charts). Details and the category-axis caveats are in §6.
+**Chart sync groups.** Within a tab, ECharts `connect` groups keep **x-zoom** in
+lockstep: **`btc-explorer`** (Price Explorer's `PriceChart` + `MetricsPanel`) and
+**`btc-hodl`** (Hodl Explorer's price + driver-metric charts). The explorer
+**crosshair** is synced separately via a shared `hoverIndex` + a self-drawn
+`graphic` line (connect/axisPointer wouldn't mirror it across the stacked grids).
+Details and the category-axis caveats are in §6.
 
 ---
 
@@ -186,9 +188,10 @@ higher = more/longer runs.
 (±1 = the ±kσ bands), with independent Period / σ / Smoothing — see §3
 (`indicators.ts`) and §4 (`useBandScore`).
 
-**Sync.** Both chart components join the `btc-explorer` connect group and share
-the parent's `zoom` model (`v-model:zoom`) for the range presets (§6). There is
-**no** persistence of toggles/params (§7).
+**Sync.** Both chart components join the `btc-explorer` connect group for x-zoom
+and share the parent's `zoom` model (`v-model:zoom`) for the range presets; the
+crosshair is mirrored via a shared `hoverIndex` + self-drawn `graphic` line (§6).
+There is **no** persistence of toggles/params (§7).
 
 ### 5.2 Price Mechanics — forecast model
 
@@ -378,17 +381,21 @@ an explicit shared `zoom` model (§6).
   per-segment `lineStyle` colour do **not** bind. For per-point colour use a
   series with per-point `itemStyle` (see the run-slope bars in `MetricsPanel.vue`
   — each datum carries its own `{ value, itemStyle }`).
-- **Crosshair + x-zoom sync.** All chart instances within a tab set
-  `chart.group = '<group>'` and call `echarts.connect('<group>')` —
-  `btc-explorer` and `btc-hodl`. For the crosshair to link **both ways**, every
-  instance needs a root `axisPointer: { link: [{ xAxisIndex: 'all' }] }` (a
-  `tooltip.trigger:'axis'` alone only broadcasts a tooltip — this was the
-  explorer crosshair bug). `MetricsPanel.vue` is one instance with *N* stacked
-  grids linked internally by that same `link`.
-- **Zoom model.** `connect` syncs the crosshair but **not** the dataZoom slider
-  range across instances, so the explorer passes a `zoom` `v-model` to its charts
-  and the Hodl tab keeps an explicit shared `zoom` ref (`onZoom`/`suppressZoom`
-  guard against feedback loops between the `datazoom` event and `dispatchAction`).
+- **X-zoom sync.** All chart instances within a tab set `chart.group = '<group>'`
+  and call `echarts.connect('<group>')` — `btc-explorer` and `btc-hodl`. `connect`
+  syncs the dataZoom **inside** action, but **not** the slider range, so the
+  explorer passes a `zoom` `v-model` to its charts and the Hodl tab keeps an
+  explicit shared `zoom` ref (`onZoom`/`suppressZoom` guard against feedback loops
+  between the `datazoom` event and `dispatchAction`).
+- **Crosshair sync (explorer).** `echarts.connect` / `axisPointer.link` would
+  **not** mirror a *programmatic* pointer onto the separate-curve panel's stacked
+  grids (only the first grid lit up), so the explorer crosshair is drawn
+  explicitly instead: each chart reports its hovered day index (`convertFromPixel`)
+  up to `PriceExplorer`, which holds a shared `hoverIndex` and feeds it back to
+  every chart. Each chart then draws the crosshair itself as a full-height dashed
+  `graphic` line at `convertToPixel(idx)` — one line spanning all of a chart's
+  grids (needs `GraphicComponent` registered). The line persists at the last index
+  (it doesn't clear on pointer-leave) so all panels stay in lockstep.
 - **Theme.** Colours come from `lib/chartTheme.ts` tokens, never per-file literals.
 
 ---
@@ -402,7 +409,10 @@ an explicit shared `zoom` model (§6).
 - **PWA / app shell.** `vite-plugin-pwa` (Workbox `generateSW`) precaches the
   built assets; `src/pwa.ts` registers the service worker, polls for a new deploy
   every 60 s, auto-reloads on a new build, and exposes the footer **Reload
-  latest** button. See `CLAUDE.md` for the stale-cache caveat.
+  latest** button. That button forces `registration.update()` and waits for the
+  new worker to install before activating + reloading — otherwise it would reload
+  the cached bundle, since `version.json` reports a new build before the SW has
+  fetched it. See `CLAUDE.md` for the stale-cache caveat.
 - **Version freshness.** A build-time Vite plugin (`emit-version-json`) writes
   `version.json` (`{ commit, builtAt }`) into the build root, deliberately
   **outside** the Workbox precache. `lib/useVersionCheck.ts` fetches it
