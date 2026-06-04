@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { HodlStats } from '../lib/hodl'
 import { fmtUSD, fmtPct, fmtBtc } from '../lib/format'
+import InfoTip from './InfoTip.vue'
 
 const props = defineProps<{
   /** Primary column label (e.g. "Strategy" or "Preview"). */
@@ -43,11 +44,11 @@ const edge = computed(() => {
         <span class="stat-val">{{ fmtUSD(primary.currentValue) }}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">ROI</span>
+        <span class="stat-label">ROI <InfoTip term="roi" /></span>
         <span class="stat-val" :class="primary.roi >= 0 ? 'pos' : 'neg'">{{ fmtPct(primary.roi) }}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Cost basis</span>
+        <span class="stat-label">Cost basis <InfoTip term="costBasis" /></span>
         <span class="stat-val">{{ fmtUSD(primary.costBasis) }}</span>
       </div>
       <div class="stat-row">
@@ -57,7 +58,7 @@ const edge = computed(() => {
     </div>
 
     <div class="stat-col">
-      <h3 class="col-head baseline">Baseline</h3>
+      <h3 class="col-head baseline">Baseline <InfoTip term="baseline" /></h3>
       <p class="col-sub">{{ baselineSub }}</p>
       <div class="stat-row">
         <span class="stat-label">Current value</span>

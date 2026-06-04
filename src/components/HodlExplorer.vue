@@ -29,6 +29,7 @@ import {
   uniformSpacedDates,
 } from '../lib/hodl'
 import StatsCompare from './StatsCompare.vue'
+import InfoTip from './InfoTip.vue'
 
 echarts.use([
   LineChart,
@@ -632,7 +633,7 @@ watch(
     <!-- Buy / Hodl indicator: does today land in each tuned pattern's buy band? -->
     <section class="indicator" v-if="latestPrice">
       <div class="indicator-head">
-        <h3>Buy / Hodl indicator</h3>
+        <h3>Buy / Hodl indicator <InfoTip term="buyHodlIndicator" /></h3>
         <span class="muted">today {{ todayDate }} · {{ buyVotes }} of {{ patternSignals.length }} patterns say buy</span>
       </div>
       <div class="signal-row">
@@ -663,7 +664,7 @@ watch(
       </p>
       <div class="controls">
         <label class="ctrl-label">
-          Driver
+          Driver <InfoTip term="driver" />
           <select v-model="driver" class="select">
             <option value="ratio">Price ÷ MA</option>
             <option value="bscore">Bollinger score (b)</option>
@@ -689,7 +690,7 @@ watch(
         </label>
 
         <label class="ctrl-label" v-if="driver === 'ratio'">
-          Buy band (price ÷ MA)
+          Buy band (price ÷ MA) <InfoTip term="buyBand" />
           <span class="ctrl-row">
             <input type="number" v-model.number="ratioLower" min="0" max="3" step="0.01" class="num-input sm" />
             <span class="unit">to</span>
@@ -722,7 +723,7 @@ watch(
           </label>
         </div>
         <label class="ctrl-label" v-if="driver === 'bscore'">
-          Buy band (b score)
+          Buy band (b score) <InfoTip term="buyBand" />
           <span class="ctrl-row">
             <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
             <span class="unit">to</span>
@@ -798,7 +799,7 @@ watch(
     <!-- Budget + window -->
     <section class="controls">
       <label class="ctrl-label">
-        Total budget
+        Total budget <InfoTip term="totalBudget" />
         <span class="ctrl-row">
           <span class="unit">$</span>
           <input type="number" v-model.number="totalBudget" min="1" step="100" class="num-input" />
@@ -809,7 +810,7 @@ watch(
            from/to date range. -->
       <div class="ctrl-label window-panel">
         <div class="window-head">
-          <span>Comparison window</span>
+          <span>Comparison window <InfoTip term="comparisonWindow" /></span>
           <button
             class="toggle"
             @click="windowMode = windowMode === 'trailing' ? 'range' : 'trailing'"

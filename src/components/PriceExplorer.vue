@@ -9,6 +9,7 @@ import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
+import InfoTip from './InfoTip.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -174,6 +175,7 @@ function setRange(days: number | 'all') {
       <div class="metric">
         <div class="metric-head">
           <label class="checkbox"><input type="checkbox" v-model="showMa" /> Moving average</label>
+          <InfoTip term="ma" />
           <button class="cfg" :class="{ open: cfgMa }" @click="cfgMa = !cfgMa" title="Configure">⚙</button>
         </div>
         <div v-if="cfgMa" class="metric-cfg">
@@ -195,6 +197,7 @@ function setRange(days: number | 'all') {
       <div class="metric">
         <div class="metric-head">
           <label class="checkbox"><input type="checkbox" v-model="showBb" /> Bollinger bands</label>
+          <InfoTip term="bollinger" />
           <button class="cfg" :class="{ open: cfgBb }" @click="cfgBb = !cfgBb" title="Configure">⚙</button>
         </div>
         <div v-if="cfgBb" class="metric-cfg">
@@ -210,7 +213,7 @@ function setRange(days: number | 'all') {
             </span>
           </label>
           <label>
-            σ ×
+            σ × <InfoTip term="sigma" />
             <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
           </label>
         </div>
@@ -220,16 +223,17 @@ function setRange(days: number | 'all') {
       <div class="metric">
         <div class="metric-head">
           <label class="checkbox"><input type="checkbox" v-model="showRunDetection" /> Run detection</label>
+          <InfoTip term="run" />
           <button class="cfg" :class="{ open: cfgRun }" @click="cfgRun = !cfgRun" title="Configure">⚙</button>
         </div>
         <div v-if="cfgRun" class="metric-cfg">
           <label class="slider">
-            Scale
+            Scale <InfoTip term="scale" />
             <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
             <span class="val">{{ runScaleLabel }}</span>
           </label>
           <label class="slider">
-            Sensitivity
+            Sensitivity <InfoTip term="sensitivity" />
             <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
             <span class="val">{{ runSensitivity.toFixed(2) }}</span>
           </label>
@@ -240,6 +244,7 @@ function setRange(days: number | 'all') {
       <div class="metric">
         <div class="metric-head">
           <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
+          <InfoTip term="ratio" />
           <button class="cfg" :class="{ open: cfgRatio }" @click="cfgRatio = !cfgRatio" title="Configure">⚙</button>
         </div>
         <div v-if="cfgRatio" class="metric-cfg">
@@ -257,6 +262,7 @@ function setRange(days: number | 'all') {
       <div class="metric">
         <div class="metric-head">
           <label class="checkbox"><input type="checkbox" v-model="showBand" /> Bollinger score</label>
+          <InfoTip term="bollingerScore" />
           <button class="cfg" :class="{ open: cfgBand }" @click="cfgBand = !cfgBand" title="Configure">⚙</button>
         </div>
         <div v-if="cfgBand" class="metric-cfg">
@@ -265,7 +271,7 @@ function setRange(days: number | 'all') {
             Smoothing 0 + short window = classic %B.
           </p>
           <label>
-            Period
+            Period <InfoTip term="period" />
             <span class="period">
               <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
               <select v-model="bandUnit">
@@ -276,11 +282,11 @@ function setRange(days: number | 'all') {
             </span>
           </label>
           <label>
-            σ ×
+            σ × <InfoTip term="sigma" />
             <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
           </label>
           <label>
-            Smoothing
+            Smoothing <InfoTip term="smoothing" />
             <span class="period">
               <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
               <span class="unit">{{ bandSmoothLabel }}</span>
