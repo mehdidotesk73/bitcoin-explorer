@@ -237,19 +237,23 @@ means and no magic numbers sprinkled across scoped styles.
 
 ### Suggested abstraction order (foundation → leaves → template)
 
-1. **Design tokens + variants + utility classes first.** Promote the repeated
+1. [~] **Design tokens + variants + utility classes first.** Promote the repeated
    colours, radii, spacing, the violet-accent container theme, and the button
    styles into CSS custom properties + the `size` (compact/regular) and `emphasis`
    (ghost/regular/bold) variant bundles + a few utility classes (extends the
    existing `:root` vars and `lib/chartTheme.ts`). Cheap, low-risk, and everything
    else consumes these instead of magic numbers. **Buttons stay native** —
    variants ship as CSS classes (`btn btn-bold btn-compact`), no `<Button>`
-   wrapper.
-2. **`<Panel>`** — the themed container. Props: `title`, `subtitle`, `theme`,
-   `size`, `collapsible` (`none|header|icon`), `defaultCollapsed`, plus a
-   `visible` flag so an external driver can show/hide it; summary/action slots.
-   Migrate `metrics-section`, `params`/`calibration`, `metric`.
-   Biggest dedupe and kills the collapse-pattern drift.
+   wrapper. **Done:** `--accent-violet-tint` token; `size`/`theme` variants on
+   `<Panel>`. **Remaining:** the button `emphasis` (ghost/regular/bold) variant
+   classes + broader token extraction.
+2. [x] **`<Panel>`** *(done — `claude/ui-panel-foundation`)*. Props landed:
+   `title`, `subtitle`, `theme` (`default|violet`), `size` (`regular|compact`),
+   `collapsible` (`none|header|face|icon`), `v-model:collapsed`; `#header` /
+   `#summary` / `#actions` slots. Migrated the Metrics menu (face), the five
+   metric cards (icon), and the Calibration / growth / volatility panels (header)
+   — biggest dedupe, kills the collapse-pattern drift. **Remaining:** a `visible`
+   prop for external (tab/toggle) visibility control (lands with `<Tabs>`).
 3. **`<Field>` / `<LabeledControl>`** — label + optional `InfoTip` + control +
    unit adornment, in row or column layout. Folds the tooltip-wrap fix in
    structurally and removes the most boilerplate.
