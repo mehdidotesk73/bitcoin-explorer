@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -16,6 +16,25 @@ try {
 }
 const buildTime = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
+// Emit a tiny `version.json` (commit + build time) into the build root so the
+// *deployed* app can fetch it — cache-busted and never precached — to learn
+// which build the live origin is actually serving and compare it against the
+// commit baked into the running bundle (`__BUILD_ID__`). See docs/TODO.md
+// "Version freshness / reload". JSON is deliberately outside the workbox
+// `globPatterns`, so the service worker never precaches this file.
+function emitVersionJson(): Plugin {
+  return {
+    name: 'emit-version-json',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ commit: buildId, builtAt: buildTime }) + '\n',
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base,
@@ -25,6 +44,7 @@ export default defineConfig({
   },
   plugins: [
     vue(),
+    emitVersionJson(),
     VitePWA({
       registerType: 'autoUpdate',
       // We register the SW ourselves (src/pwa.ts) to add periodic update
