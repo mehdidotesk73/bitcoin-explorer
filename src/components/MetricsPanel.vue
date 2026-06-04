@@ -197,8 +197,19 @@ watch(
   () => props.hoverIndex,
   (idx) => {
     if (!chart.value || selfHover) return
-    if (idx == null) chart.value.dispatchAction({ type: 'hideTip' })
-    else chart.value.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
+    if (idx == null) {
+      chart.value.dispatchAction({ type: 'hideTip' })
+      return
+    }
+    // Drive the crosshair via a pixel-level showTip (as if hovering grid 0 at
+    // this day). This routes through ECharts' axis-trigger path, so the
+    // axisPointer `link` spreads the line to ALL stacked grids — a
+    // seriesIndex/dataIndex showTip only marks the grid holding that series,
+    // which is why previously just the first separate-curve panel synced.
+    const px = chart.value.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
+    if (px == null) return
+    const py = TOP + GRID_TOP_OFF + GRID_H / 2 // a point inside the first grid
+    chart.value.dispatchAction({ type: 'showTip', x: px, y: py })
   },
 )
 
