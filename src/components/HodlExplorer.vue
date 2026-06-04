@@ -664,7 +664,7 @@ watch(
       </p>
       <div class="controls">
         <label class="ctrl-label">
-          Driver <InfoTip term="driver" />
+          <span>Driver <InfoTip term="driver" /></span>
           <select v-model="driver" class="select">
             <option value="ratio">Price ÷ MA</option>
             <option value="bscore">Bollinger score (b)</option>
@@ -690,7 +690,7 @@ watch(
         </label>
 
         <label class="ctrl-label" v-if="driver === 'ratio'">
-          Buy band (price ÷ MA) <InfoTip term="buyBand" />
+          <span>Buy band (price ÷ MA) <InfoTip term="buyBand" /></span>
           <span class="ctrl-row">
             <input type="number" v-model.number="ratioLower" min="0" max="3" step="0.01" class="num-input sm" />
             <span class="unit">to</span>
@@ -723,7 +723,7 @@ watch(
           </label>
         </div>
         <label class="ctrl-label" v-if="driver === 'bscore'">
-          Buy band (b score) <InfoTip term="buyBand" />
+          <span>Buy band (b score) <InfoTip term="buyBand" /></span>
           <span class="ctrl-row">
             <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
             <span class="unit">to</span>
@@ -799,7 +799,7 @@ watch(
     <!-- Budget + window -->
     <section class="controls">
       <label class="ctrl-label">
-        Total budget <InfoTip term="totalBudget" />
+        <span>Total budget <InfoTip term="totalBudget" /></span>
         <span class="ctrl-row">
           <span class="unit">$</span>
           <input type="number" v-model.number="totalBudget" min="1" step="100" class="num-input" />

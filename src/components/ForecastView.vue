@@ -351,7 +351,7 @@ const fmtNum = (v: number) =>
     <!-- Model selection -->
     <section class="controls">
       <label>
-        Growth projection <InfoTip term="growthModel" />
+        <span>Growth projection <InfoTip term="growthModel" /></span>
         <select v-model="growthType">
           <option value="power">Time-based power-law</option>
           <option value="exponential">Time-based exponential</option>
@@ -359,7 +359,7 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Volatility projection <InfoTip term="envelope" />
+        <span>Volatility projection <InfoTip term="envelope" /></span>
         <select v-model="envelopeType">
           <option value="exponential-decay">Time-based exponential decay</option>
           <option value="value-power-decay">Value-based power decay</option>
@@ -368,14 +368,14 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Cycle peaks <InfoTip term="cyclePeaks" />
+        <span>Cycle peaks <InfoTip term="cyclePeaks" /></span>
         <select v-model="distributionType">
           <option value="peaks">Laplacian</option>
           <option value="none">None</option>
         </select>
       </label>
       <label>
-        Horizon <InfoTip term="horizon" />
+        <span>Horizon <InfoTip term="horizon" /></span>
         <select v-model.number="horizonYear">
           <option :value="2030">2030</option>
           <option :value="2035">2035</option>
@@ -402,7 +402,7 @@ const fmtNum = (v: number) =>
       </h3>
       <div class="param-grid">
         <label>
-          Baseline MA window (days) <InfoTip term="valueBaseline" />
+          <span>Baseline MA window (days) <InfoTip term="valueBaseline" /></span>
           <input type="number" v-model.number="maWindow" min="30" max="3000" step="5" />
         </label>
         <label>
@@ -410,11 +410,11 @@ const fmtNum = (v: number) =>
           <input type="number" v-model.number="fitWindowDays" min="0" max="6000" step="50" />
         </label>
         <label>
-          Day zero (t₀) <InfoTip term="dayZero" />
+          <span>Day zero (t₀) <InfoTip term="dayZero" /></span>
           <input type="date" v-model="dayZero" />
         </label>
         <label v-if="growthType === 'power'">
-          Recency weighting γ <InfoTip term="recency" />
+          <span>Recency weighting γ <InfoTip term="recency" /></span>
           <input type="number" v-model.number="powFitGamma" min="0" max="2" step="0.05" />
         </label>
         <button class="reset" @click="resetToFit">↺ Reset to fit</button>
