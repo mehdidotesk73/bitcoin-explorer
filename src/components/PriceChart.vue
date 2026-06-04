@@ -65,6 +65,14 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
+    // Explicit root axisPointer (matching MetricsPanel) so the crosshair links
+    // both ways across the `btc-explorer` connect group. Without it this chart
+    // only broadcasts a tooltip, leaving the separate-curve panels' crosshairs
+    // partially unsynced.
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      lineStyle: { color: '#8b94ac', type: 'dashed' },
+    },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20, 27, 42, 0.95)',

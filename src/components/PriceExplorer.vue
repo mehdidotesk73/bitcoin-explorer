@@ -41,6 +41,20 @@ const anyCurve = computed(
 )
 const curvesCollapsed = ref(false)
 
+// The metric-toggle menu folds into a single disclosure so it can get out of the
+// way once metrics are chosen (mobile screen space). When collapsed, summarise
+// which metrics are active.
+const menuCollapsed = ref(false)
+const activeMetricLabels = computed(() => {
+  const out: string[] = []
+  if (showMa.value) out.push('MA')
+  if (showBb.value) out.push('Bollinger')
+  if (showRunDetection.value) out.push('Runs')
+  if (showRatio.value) out.push('Price ÷ MA')
+  if (showBand.value) out.push('Bollinger score')
+  return out
+})
+
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
 const maPeriod = ref(20)
@@ -170,7 +184,14 @@ function setRange(days: number | 'all') {
       <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <section class="controls metrics-menu">
+    <section class="metrics-section">
+      <button class="menu-toggle" @click="menuCollapsed = !menuCollapsed">
+        <span class="chev">{{ menuCollapsed ? '▸' : '▾' }}</span> Metrics
+        <span class="menu-summary" v-if="menuCollapsed">
+          {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
+        </span>
+      </button>
+      <div v-show="!menuCollapsed" class="controls metrics-menu">
       <!-- Overlay: moving average -->
       <div class="metric">
         <div class="metric-head">
@@ -294,6 +315,7 @@ function setRange(days: number | 'all') {
           </label>
         </div>
       </div>
+      </div>
     </section>
 
     <section class="ranges">
@@ -379,8 +401,31 @@ function setRange(days: number | 'all') {
   align-items: center;
   margin-bottom: 0.75rem;
 }
+.metrics-section {
+  margin-bottom: 0.75rem;
+}
 .metrics-menu {
   align-items: flex-start;
+}
+.metrics-section .metrics-menu {
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+}
+.menu-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.menu-summary {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
 }
 .metric {
   display: flex;
