@@ -21,6 +21,7 @@ import {
 import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import InfoTip from './InfoTip.vue'
+import Panel from './Panel.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -401,15 +402,14 @@ const fmtNum = (v: number) =>
 
     <!-- Calibration: knobs that drive the auto-fit and overwrite the model
          parameters below (same effect as "Reset to fit"). -->
-    <section class="params calibration" :class="{ collapsed: calibCollapsed }">
-      <h3 class="sec-head" @click="calibCollapsed = !calibCollapsed">
-        <span class="chev">{{ calibCollapsed ? '▸' : '▾' }}</span>
-        Calibration
-        <span class="fit">auto-fits the model parameters below</span>
-        <span class="sec-hint">{{ calibCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
-      </h3>
-      <div v-show="!calibCollapsed">
-      <div class="param-grid">
+    <Panel
+      theme="violet"
+      collapsible="header"
+      title="Calibration"
+      subtitle="auto-fits the model parameters below"
+      v-model:collapsed="calibCollapsed"
+    >
+      <div class="param-grid calib-grid">
         <label>
           <span>Baseline MA window (days) <InfoTip term="valueBaseline" /></span>
           <input type="number" v-model.number="maWindow" min="30" max="3000" step="5" />
@@ -436,18 +436,15 @@ const fmtNum = (v: number) =>
         Changing any calibration knob re-fits the model and overwrites the
         parameter boxes below — hand-edits persist only until the next re-fit.
       </p>
-      </div>
-    </section>
+    </Panel>
 
     <!-- Model parameters: hand-tunable, persist until the next calibration -->
-    <section class="params" :class="{ collapsed: growthCollapsed }">
-      <h3 class="sec-head" @click="growthCollapsed = !growthCollapsed">
-        <span class="chev">{{ growthCollapsed ? '▸' : '▾' }}</span>
-        Value baseline — growth
-        <span class="fit-note">auto-filled · editable</span>
-        <span class="sec-hint">{{ growthCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
-      </h3>
-      <div v-show="!growthCollapsed">
+    <Panel
+      collapsible="header"
+      title="Value baseline — growth"
+      subtitle="auto-filled · editable"
+      v-model:collapsed="growthCollapsed"
+    >
 
       <template v-if="growthType === 'exponential'">
         <h4>
@@ -528,20 +525,15 @@ const fmtNum = (v: number) =>
         </p>
         <p class="eq">MA = last_MA + rate · Δt</p>
       </template>
-      </div>
-    </section>
+    </Panel>
 
     <!-- Model parameters: volatility -->
-    <section class="params" :class="{ collapsed: volCollapsed }">
-      <h3 class="sec-head" @click="volCollapsed = !volCollapsed">
-        <span class="chev">{{ volCollapsed ? '▸' : '▾' }}</span>
-        Volatility projection
-        <span class="fit-note">
-          {{ envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual' }}
-        </span>
-        <span class="sec-hint">{{ volCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
-      </h3>
-      <div v-show="!volCollapsed">
+    <Panel
+      collapsible="header"
+      title="Volatility projection"
+      :subtitle="envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual'"
+      v-model:collapsed="volCollapsed"
+    >
       <template v-if="envelopeType === 'exponential-decay'">
         <div class="param-grid">
           <label>
@@ -641,8 +633,7 @@ const fmtNum = (v: number) =>
         </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
       </template>
-      </div>
-    </section>
+    </Panel>
 
     <div class="chart-tabs" v-if="forecast">
       <button
@@ -729,14 +720,10 @@ const fmtNum = (v: number) =>
   border-color: var(--accent-violet);
   color: #fff;
 }
-.params {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.7rem 0.9rem;
-  margin-bottom: 0.8rem;
-}
-.params h3 {
+/* Panel chrome (border, padding, collapsible header) now lives in <Panel>;
+   these rules style the slotted body content — the model-name h4s, the
+   Cycle-peaks h3, and the small muted R²/count badge (.fit) beside them. */
+h3 {
   margin: 0.2rem 0 0.5rem;
   font-size: 0.82rem;
   color: var(--accent-blue);
@@ -744,35 +731,7 @@ const fmtNum = (v: number) =>
   align-items: center;
   gap: 0.5rem;
 }
-.params h3 .fit {
-  color: var(--text-muted);
-  font-weight: 400;
-  font-size: 0.72rem;
-}
-/* Collapsible panel header: the whole h3 is the tap target. */
-.sec-head {
-  cursor: pointer;
-  user-select: none;
-}
-.sec-head .chev {
-  font-size: 0.7rem;
-}
-.sec-head .sec-hint {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-weight: 400;
-  font-size: 0.7rem;
-  opacity: 0.7;
-}
-/* Slim the panel down to just its header when collapsed. */
-.params.collapsed {
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
-}
-.params.collapsed h3 {
-  margin: 0;
-}
-.params h4 {
+h4 {
   margin: 0.5rem 0 0.4rem;
   font-size: 0.76rem;
   color: var(--text);
@@ -781,20 +740,13 @@ const fmtNum = (v: number) =>
   align-items: center;
   gap: 0.5rem;
 }
-.params h4 .fit {
+.fit {
   color: var(--text-muted);
   font-weight: 400;
   font-size: 0.72rem;
 }
-/* Calibration section: visually set apart from the manual model params. */
-.calibration {
-  border-color: var(--accent-violet);
-  background: rgba(155, 109, 255, 0.06);
-}
-.calibration h3 {
-  color: var(--accent-violet);
-}
-.calibration .param-grid {
+/* Calibration's grid bottom-aligns its inputs + Reset button. */
+.calib-grid {
   align-items: flex-end;
 }
 .calib-note {

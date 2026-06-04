@@ -12,6 +12,8 @@
   --accent-blue: #4f8ef7;
   --accent-orange: #f7931a;
   --accent-violet: #9b6dff;
+  /* Violet container tint (accent-themed panels: Metrics menu, Calibration). */
+  --accent-violet-tint: rgba(155, 109, 255, 0.06);
   --accent-green: #3ad29f;
   --danger: #f87171;
   --danger-bg: #3a1d24;

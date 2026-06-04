@@ -10,6 +10,7 @@ import { scaleDiag } from '../lib/runs'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
+import Panel from './Panel.vue'
 
 const props = defineProps<{
   raw: PricePoint[]
@@ -190,19 +191,17 @@ function setRange(days: number | 'all') {
       <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <section
-      class="metrics-section"
-      :class="{ collapsed: menuCollapsed }"
-      @click="menuCollapsed = !menuCollapsed"
+    <Panel
+      theme="violet"
+      size="compact"
+      collapsible="face"
+      title="Metrics"
+      v-model:collapsed="menuCollapsed"
     >
-      <div class="metrics-header">
-        <span class="chev">{{ menuCollapsed ? '▸' : '▾' }}</span> Metrics
-        <span class="menu-summary" v-if="menuCollapsed">
-          {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
-        </span>
-        <span class="menu-hint">{{ menuCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
-      </div>
-      <div v-show="!menuCollapsed" class="controls metrics-menu" @click.stop>
+      <template #summary>
+        {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
+      </template>
+      <div class="controls metrics-menu">
       <!-- Overlay: moving average -->
       <div class="metric">
         <div class="metric-head">
@@ -327,7 +326,7 @@ function setRange(days: number | 'all') {
         </div>
       </div>
       </div>
-    </section>
+    </Panel>
 
     <section class="ranges">
       <span class="muted">Graphed range:</span>
@@ -416,44 +415,13 @@ function setRange(days: number | 'all') {
   align-items: center;
   margin-bottom: 0.75rem;
 }
-/* Purple container (matches the Calibration section on the Mechanics tab).
-   Clicking the container face / header collapses it; clicks inside the menu
-   (the metric cards/configs) are stopped so they don't collapse it. */
-.metrics-section {
-  margin-bottom: 0.75rem;
-  border: 1px solid var(--accent-violet, #9b6dff);
-  background: rgba(155, 109, 255, 0.06);
-  border-radius: var(--radius);
-  padding: 0.45rem 0.6rem;
-  cursor: pointer;
-}
-.metrics-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--accent-violet, #9b6dff);
-  font-size: 0.85rem;
-  font-weight: 600;
-  user-select: none;
-}
-.menu-summary {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-style: italic;
-  font-weight: 400;
-}
-.menu-hint {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 400;
-  opacity: 0.7;
-}
+/* The metric toggles live in a violet, face-collapsible <Panel>; this is just
+   the inner flex list (left-aligned, no extra top margin — the Panel body owns
+   the spacing). */
 .metrics-menu {
   align-items: flex-start;
-  margin-top: 0.55rem;
+  margin-top: 0;
   margin-bottom: 0;
-  cursor: default;
 }
 .metric {
   display: flex;
