@@ -2,12 +2,12 @@
 import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ScaleDiag } from '../lib/runs'
 import { AXIS, SPLIT, UP, DOWN, UP_RUN, DOWN_RUN } from '../lib/chartTheme'
 
-echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
+echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent, CanvasRenderer])
 
 const GROUP = 'btc-explorer'
 
@@ -175,11 +175,10 @@ async function render() {
 }
 
 // --- Crosshair bridge -------------------------------------------------------
-// Report the hovered day index up to the parent and mirror the parent's index
-// (driven by the price chart) onto this panel. The point can land in any of the
-// stacked grids, so try each until one yields a valid index. `selfHover` stops
-// the source panel from re-applying its own hover.
-let selfHover = false
+// Report the hovered day index up to the parent and mirror the parent's shared
+// index by drawing the crosshair line ourselves as a full-height `graphic` line
+// spanning every stacked grid. We don't rely on echarts axisPointer linking — a
+// programmatic pointer only ever lit the first grid.
 function pixelToIndex(px: number, py: number): number | null {
   const c = chart.value
   if (!c) return null
@@ -193,25 +192,33 @@ function pixelToIndex(px: number, py: number): number | null {
   }
   return null
 }
-watch(
-  () => props.hoverIndex,
-  (idx) => {
-    if (!chart.value || selfHover) return
-    if (idx == null) {
-      chart.value.dispatchAction({ type: 'hideTip' })
-      return
-    }
-    // Drive the crosshair via a pixel-level showTip (as if hovering grid 0 at
-    // this day). This routes through ECharts' axis-trigger path, so the
-    // axisPointer `link` spreads the line to ALL stacked grids — a
-    // seriesIndex/dataIndex showTip only marks the grid holding that series,
-    // which is why previously just the first separate-curve panel synced.
-    const px = chart.value.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
-    if (px == null) return
-    const py = TOP + GRID_TOP_OFF + GRID_H / 2 // a point inside the first grid
-    chart.value.dispatchAction({ type: 'showTip', x: px, y: py })
-  },
-)
+function drawCrosshair(idx: number | null) {
+  const c = chart.value
+  if (!c) return
+  if (idx == null) {
+    c.setOption({ graphic: [{ id: 'xhair', $action: 'remove' }] })
+    return
+  }
+  const px = c.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
+  if (px == null) return
+  // From the top of the first grid to the bottom of the last — one line across
+  // all panels.
+  const y1 = TOP + GRID_TOP_OFF
+  const y2 = TOP + (panels.value.length - 1) * PITCH + GRID_TOP_OFF + GRID_H
+  c.setOption({
+    graphic: [
+      {
+        id: 'xhair',
+        type: 'line',
+        z: 50,
+        silent: true,
+        shape: { x1: px, y1, x2: px, y2 },
+        style: { stroke: '#8b94ac', lineWidth: 1, lineDash: [4, 4] },
+      },
+    ],
+  })
+}
+watch(() => props.hoverIndex, (idx) => drawCrosshair(idx ?? null))
 
 onMounted(() => {
   if (!el.value) return
@@ -232,15 +239,7 @@ onMounted(() => {
   const zr = chart.value.getZr()
   zr.on('mousemove', (ev: any) => {
     const idx = pixelToIndex(ev.offsetX, ev.offsetY)
-    if (idx == null) return // in a margin — keep the last position, don't clear
-    selfHover = true
-    emit('hover', idx)
-  })
-  // Don't clear on pointer-leave: moving off one chart to a sibling (or lifting
-  // a finger) shouldn't drop the shared crosshair. Just release the self-hover
-  // guard so a sibling can drive this chart next.
-  zr.on('globalout', () => {
-    selfHover = false
+    if (idx != null) emit('hover', idx) // keep last on margins; persistent line
   })
   resizeObserver.observe(el.value)
 })
