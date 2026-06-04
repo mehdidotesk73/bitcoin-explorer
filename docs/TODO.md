@@ -152,6 +152,34 @@ the API (or poll far less often); confirm the deployed origin can reach
 device-validated. The `__BUILD_ID__` we already bake is the comparison key, so no new
 identity scheme is needed.
 
+## Price Explorer — collapsible metrics menu + crosshair sync fix
+
+**Containerize the metric toggles.** Today `PriceExplorer.vue` renders the metric
+on/off rows (`<div class="metric">` × Moving average / Bollinger / Run detection /
+Price ÷ MA / Bollinger score / Run slope) as a flat always-open list inside
+`<section class="controls metrics-menu">`. Nest them all into a single collapsible
+container — same disclosure pattern already used for the separate-curve panel
+(`curves-toggle` / `curvesCollapsed`) — so the menu can fold away once metrics are
+chosen, reclaiming vertical space on mobile. Keep each metric's own ⚙ config
+disclosure inside.
+
+**Fix the explorer crosshair sync (do it alongside the containerization).** The
+crosshair is inconsistent: hovering the **main** chart drives the crosshair on the
+separate-curve panels, but the link is incomplete on the third/last panel and the
+reverse direction doesn't fully propagate. Architecture to keep in mind:
+- Two connected ECharts instances in one group: `PriceChart.vue` (main) and
+  `MetricsPanel.vue`, joined by `echarts.connect('btc-explorer')` (each sets
+  `chart.group = 'btc-explorer'`).
+- `MetricsPanel.vue` is a **single** instance with *N* stacked grids (one per active
+  separate curve), linked internally by `axisPointer: { link: [{ xAxisIndex: 'all' }] }`.
+- **Prime suspect:** `PriceChart.vue` sets `tooltip.trigger: 'axis'` but defines **no
+  explicit root `axisPointer`**, so the cross-instance pointer it emits/receives is
+  under-specified. Add a matching root `axisPointer` (with `link`) to `PriceChart.vue`
+  and make the two instances' axisPointer config symmetric so the pointer flows both
+  ways across all panels.
+- Validate per panel count (1/2/3 separate curves active) since the bug shows up on the
+  last grid; device screenshots will be needed (charts don't render headless here).
+
 ## Later / ideas
 
 - **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into
