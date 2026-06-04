@@ -28,6 +28,16 @@
   box-sizing: border-box;
 }
 
+/* Guard against horizontal overflow zoom on mobile Safari: a transiently
+   wide element (e.g. an InfoTip popover measured before it's clamped to the
+   viewport) must never widen the page, or Safari scales the whole page down to
+   fit. `clip` (not `hidden`) avoids creating a scroll container, so vertical
+   scrolling and any sticky positioning are untouched. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
