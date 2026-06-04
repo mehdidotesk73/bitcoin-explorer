@@ -200,7 +200,7 @@ function setRange(days: number | 'all') {
         <span class="menu-summary" v-if="menuCollapsed">
           {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
         </span>
-        <span class="menu-hint" v-else>tap header to collapse</span>
+        <span class="menu-hint" v-else>tap to collapse</span>
       </div>
       <div v-show="!menuCollapsed" class="controls metrics-menu" @click.stop>
       <!-- Overlay: moving average -->

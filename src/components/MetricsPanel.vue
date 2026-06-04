@@ -221,12 +221,15 @@ onMounted(() => {
   const zr = chart.value.getZr()
   zr.on('mousemove', (ev: any) => {
     const idx = pixelToIndex(ev.offsetX, ev.offsetY)
-    selfHover = idx != null
+    if (idx == null) return // in a margin — keep the last position, don't clear
+    selfHover = true
     emit('hover', idx)
   })
+  // Don't clear on pointer-leave: moving off one chart to a sibling (or lifting
+  // a finger) shouldn't drop the shared crosshair. Just release the self-hover
+  // guard so a sibling can drive this chart next.
   zr.on('globalout', () => {
     selfHover = false
-    emit('hover', null)
   })
   resizeObserver.observe(el.value)
 })
