@@ -133,6 +133,43 @@ out of Done into Later / ideas.
 
 ## Version history
 
+### 2026-06-04 — Price Explorer: collapsible metrics menu + crosshair-sync fix
+- **Added:** the metric toggles fold into a single **Metrics** disclosure
+  (`menuCollapsed`) that lists active metrics when collapsed (mobile space).
+- **Fixed:** the explorer crosshair was inconsistent across the connected charts.
+  Gave `PriceChart.vue` an explicit root `axisPointer: { link: [{ xAxisIndex:
+  'all' }] }` matching `MetricsPanel.vue`, so the pointer links **both ways**
+  across the `btc-explorer` group (a `tooltip.trigger:'axis'` alone only
+  broadcasts a tooltip). Validated on-device — charts don't render headless.
+
+### 2026-06-04 — Prettier config (config-only)
+- **Added:** `prettier` (3.8.3), `.prettierrc.json` (no-semi / single-quote /
+  100-col, matching the scaffold), `.prettierignore`, and `format` /
+  `format:check` scripts.
+- **Deliberately deferred:** no repo-wide `--write` pass (would change 26 files)
+  and no CI `format:check` gate yet — kept config-only to avoid colliding with
+  in-flight branches. Tracked as a follow-up in `TODO.md`.
+
+### 2026-06-04 — Docs catch-up (system-design + experience)
+- **Added:** fleshed out `system-design.md` §3 (lib), §4 (composables), §7
+  (state/persistence), §8 (build/CI/testing) from the source; backfilled five
+  `experience.md` version-history entries.
+- **Corrected drift:** the metric registry was recorded as Done across TODO +
+  system-design but was **never merged** (lives only on `claude/inspiring-bardeen-lHExI`,
+  `cec9ac2`). Documented as "what didn't work" and moved out of TODO Done.
+  *(This branch later completed the remaining §2/§5.1/§5.3/§6/§9 stubs.)*
+
+### 2026-06-04 — Honest "Reload latest" via published-version check (freshness Phase 1)
+- **Added:** an `emit-version-json` Vite plugin writes `version.json`
+  (`{ commit, builtAt }`) into the build (outside the SW precache), and
+  `lib/useVersionCheck.ts` polls it cache-busted to compare the live origin's
+  *published* commit against the loaded `__BUILD_ID__`.
+- **Changed:** the footer button now reports **Up to date** / **Update ready —
+  Reload** instead of silently reloading into the same build.
+- **Why:** the old button relied on the SW noticing a new precache manifest, so it
+  often reloaded the same version with no feedback. Phase 2 (built-vs-published
+  "publishing…" state) is queued in `TODO.md`.
+
 ### 2026-06-03 — Concept tooltips (InfoTip + glossary)
 - **Added:** `components/InfoTip.vue` — a tap/hover info bubble for beginners —
   and `lib/glossary.ts`, a `GLOSSARY` map (term → 1–3-sentence plain-English

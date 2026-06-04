@@ -95,58 +95,32 @@ Single-source-of-truth pass — concrete duplication removed across components:
 
 ## Docs
 
-- [ ] **Fill the `system-design.md` placeholders.** The developer/system doc has
-      the forecast model (§5.2) fleshed out; the rest are _TODO_ stubs — §2 data
-      layer, §3 lib, §4 composables, §5.1 Price Explorer, §5.3 Hodl Explorer, §6
-      charting, §7 state/persistence, §8 build/CI/testing, §9 glossary. Flesh out
-      each (a richer module-dependency diagram too).
-- [ ] **Backfill `experience.md` version history** — it skipped several merges
-      between the metric-framework entry and the recent consolidation.
+- [x] **Filled the `system-design.md` placeholders.** All sections §1–§9 are
+      written from the source (§3/§4/§7/§8 in the docs-catchup pass; §2 data
+      layer, §5.1 Price Explorer, §5.3 Hodl Explorer, §6 charting, §9 glossary,
+      plus the §1 dependency/chart-group notes in the docs-completion pass). Keep
+      current via the `CLAUDE.md` doc-checkpoint.
+- [x] **Backfilled `experience.md` version history** — the skipped merges plus
+      the recent freshness / docs / Prettier / explorer work now each have an
+      entry.
 
-## Version freshness / reload (branch: `claude/version-freshness-check`)
+## Version freshness / reload
 
-**Problem.** "Reload latest" in the footer is unreliable. It leans entirely on the
-service worker noticing a new precache manifest (`registration.update()` every 60s,
-then `updateServiceWorker(true)` + `location.reload()`). Failure modes:
-
-- **Silent no-op.** If the SW believes it's current — or the newer bundle hasn't been
-  *published* yet — `reloadLatest()` just reloads the same build. No feedback, so it
-  "seems not to work."
-- **Publish lag is invisible.** A merge to `main` kicks the Pages build, then Pages
-  publishes. During that window the app can't tell "a newer commit exists but isn't
-  live yet" from "you're already up to date."
-- **Sticky iOS PWA cache** compounds both.
-
-**Solution sketch — explicit version manifests + comparison.** Stop guessing from SW
-internals; make freshness *data* the app can read and compare against its own baked-in
-commit (`__BUILD_ID__`). Track two signals the user called out:
-
-1. **Latest *published* version** — what the live origin is actually serving. Emit a
-   `version.json` (`{ commit, builtAt }`) into `dist` at build time (tiny Vite plugin /
-   build step reusing the existing `git rev-parse` + build-time stamp). The app fetches
-   `<base>/version.json?t=<now>` with `cache: 'no-store'`, network-first, **excluded
-   from the SW precache** (workbox `navigateFallbackDenylist` / glob exclusion) so it
-   reflects reality, not cache. `published.commit !== __BUILD_ID__` ⇒ a newer build is
-   live → offer a *meaningful* reload; `===` ⇒ tell the user they're current instead of
-   silently reloading.
-2. **Latest *built* version** — the commit the most recent build/merge produced, which
-   may not be published yet. Source options (decide in step 2 below): the workflow
-   writes the commit to a file readable by the app (`raw.githubusercontent.com/<repo>/
-   main/version-built.json`, or a small `build-status` branch/artifact), **or** query the
-   GitHub commits API for `main`. Comparing *built* vs *published* surfaces "build in
-   progress / publishing…" state.
-
-**Resulting UX.** Footer can show three honest states: *Up to date* · *Update ready —
-Reload* (published > loaded) · *Building/publishing…* (built > published). `reloadLatest`
-checks `version.json` first and only force-swaps + reloads when a newer build is genuinely
-live; otherwise it reports "already on latest" rather than faking a reload.
-
-**Gotchas to respect:** keep `version.json` out of the precache and always `no-store`;
-unauthenticated GitHub API is 60 req/hr/IP, so a 60s poll must hit a *static* file, not
-the API (or poll far less often); confirm the deployed origin can reach
-`raw.githubusercontent.com` (public, fine) — note the sandbox can't, so this is
-device-validated. The `__BUILD_ID__` we already bake is the comparison key, so no new
-identity scheme is needed.
+- [x] **Phase 1 — published-version check (merged).** `emit-version-json` Vite
+      plugin writes `version.json` (`{ commit, builtAt }`) outside the SW precache;
+      `lib/useVersionCheck.ts` polls it cache-busted and compares the live origin's
+      *published* commit to the loaded `__BUILD_ID__`. Footer shows *Up to date* vs
+      *Update ready — Reload* instead of silently reloading. See `system-design.md` §7.
+- [ ] **Phase 2 — built-vs-published "publishing…" state.** Track the latest
+      *built* commit (which may not be live yet) and compare against *published* to
+      show a third state during the build→publish window. Decide the source: the
+      deploy workflow writes the commit to a static file the app can read
+      (`raw.githubusercontent.com/<repo>/main/version-built.json`, or a small
+      `build-status` branch/artifact), **or** the GitHub commits API for `main`.
+      Gotchas: unauthenticated GitHub API is 60 req/hr/IP, so a 60s poll must hit a
+      *static* file, not the API (or poll far less often); confirm the deployed
+      origin can reach `raw.githubusercontent.com` (public, fine — sandbox can't, so
+      device-validated).
 
 ## Price Explorer — collapsible metrics menu + crosshair sync fix
 
@@ -212,11 +186,11 @@ so a broken build can (and once did) reach history. Prioritised backlog:
       assertion (mutating `price[>i]` doesn't change `b` at `i`). Run via
       `npm run test:run`, wired into CI. Tests excluded from the production
       type-check (`tsconfig.app.json`). Next: `forecast.ts` invariants.
-- [ ] **Lint + format.** No ESLint/Prettier exists yet, but an auto-formatter is
-      clearly in the loop (files keep getting reformatted). Codify it: add
-      `eslint` (vue + @typescript-eslint) and `prettier` with a committed config,
-      `npm run lint` / `npm run format:check` scripts, and run both in CI so
-      style is deterministic instead of incidental.
+- [~] **Lint + format.** **Prettier config landed** (`.prettierrc.json` —
+      no-semi / single-quote / 100-col; `format` / `format:check` scripts).
+      **Remaining:** run the one-shot `npm run format` pass (≈26 files) on a clean
+      branch, then add `format:check` to CI; and add `eslint` (vue +
+      @typescript-eslint) with an `npm run lint` script wired into CI.
 - [ ] **Pin the Node version.** Add `.nvmrc` (22) and an `engines` field so local
       dev matches CI/deploy and avoids "works on my machine" drift.
 - [ ] **Automated dependency updates.** Add `.github/dependabot.yml` for `npm`
