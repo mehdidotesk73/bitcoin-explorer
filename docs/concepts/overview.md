@@ -46,3 +46,13 @@ already-fetched price array, so every knob recomputes instantly with no refetch.
 The **long-MA window** (default ~4 years / 1460 days) is shared between the
 Price Explorer and the Hodl Explorer, so the "value baseline" you tune in one
 tab matches the other.
+
+## Staying on the latest version
+
+This is an installable web app (PWA), so your phone caches it to open instantly
+and work offline. The footer shows the running **build** stamp and, when the
+live site has a newer build, an **Update ready — Reload** prompt. Tapping it
+fully clears the cached app and reloads the latest version from the network
+(otherwise the cache can keep serving the old build). If a change still doesn't
+appear, open the site in a **private/incognito tab** — that always bypasses the
+cache.

@@ -12,13 +12,10 @@ const UPDATE_CHECK_MS = 60_000
  * them. Returns `updateServiceWorker` so the UI can offer a manual button.
  */
 export function setupPWAUpdates() {
-  let swRegistration: ServiceWorkerRegistration | undefined
-
   const { needRefresh, updateServiceWorker } = useRegisterSW({
     immediate: true,
     onRegisteredSW(_swUrl, registration) {
       logDebug(`service worker registered`)
-      swRegistration = registration
       if (registration) {
         setInterval(() => {
           registration.update().catch(() => {})
@@ -38,44 +35,46 @@ export function setupPWAUpdates() {
     }
   })
 
-  /** Wait until a freshly-installing worker finishes (or a short timeout). */
-  function waitForWorker(sw: ServiceWorker): Promise<void> {
-    return new Promise((resolve) => {
-      const done = () => resolve()
-      const timer = setTimeout(done, 5000) // don't hang the button
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'activated' || sw.state === 'redundant') {
-          clearTimeout(timer)
-          done()
-        }
-      })
-    })
-  }
-
   /**
-   * Manual "Reload latest". The plain `updateServiceWorker(true)` only acts on an
-   * *already-waiting* worker, so when the network `version.json` reports a newer
-   * build before the service worker has fetched it, it would reload the same
-   * cached bundle. So force an update check first, wait for the new worker to
-   * install, then activate it and reload.
+   * Manual "Reload latest". The polite `updateServiceWorker(true)` path proved
+   * unreliable on iOS Safari PWAs: if `reg.update()` doesn't actually swap in a
+   * new worker, the old SW keeps controlling the page and replays the
+   * *precached* `index.html` + hashed bundle out of Cache Storage, so
+   * `location.reload()` lands back on the same version.
+   *
+   * Since this only runs when the user has explicitly asked for the latest build
+   * (and `version.json` has confirmed one is live), be decisive: unregister the
+   * service worker, wipe its caches, and navigate with a cache-buster so neither
+   * the SW precache nor the HTTP cache can replay the stale build. The SW
+   * re-registers and re-precaches the new build on the next load.
    */
   async function reloadLatest() {
-    logDebug('manual update requested')
+    logDebug('manual reload — clearing SW + caches')
+    // Drop every service worker so none can intercept the next navigation.
     try {
-      const reg = swRegistration ?? (await navigator.serviceWorker?.getRegistration())
-      if (reg) {
-        await reg.update() // pull the new sw.js now, if any
-        const pending = reg.installing ?? reg.waiting
-        if (pending) {
-          logDebug('newer build found — installing')
-          await waitForWorker(pending)
-        }
+      const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? []
+      await Promise.all(regs.map((r) => r.unregister()))
+    } catch (err) {
+      logDebug(`sw unregister failed: ${err}`, 'error')
+    }
+    // Wipe Workbox's precache (where the old index.html + bundle live).
+    try {
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
       }
     } catch (err) {
-      logDebug(`update check failed: ${err}`, 'error')
+      logDebug(`cache clear failed: ${err}`, 'error')
     }
-    await updateServiceWorker(true) // skip-waiting on the new worker, if any
-    location.reload()
+    // Cache-bust the navigation itself so the HTTP layer can't serve a stale
+    // index.html. main.ts strips the marker from the URL once we're back up.
+    try {
+      const url = new URL(location.href)
+      url.searchParams.set('fresh', Date.now().toString())
+      location.replace(url.toString())
+    } catch {
+      location.reload()
+    }
   }
 
   return { reloadLatest }
