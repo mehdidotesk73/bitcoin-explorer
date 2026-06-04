@@ -24,6 +24,10 @@ grid from the start of history to the horizon.
 
 ## Controls
 
+The three parameter panels below the model pickers — **Calibration**, **Value
+baseline — growth**, and **Volatility projection** — **start collapsed** so the
+chart leads. Tap a panel's header to expand it (tap again to collapse).
+
 ### Model selection
 - **Growth projection:** time-based **power-law** (default), **exponential**, or
   **linear**.

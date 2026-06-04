@@ -129,7 +129,10 @@ break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
   `namedScaleLabel(days)` (snaps a day-count to the nearest named horizon —
   daily…multi-year — by log-distance).
 - `glossary.ts` — the `GLOSSARY` map (term → 1–3-sentence plain-English `def`)
-  powering the beginner `InfoTip` tooltips.
+  powering the beginner `InfoTip` tooltips. The `InfoTip` popover is a tap-to-
+  toggle disclosure that clamps itself horizontally to the viewport on open
+  (`getBoundingClientRect`), with `overflow-x: clip` on the root as a guard so a
+  transiently-wide popover can't trigger mobile-Safari zoom.
 
 > **Note:** there is **no** `metricRegistry.ts` on `main` — the spec-driven
 > registry was prototyped on a branch but never merged. See §7 and
@@ -166,7 +169,8 @@ Default view is **price only**; each metric toggles independently.
 **Metric framework.** Metric on/off flags and their per-metric ⚙ configs are
 plain in-memory `ref`s (`showMa`, `showBb`, `showRunDetection`, `showRatio`,
 `showBand`; `cfg*`). They live in a single collapsible **Metrics** disclosure
-(`menuCollapsed`, which lists the active metrics when folded). Two kinds:
+(`menuCollapsed`, **default collapsed**; the header lists the active metrics when
+folded and shows a tap-to-expand/collapse hint). Two kinds:
 - **Overlays** (drawn on the price chart, `PriceChart.vue`): Moving average
   (`sma`), Bollinger bands (`bollinger`), and the **run skeleton** — a
   piecewise-linear line anchoring price at each run's start/end (`runOverlay`)
@@ -199,6 +203,12 @@ The detailed spec behind the Price Mechanics tab (`lib/forecast.ts`:
 `fitParams` / `projectForecast`). Distilled from the
 [`bitcoin-model`](https://github.com/mehdidotesk73/bitcoin-model) repo. The
 concise user-facing version is in `concepts/price-mechanics.md`.
+
+The three parameter panels (`ForecastView.vue`: **Calibration**, **Value
+baseline — growth**, **Volatility projection**) are header-tap collapsible
+(`calibCollapsed` / `growthCollapsed` / `volCollapsed`, **default collapsed**) so
+the chart leads on a phone; each header carries a chevron + tap-to-expand/collapse
+hint, mirroring the Price Explorer Metrics disclosure.
 
 #### Central idea: price = value × volatility
 
