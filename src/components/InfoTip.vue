@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { GLOSSARY } from '../lib/glossary'
 
 // Reusable concept tooltip: <InfoTip term="ma" />. Looks the concept up in the
@@ -10,10 +10,30 @@ const entry = computed(() => GLOSSARY[props.term])
 
 const open = ref(false)
 const root = ref<HTMLElement>()
+const btn = ref<HTMLElement>()
+const pop = ref<HTMLElement>()
+// Inline horizontal offset applied to the popover so it stays on screen.
+const popStyle = ref<Record<string, string>>({})
+
+// Anchor the popover under the dot, then nudge it left so it never spills past
+// the viewport edge — the popover can be wide and dots sit near the right margin.
+async function place() {
+  await nextTick()
+  if (!btn.value || !pop.value) return
+  const margin = 8
+  const dot = btn.value.getBoundingClientRect()
+  const popW = pop.value.offsetWidth
+  const vw = document.documentElement.clientWidth
+  let vpLeft = dot.left // default: align popover's left edge under the dot
+  if (vpLeft + popW > vw - margin) vpLeft = vw - margin - popW
+  if (vpLeft < margin) vpLeft = margin
+  popStyle.value = { left: `${Math.round(vpLeft - dot.left)}px` }
+}
 
 function toggle(e: MouseEvent) {
   e.stopPropagation()
   open.value = !open.value
+  if (open.value) void place()
 }
 function onDocClick(e: MouseEvent) {
   if (open.value && root.value && !root.value.contains(e.target as Node)) open.value = false
@@ -21,19 +41,25 @@ function onDocClick(e: MouseEvent) {
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') open.value = false
 }
+function onResize() {
+  if (open.value) void place()
+}
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKey)
+  window.addEventListener('resize', onResize)
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onKey)
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
 <template>
   <span v-if="entry" ref="root" class="infotip">
     <button
+      ref="btn"
       type="button"
       class="infotip-btn"
       :class="{ open }"
@@ -43,7 +69,7 @@ onBeforeUnmount(() => {
     >
       ?
     </button>
-    <span v-if="open" class="infotip-pop" role="tooltip">
+    <span v-if="open" ref="pop" class="infotip-pop" role="tooltip" :style="popStyle">
       <strong class="infotip-term">{{ entry.term }}</strong>
       <span class="infotip-def">{{ entry.def }}</span>
     </span>
@@ -84,7 +110,7 @@ onBeforeUnmount(() => {
   left: 0;
   z-index: 60;
   width: max-content;
-  max-width: min(20rem, 78vw);
+  max-width: min(20rem, calc(100vw - 1rem));
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

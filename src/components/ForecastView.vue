@@ -27,6 +27,12 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+// Parameter panels collapse by default to keep the controls compact on a phone;
+// tap a panel header to expand it.
+const calibCollapsed = ref(true)
+const growthCollapsed = ref(true)
+const volCollapsed = ref(true)
+
 // --- Base series ------------------------------------------------------------
 const times = computed(() => props.raw.map((p) => p.time))
 const { prices } = usePriceSeries(() => props.raw)
@@ -351,7 +357,7 @@ const fmtNum = (v: number) =>
     <!-- Model selection -->
     <section class="controls">
       <label>
-        Growth projection <InfoTip term="growthModel" />
+        <span>Growth projection <InfoTip term="growthModel" /></span>
         <select v-model="growthType">
           <option value="power">Time-based power-law</option>
           <option value="exponential">Time-based exponential</option>
@@ -359,7 +365,7 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Volatility projection <InfoTip term="envelope" />
+        <span>Volatility projection <InfoTip term="envelope" /></span>
         <select v-model="envelopeType">
           <option value="exponential-decay">Time-based exponential decay</option>
           <option value="value-power-decay">Value-based power decay</option>
@@ -368,14 +374,14 @@ const fmtNum = (v: number) =>
         </select>
       </label>
       <label>
-        Cycle peaks <InfoTip term="cyclePeaks" />
+        <span>Cycle peaks <InfoTip term="cyclePeaks" /></span>
         <select v-model="distributionType">
           <option value="peaks">Laplacian</option>
           <option value="none">None</option>
         </select>
       </label>
       <label>
-        Horizon <InfoTip term="horizon" />
+        <span>Horizon <InfoTip term="horizon" /></span>
         <select v-model.number="horizonYear">
           <option :value="2030">2030</option>
           <option :value="2035">2035</option>
@@ -395,14 +401,17 @@ const fmtNum = (v: number) =>
 
     <!-- Calibration: knobs that drive the auto-fit and overwrite the model
          parameters below (same effect as "Reset to fit"). -->
-    <section class="params calibration">
-      <h3>
+    <section class="params calibration" :class="{ collapsed: calibCollapsed }">
+      <h3 class="sec-head" @click="calibCollapsed = !calibCollapsed">
+        <span class="chev">{{ calibCollapsed ? '▸' : '▾' }}</span>
         Calibration
         <span class="fit">auto-fits the model parameters below</span>
+        <span class="sec-hint">{{ calibCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!calibCollapsed">
       <div class="param-grid">
         <label>
-          Baseline MA window (days) <InfoTip term="valueBaseline" />
+          <span>Baseline MA window (days) <InfoTip term="valueBaseline" /></span>
           <input type="number" v-model.number="maWindow" min="30" max="3000" step="5" />
         </label>
         <label>
@@ -410,11 +419,11 @@ const fmtNum = (v: number) =>
           <input type="number" v-model.number="fitWindowDays" min="0" max="6000" step="50" />
         </label>
         <label>
-          Day zero (t₀) <InfoTip term="dayZero" />
+          <span>Day zero (t₀) <InfoTip term="dayZero" /></span>
           <input type="date" v-model="dayZero" />
         </label>
         <label v-if="growthType === 'power'">
-          Recency weighting γ <InfoTip term="recency" />
+          <span>Recency weighting γ <InfoTip term="recency" /></span>
           <input type="number" v-model.number="powFitGamma" min="0" max="2" step="0.05" />
         </label>
         <button class="reset" @click="resetToFit">↺ Reset to fit</button>
@@ -427,14 +436,18 @@ const fmtNum = (v: number) =>
         Changing any calibration knob re-fits the model and overwrites the
         parameter boxes below — hand-edits persist only until the next re-fit.
       </p>
+      </div>
     </section>
 
     <!-- Model parameters: hand-tunable, persist until the next calibration -->
-    <section class="params">
-      <h3>
+    <section class="params" :class="{ collapsed: growthCollapsed }">
+      <h3 class="sec-head" @click="growthCollapsed = !growthCollapsed">
+        <span class="chev">{{ growthCollapsed ? '▸' : '▾' }}</span>
         Value baseline — growth
         <span class="fit-note">auto-filled · editable</span>
+        <span class="sec-hint">{{ growthCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!growthCollapsed">
 
       <template v-if="growthType === 'exponential'">
         <h4>
@@ -515,16 +528,20 @@ const fmtNum = (v: number) =>
         </p>
         <p class="eq">MA = last_MA + rate · Δt</p>
       </template>
+      </div>
     </section>
 
     <!-- Model parameters: volatility -->
-    <section class="params">
-      <h3>
+    <section class="params" :class="{ collapsed: volCollapsed }">
+      <h3 class="sec-head" @click="volCollapsed = !volCollapsed">
+        <span class="chev">{{ volCollapsed ? '▸' : '▾' }}</span>
         Volatility projection
         <span class="fit-note">
           {{ envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual' }}
         </span>
+        <span class="sec-hint">{{ volCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!volCollapsed">
       <template v-if="envelopeType === 'exponential-decay'">
         <div class="param-grid">
           <label>
@@ -624,6 +641,7 @@ const fmtNum = (v: number) =>
         </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
       </template>
+      </div>
     </section>
 
     <div class="chart-tabs" v-if="forecast">
@@ -730,6 +748,29 @@ const fmtNum = (v: number) =>
   color: var(--text-muted);
   font-weight: 400;
   font-size: 0.72rem;
+}
+/* Collapsible panel header: the whole h3 is the tap target. */
+.sec-head {
+  cursor: pointer;
+  user-select: none;
+}
+.sec-head .chev {
+  font-size: 0.7rem;
+}
+.sec-head .sec-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+/* Slim the panel down to just its header when collapsed. */
+.params.collapsed {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+.params.collapsed h3 {
+  margin: 0;
 }
 .params h4 {
   margin: 0.5rem 0 0.4rem;

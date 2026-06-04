@@ -44,7 +44,7 @@ const curvesCollapsed = ref(false)
 // The metric-toggle menu folds into a single disclosure so it can get out of the
 // way once metrics are chosen (mobile screen space). When collapsed, summarise
 // which metrics are active.
-const menuCollapsed = ref(false)
+const menuCollapsed = ref(true)
 const activeMetricLabels = computed(() => {
   const out: string[] = []
   if (showMa.value) out.push('MA')
@@ -200,7 +200,7 @@ function setRange(days: number | 'all') {
         <span class="menu-summary" v-if="menuCollapsed">
           {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
         </span>
-        <span class="menu-hint" v-else>tap to collapse</span>
+        <span class="menu-hint">{{ menuCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </div>
       <div v-show="!menuCollapsed" class="controls metrics-menu" @click.stop>
       <!-- Overlay: moving average -->
@@ -245,7 +245,7 @@ function setRange(days: number | 'all') {
             </span>
           </label>
           <label>
-            σ × <InfoTip term="sigma" />
+            <span>σ × <InfoTip term="sigma" /></span>
             <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
           </label>
         </div>
@@ -303,7 +303,7 @@ function setRange(days: number | 'all') {
             Smoothing 0 + short window = classic %B.
           </p>
           <label>
-            Period <InfoTip term="period" />
+            <span>Period <InfoTip term="period" /></span>
             <span class="period">
               <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
               <select v-model="bandUnit">
@@ -314,11 +314,11 @@ function setRange(days: number | 'all') {
             </span>
           </label>
           <label>
-            σ × <InfoTip term="sigma" />
+            <span>σ × <InfoTip term="sigma" /></span>
             <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
           </label>
           <label>
-            Smoothing <InfoTip term="smoothing" />
+            <span>Smoothing <InfoTip term="smoothing" /></span>
             <span class="period">
               <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
               <span class="unit">{{ bandSmoothLabel }}</span>
