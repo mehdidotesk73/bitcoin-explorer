@@ -10,10 +10,8 @@ reference for developers and AI agents.
 - For **what's been tried / version history**, see `experience.md`.
 - For the **backlog**, see `TODO.md`.
 
-> **Status:** in progress. The forecast model (§5.2) plus the
-> lib/composable/persistence/build sections (§3, §4, §7, §8) are written; still
-> **placeholder** stubs: §2 data layer, §5.1 Price Explorer, §5.3 Hodl Explorer,
-> §6 charting, §9 glossary. Filling the rest is tracked in `TODO.md`.
+> **Status:** all sections are written (§1–§9). Keep them current as the code
+> changes — the doc-checkpoint step in `CLAUDE.md` governs when.
 
 ---
 
@@ -42,18 +40,48 @@ PriceExplorer   ForecastView           HodlExplorer
    composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
 ```
 
-> _TODO: add a richer module-dependency diagram and call out the
-> `echarts.connect` chart groups (`btc-explorer`, `btc-hodl`)._
+**Dependency direction.** `api/*` → `useBitcoinData` → `App.vue` → the three
+tabs; each tab pulls pure logic from `lib/*` (and composables) but the libs
+import **nothing** from components — the arrow only points one way. This is what
+keeps logic testable in isolation (§8) and recomputable without a refetch.
+
+**Chart sync groups.** Within a tab, ECharts `connect` groups keep **x-zoom** in
+lockstep: **`btc-explorer`** (Price Explorer's `PriceChart` + `MetricsPanel`) and
+**`btc-hodl`** (Hodl Explorer's price + driver-metric charts). The explorer
+**crosshair** is synced separately via a shared `hoverIndex` + a self-drawn
+`graphic` line (connect/axisPointer wouldn't mirror it across the stacked grids).
+Details and the category-axis caveats are in §6.
 
 ---
 
 ## 2. Data layer
 
-> _TODO. Document: `api/bitcoin.ts` (Binance daily closes, pagination/politeness),
-> `api/supplemental.ts` (pre-2017 CoinMarketCap CSV, delimiter/column
-> auto-detection, merge precedence), and `lib/useBitcoinData.ts` (localStorage
-> cache `btc-daily-v1`, instant-then-refresh, offline fallback, `FetchProgress`).
-> The shared shape is `PricePoint { time: epoch-ms UTC, price: USD close }`._
+The whole app runs on one shape: **`PricePoint { time: epoch-ms UTC, price: USD
+close }`**, one per UTC day. Two sources feed it, merged by `useBitcoinData`.
+
+**`api/bitcoin.ts` — live Binance closes.** `fetchDailyPrices(startTime,
+onProgress, signal)` pages the keyless, CORS-enabled `data-api.binance.vision`
+klines endpoint (`BTCUSDT`, `1d`). The endpoint caps at 1000 bars/request, so it
+**paginates**: advance the cursor to just past the last bar's open time until
+caught up to now, `sleep(120 ms)` between pages to be polite, and report
+`FetchProgress { bars, pages }` after each page. `BTCUSDT` only lists from
+**2017-08-17** (`EARLIEST_MS`), hence the supplemental source for earlier years.
+
+**`api/supplemental.ts` — pre-Binance backfill (optional).** `loadSupplemental()`
+fetches a committed static CSV at `public/data/btc-pre-binance.csv` (e.g. a
+CoinMarketCap export). `parseCsv` **auto-detects** the delimiter (`;` vs `,`) and
+the date/close columns by header name (`timeClose`/`timestamp`/`timeOpen`/`date`
+and `close`/`price`), with a quote-aware field splitter. If the file is absent or
+unparseable it returns `[]` and the app **silently** runs Binance-only.
+
+**`lib/useBitcoinData.ts` — merge, cache, serve.** `merge(supp, binance)` keys
+both by UTC day into a Map (so **Binance wins** any overlapping day — it's the
+exchange source) and returns a time-sorted array. `init()` shows the
+`localStorage["btc-daily-v1"]` cache **instantly** (works offline), then
+`refresh()` fetches both sources in parallel, re-merges, updates `raw` +
+`lastUpdated`, and rewrites the cache. Errors surface in `error` and the on-screen
+debug log; a corrupt cache is ignored. The sandbox **can't reach** Binance (host
+allowlist), so data-dependent behaviour is device-validated.
 
 ---
 
@@ -132,11 +160,38 @@ and recompute over the shared arrays.
 
 ### 5.1 Price Explorer
 
-> _TODO. Metric-toggle framework (overlays: MA, Bollinger bands, run skeleton;
-> curves: Price ÷ MA, Bollinger score, run slope), the run-scale slider +
-> sensitivity, and the `metricRegistry` persistence/sharing. Note the Bollinger
-> score is `bandPosition = (EMAₛ(price) − SMA_W)/(k·σ_W)`, centered (±1 = ±kσ
-> bands), with independent Period/σ/Smoothing._
+`PriceExplorer.vue` owns the metric state and feeds two chart components.
+Default view is **price only**; each metric toggles independently.
+
+**Metric framework.** Metric on/off flags and their per-metric ⚙ configs are
+plain in-memory `ref`s (`showMa`, `showBb`, `showRunDetection`, `showRatio`,
+`showBand`; `cfg*`). They live in a single collapsible **Metrics** disclosure
+(`menuCollapsed`, which lists the active metrics when folded). Two kinds:
+- **Overlays** (drawn on the price chart, `PriceChart.vue`): Moving average
+  (`sma`), Bollinger bands (`bollinger`), and the **run skeleton** — a
+  piecewise-linear line anchoring price at each run's start/end (`runOverlay`)
+  with `connectNulls`, so each run renders at its average slope.
+- **Separate curves** (`MetricsPanel.vue`, one ECharts instance with stacked
+  grids in a collapsible "Additional graphs" panel): **Price ÷ MA** on a log
+  axis against an independent long baseline (`ratioMaDays`, default 1460),
+  **Bollinger score** (`useBandScore`), and **Run slope** bars (per-run average
+  daily %, coloured by direction).
+
+**Run controls (shared).** Run detection, the run skeleton, and run slope share
+one engine call: `scaleDiag(prices, runScaleDays, { N, sustThresh })`. The
+**Scale** slider is *logarithmic* — slider 0–100 maps to `hd ∈ [1, 1500]` days
+(`tForHd`/`runScaleDays`) and the label snaps to the nearest named scale.
+**Sensitivity** is presented inverted (`sensitivity = 0.9 − sustThresh`) so
+higher = more/longer runs.
+
+**Bollinger score.** `bandPosition = (EMAₛ(price) − SMA_W)/(k·σ_W)`, centered
+(±1 = the ±kσ bands), with independent Period / σ / Smoothing — see §3
+(`indicators.ts`) and §4 (`useBandScore`).
+
+**Sync.** Both chart components join the `btc-explorer` connect group for x-zoom
+and share the parent's `zoom` model (`v-model:zoom`) for the range presets; the
+crosshair is mirrored via a shared `hoverIndex` + self-drawn `graphic` line (§6).
+There is **no** persistence of toggles/params (§7).
 
 ### 5.2 Price Mechanics — forecast model
 
@@ -283,20 +338,65 @@ engine**, not a predictor.
 
 ### 5.3 Hodl Explorer
 
-> _TODO. Seed-layer combinator (`lib/hodl.ts`): drivers (price ÷ MA band,
-> Bollinger-score band, uniform spacing, manual) → frozen layers unioned into a
-> strategy; trailing/range comparison window; shared budget; strategy- and
-> preview-vs-baseline stats; Buy/Hodl indicator; `simulateStrategy` math
-> (ROI / cost basis / coverage). Charts x-synced via a shared zoom model._
+A buying-strategy sandbox: compose buy-day rules, then compare them against a
+buy-every-day baseline over a shared budget. Logic is `lib/hodl.ts` (pure,
+causal); `HodlExplorer.vue` is the UI + charts.
+
+**Seed-layer combinator.** A strategy is the **union** of frozen *seed layers*
+(`SeedLayer { id, kind, label, dateIndices }`). Each layer resolves to a static
+set of day indices **once, when added**, and is frozen thereafter:
+- **`ratio`** / **`bscore`** — `selectBandBuyDates(metric, band, candidates)`
+  keeps days whose driver metric (`ratioSeries` price÷MA, or the Bollinger score)
+  falls in a `Band { lower, upper }`.
+- **`uniform`** — `uniformSpacedDates(n, everyX, offset, candidates)`: every
+  `everyX` days on a phase anchored to today (offset shifts the weekday).
+- **`manual`** — explicit dates, each `snapDateToIndex`'d to the nearest day.
+
+`unionIndices` merges all layers into the final sorted buy set.
+
+**Comparison window + simulation.** A trailing-days **or** from/to window
+(`windowIndices`) is the shared arena: both the strategy and the buy-every-day
+baseline buy only within it. `simulateStrategy(price, buyIndices, budget=1,
+coverageDenom)` splits the budget equally across buy days, accumulates BTC at
+each day's price, and returns `HodlStats` — `currentValue`, `roi`, `costBasis`,
+`btcAccumulated`, `numBuys`, and `coverage` (numBuys / window size). Scale-free by
+default (budget = 1 unit), so only ratios matter.
+
+**UI surfaces.** `StatsCompare.vue` shows strategy-vs-baseline **and** a live
+preview (the band you're dragging) vs baseline; a Buy/Hodl indicator card reads
+each pattern's verdict for today. Out-of-window manual dates are flagged and
+excluded. The price + driver-metric charts x-sync via the `btc-hodl` group plus
+an explicit shared `zoom` model (§6).
 
 ---
 
 ## 6. Charting conventions (ECharts)
 
-> _TODO. `echarts/core` + explicit `echarts.use([...])`; per-point `itemStyle`
-> instead of `visualMap`/segment colour on a category axis; synced crosshair +
-> x-zoom via `echarts.connect(group)` and (in Hodl) an explicit shared `zoom`
-> model. Colour tokens in `lib/chartTheme.ts`._
+- **Tree-shaken imports.** Use `echarts/core` + an explicit
+  `echarts.use([...])` per component, registering every chart/component/renderer
+  used (e.g. `LineChart`, `BarChart`, `GridComponent`, `TooltipComponent`,
+  `DataZoomComponent`, `MarkLine/MarkArea`, `CanvasRenderer`). Forgetting one
+  fails silently at runtime, not at build.
+- **Category-axis colour gotcha.** On a category x-axis, `visualMap` and
+  per-segment `lineStyle` colour do **not** bind. For per-point colour use a
+  series with per-point `itemStyle` (see the run-slope bars in `MetricsPanel.vue`
+  — each datum carries its own `{ value, itemStyle }`).
+- **X-zoom sync.** All chart instances within a tab set `chart.group = '<group>'`
+  and call `echarts.connect('<group>')` — `btc-explorer` and `btc-hodl`. `connect`
+  syncs the dataZoom **inside** action, but **not** the slider range, so the
+  explorer passes a `zoom` `v-model` to its charts and the Hodl tab keeps an
+  explicit shared `zoom` ref (`onZoom`/`suppressZoom` guard against feedback loops
+  between the `datazoom` event and `dispatchAction`).
+- **Crosshair sync (explorer).** `echarts.connect` / `axisPointer.link` would
+  **not** mirror a *programmatic* pointer onto the separate-curve panel's stacked
+  grids (only the first grid lit up), so the explorer crosshair is drawn
+  explicitly instead: each chart reports its hovered day index (`convertFromPixel`)
+  up to `PriceExplorer`, which holds a shared `hoverIndex` and feeds it back to
+  every chart. Each chart then draws the crosshair itself as a full-height dashed
+  `graphic` line at `convertToPixel(idx)` — one line spanning all of a chart's
+  grids (needs `GraphicComponent` registered). The line persists at the last index
+  (it doesn't clear on pointer-leave) so all panels stay in lockstep.
+- **Theme.** Colours come from `lib/chartTheme.ts` tokens, never per-file literals.
 
 ---
 
@@ -309,7 +409,18 @@ engine**, not a predictor.
 - **PWA / app shell.** `vite-plugin-pwa` (Workbox `generateSW`) precaches the
   built assets; `src/pwa.ts` registers the service worker, polls for a new deploy
   every 60 s, auto-reloads on a new build, and exposes the footer **Reload
-  latest** button. See `CLAUDE.md` for the stale-cache caveat.
+  latest** button. That button forces `registration.update()` and waits for the
+  new worker to install before activating + reloading — otherwise it would reload
+  the cached bundle, since `version.json` reports a new build before the SW has
+  fetched it. See `CLAUDE.md` for the stale-cache caveat.
+- **Version freshness.** A build-time Vite plugin (`emit-version-json`) writes
+  `version.json` (`{ commit, builtAt }`) into the build root, deliberately
+  **outside** the Workbox precache. `lib/useVersionCheck.ts` fetches it
+  cache-busted (`cache: 'no-store'`) every 60 s and compares the live origin's
+  *published* commit to the loaded `__BUILD_ID__`, so the footer can honestly
+  show **Up to date** vs **Update ready** instead of silently reloading into the
+  same build. (Phase 2 — a *built-vs-published* "publishing…" state — is queued
+  in `TODO.md`.)
 - **Per-tab tuning is independent.** `useBandScore` (and the per-tab long-MA
   refs) give each tab its own params — nothing is shared implicitly between the
   Price Explorer and Hodl Explorer.
@@ -344,14 +455,41 @@ engine**, not a predictor.
   push → `main`), which bakes `BASE_PATH=/<repo>/` into the asset paths (a repo
   rename needs a fresh deploy). **Netlify** builds per-PR/branch **preview**
   deploys (`netlify.toml`).
-- **Known gaps** (tracked in `TODO.md` → DevOps): no ESLint/Prettier, no
-  `.nvmrc`/`engines` Node pin, no Dependabot, and no bundle-size guard (the main
-  echarts chunk warns at > 500 kB).
+- **Formatting.** Prettier config + scripts are committed (`.prettierrc.json` —
+  no-semi / single-quote / 100-col; `format` / `format:check`), but the
+  repo-wide format pass and the CI `format:check` gate are **not** done yet.
+- **Known gaps** (tracked in `TODO.md` → DevOps): no ESLint, no `.nvmrc`/`engines`
+  Node pin, no Dependabot, no bundle-size guard (the main echarts chunk warns at
+  > 500 kB), and the format pass/gate above.
 
 ---
 
 ## 9. Glossary & conventions
 
-> _TODO. Define: causal/trailing, band position vs %B, run / scale (`hd`),
-> envelope vs distribution, seed layer, value baseline. Note the project-wide
-> "heuristics, not advice" framing._
+Developer-facing terms (the beginner-facing definitions live in `lib/glossary.ts`
+/ the Help modal).
+
+- **Causal / trailing.** A value for day `i` uses only data at days ≤ `i`. Every
+  indicator here is causal — no look-ahead. Tested by the causality assertion in
+  `indicators.test.ts`.
+- **Value baseline.** The slow 4-year (1,460-day) MA standing in for "intrinsic
+  value" in the forecast (§5.2) and the Price ÷ MA curve's denominator (§5.1).
+- **Band position vs %B.** `bandPosition` (the "Bollinger score") is centered:
+  `0` = on the MA, `±1` = the ±kσ bands. Classic `%B` is `(b + 1)/2`; equivalently
+  smoothing 0 + a short window reproduces %B.
+- **Run / scale (`hd`).** A *run* is a maximal stretch where the trend is
+  sustained one direction (`runs.ts`). *Scale* `hd` (days) is the single knob all
+  run windows derive from (band = N·hd, EMA = α·hd, etc.).
+- **Vote / sustainment.** The trend operator τ ∈ [−1,1] per day; the *vote* is the
+  trailing share of up-days; a run forms where the vote clears `sustThresh`
+  (surfaced inverted as **sensitivity**).
+- **Envelope vs distribution (forecast).** The *envelope* sets how big a peak can
+  be (decaying over time/value); the *distribution* places peaks in time as a sum
+  of Laplacian spikes. See §5.2.
+- **Seed layer (Hodl).** A frozen set of buy-day indices resolved once from a
+  driver/manual/uniform rule; strategies are the union of layers (§5.3).
+- **Published vs loaded build.** *Loaded* = the `__BUILD_ID__` baked into the
+  running bundle; *published* = the commit in the live origin's `version.json`
+  (§7).
+- **Project framing.** Indicators are **descriptive heuristics, not advice** —
+  surface that in UI and be candid about in-sample / overfitting / scale caveats.

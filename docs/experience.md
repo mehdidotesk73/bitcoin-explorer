@@ -133,6 +133,58 @@ out of Done into Later / ideas.
 
 ## Version history
 
+### 2026-06-04 — "Reload latest" force-fetches the new build
+- **Fixed:** the footer button reloaded the *same* version even when it said
+  "Update ready". `version.json` (network, no-store) sees a new build before the
+  service worker has fetched it, so `updateServiceWorker(true)` had nothing
+  waiting and `location.reload()` served the cached bundle. `reloadLatest` now
+  forces `registration.update()`, waits for the new worker to install (5 s cap),
+  then activates + reloads. Device-validated (no SW in the sandbox).
+
+### 2026-06-04 — Price Explorer: collapsible metrics menu + crosshair-sync fix
+- **Added:** the metric toggles live in a **purple container** (matching the
+  Mechanics-tab Calibration section); clicking the container face/header collapses
+  it to a slim "Metrics" row (clicks inside the cards are stopped). Lists the
+  active metrics when collapsed.
+- **Fixed (crosshair):** the goal was one shared crosshair across the price chart
+  and all separate-curve panels. **What didn't work:** an explicit root
+  `axisPointer.link` (synced price↔first-grid only); then a pixel-level `showTip`
+  — neither propagated a *programmatic* pointer to the stacked grids (only the
+  first grid lit up), though native hover links them fine. **What worked:** drop
+  ECharts pointer-linking for the crosshair and draw it ourselves — each chart
+  reports its hovered index to `PriceExplorer` (shared `hoverIndex`), and every
+  chart draws a full-height dashed `graphic` line at `convertToPixel(idx)` across
+  all its grids. The line persists at the last index (doesn't clear on
+  pointer-leave) so the panels stay in lockstep. Device-validated.
+
+### 2026-06-04 — Prettier config (config-only)
+- **Added:** `prettier` (3.8.3), `.prettierrc.json` (no-semi / single-quote /
+  100-col, matching the scaffold), `.prettierignore`, and `format` /
+  `format:check` scripts.
+- **Deliberately deferred:** no repo-wide `--write` pass (would change 26 files)
+  and no CI `format:check` gate yet — kept config-only to avoid colliding with
+  in-flight branches. Tracked as a follow-up in `TODO.md`.
+
+### 2026-06-04 — Docs catch-up (system-design + experience)
+- **Added:** fleshed out `system-design.md` §3 (lib), §4 (composables), §7
+  (state/persistence), §8 (build/CI/testing) from the source; backfilled five
+  `experience.md` version-history entries.
+- **Corrected drift:** the metric registry was recorded as Done across TODO +
+  system-design but was **never merged** (lives only on `claude/inspiring-bardeen-lHExI`,
+  `cec9ac2`). Documented as "what didn't work" and moved out of TODO Done.
+  *(This branch later completed the remaining §2/§5.1/§5.3/§6/§9 stubs.)*
+
+### 2026-06-04 — Honest "Reload latest" via published-version check (freshness Phase 1)
+- **Added:** an `emit-version-json` Vite plugin writes `version.json`
+  (`{ commit, builtAt }`) into the build (outside the SW precache), and
+  `lib/useVersionCheck.ts` polls it cache-busted to compare the live origin's
+  *published* commit against the loaded `__BUILD_ID__`.
+- **Changed:** the footer button now reports **Up to date** / **Update ready —
+  Reload** instead of silently reloading into the same build.
+- **Why:** the old button relied on the SW noticing a new precache manifest, so it
+  often reloaded the same version with no feedback. Phase 2 (built-vs-published
+  "publishing…" state) is queued in `TODO.md`.
+
 ### 2026-06-03 — Concept tooltips (InfoTip + glossary)
 - **Added:** `components/InfoTip.vue` — a tap/hover info bubble for beginners —
   and `lib/glossary.ts`, a `GLOSSARY` map (term → 1–3-sentence plain-English
