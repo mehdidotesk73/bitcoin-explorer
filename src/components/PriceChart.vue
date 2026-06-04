@@ -2,12 +2,12 @@
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent, CanvasRenderer])
 
 const props = defineProps<{
   dates: string[]
@@ -28,9 +28,14 @@ const props = defineProps<{
   showRuns?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
+  /** Externally-driven hovered day index (crosshair bridge); null = none. */
+  hoverIndex?: number | null
 }>()
 
-const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
+const emit = defineEmits<{
+  'update:zoom': [value: [number, number]]
+  hover: [number | null]
+}>()
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -64,6 +69,13 @@ function buildOption(): echarts.EChartsCoreOption {
       top: 8,
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
+    },
+    // Crosshair line styling (the cross-chart sync is driven explicitly by the
+    // hover bridge below, not by echarts.connect, which didn't reliably mirror
+    // the pointer from the separate-curve panels back to here).
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      lineStyle: { color: '#8b94ac', type: 'dashed' },
     },
     tooltip: {
       trigger: 'axis',
@@ -201,10 +213,49 @@ function currentZoom(): [number, number] {
   return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
 }
 
+// --- Crosshair bridge -------------------------------------------------------
+// Report the hovered day index to the parent; mirror the parent's shared index
+// by drawing the crosshair line ourselves as a `graphic` element. We don't rely
+// on echarts axisPointer linking — it didn't propagate a programmatic pointer
+// across the separate-curve panel's stacked grids.
+function pixelToIndex(px: number, py: number): number | null {
+  const c = chart.value
+  if (!c) return null
+  const r = c.convertFromPixel({ gridIndex: 0 }, [px, py]) as number[] | null
+  if (!r) return null
+  const idx = Math.round(r[0])
+  return idx >= 0 && idx < props.dates.length ? idx : null
+}
+function drawCrosshair(idx: number | null) {
+  const c = chart.value
+  if (!c) return
+  if (idx == null) {
+    c.setOption({ graphic: [{ id: 'xhair', $action: 'remove' }] })
+    return
+  }
+  const px = c.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
+  if (px == null) return
+  const h = c.getHeight()
+  // Span the plot area (grid top 48 → bottom 72px from the chart bottom).
+  c.setOption({
+    graphic: [
+      {
+        id: 'xhair',
+        type: 'line',
+        z: 50,
+        silent: true,
+        shape: { x1: px, y1: 48, x2: px, y2: h - 72 },
+        style: { stroke: '#8b94ac', lineWidth: 1, lineDash: [4, 4] },
+      },
+    ],
+  })
+}
+watch(() => props.hoverIndex, (idx) => drawCrosshair(idx ?? null))
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
-  chart.value.group = 'btc-explorer' // sync x-zoom + crosshair with the other panels
+  chart.value.group = 'btc-explorer' // sync x-zoom with the other panels
   render()
   echarts.connect('btc-explorer')
   // Keep the parent's zoom model in sync when the user drags/pinches, but only
@@ -214,6 +265,11 @@ onMounted(() => {
     const [start, end] = currentZoom()
     if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
     emit('update:zoom', [start, end])
+  })
+  const zr = chart.value.getZr()
+  zr.on('mousemove', (ev: any) => {
+    const idx = pixelToIndex(ev.offsetX, ev.offsetY)
+    if (idx != null) emit('hover', idx) // keep last on margins; persistent line
   })
   resizeObserver.observe(el.value)
 })

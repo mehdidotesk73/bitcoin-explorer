@@ -2,12 +2,12 @@
 import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ScaleDiag } from '../lib/runs'
 import { AXIS, SPLIT, UP, DOWN, UP_RUN, DOWN_RUN } from '../lib/chartTheme'
 
-echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
+echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent, CanvasRenderer])
 
 const GROUP = 'btc-explorer'
 
@@ -30,8 +30,13 @@ const props = defineProps<{
   bandLabel: string
   showRunSlope: boolean
   zoom: [number, number]
+  /** Externally-driven hovered day index (crosshair bridge); null = none. */
+  hoverIndex?: number | null
 }>()
-const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
+const emit = defineEmits<{
+  'update:zoom': [value: [number, number]]
+  hover: [number | null]
+}>()
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -169,6 +174,52 @@ async function render() {
   chart.value.resize()
 }
 
+// --- Crosshair bridge -------------------------------------------------------
+// Report the hovered day index up to the parent and mirror the parent's shared
+// index by drawing the crosshair line ourselves as a full-height `graphic` line
+// spanning every stacked grid. We don't rely on echarts axisPointer linking — a
+// programmatic pointer only ever lit the first grid.
+function pixelToIndex(px: number, py: number): number | null {
+  const c = chart.value
+  if (!c) return null
+  const n = props.dates.length
+  for (let g = 0; g < panels.value.length; g++) {
+    const r = c.convertFromPixel({ gridIndex: g }, [px, py]) as number[] | null
+    if (r) {
+      const idx = Math.round(r[0])
+      if (idx >= 0 && idx < n) return idx
+    }
+  }
+  return null
+}
+function drawCrosshair(idx: number | null) {
+  const c = chart.value
+  if (!c) return
+  if (idx == null) {
+    c.setOption({ graphic: [{ id: 'xhair', $action: 'remove' }] })
+    return
+  }
+  const px = c.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
+  if (px == null) return
+  // From the top of the first grid to the bottom of the last — one line across
+  // all panels.
+  const y1 = TOP + GRID_TOP_OFF
+  const y2 = TOP + (panels.value.length - 1) * PITCH + GRID_TOP_OFF + GRID_H
+  c.setOption({
+    graphic: [
+      {
+        id: 'xhair',
+        type: 'line',
+        z: 50,
+        silent: true,
+        shape: { x1: px, y1, x2: px, y2 },
+        style: { stroke: '#8b94ac', lineWidth: 1, lineDash: [4, 4] },
+      },
+    ],
+  })
+}
+watch(() => props.hoverIndex, (idx) => drawCrosshair(idx ?? null))
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
@@ -184,6 +235,11 @@ onMounted(() => {
     const end = dz.end ?? 100
     if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
     emit('update:zoom', [start, end])
+  })
+  const zr = chart.value.getZr()
+  zr.on('mousemove', (ev: any) => {
+    const idx = pixelToIndex(ev.offsetX, ev.offsetY)
+    if (idx != null) emit('hover', idx) // keep last on margins; persistent line
   })
   resizeObserver.observe(el.value)
 })

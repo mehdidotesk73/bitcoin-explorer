@@ -41,6 +41,20 @@ const anyCurve = computed(
 )
 const curvesCollapsed = ref(false)
 
+// The metric-toggle menu folds into a single disclosure so it can get out of the
+// way once metrics are chosen (mobile screen space). When collapsed, summarise
+// which metrics are active.
+const menuCollapsed = ref(false)
+const activeMetricLabels = computed(() => {
+  const out: string[] = []
+  if (showMa.value) out.push('MA')
+  if (showBb.value) out.push('Bollinger')
+  if (showRunDetection.value) out.push('Runs')
+  if (showRatio.value) out.push('Price ÷ MA')
+  if (showBand.value) out.push('Bollinger score')
+  return out
+})
+
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
 const maPeriod = ref(20)
@@ -91,6 +105,12 @@ const runSensitivity = computed({
 })
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
+
+// Crosshair bridge: the hovered day index reported by whichever chart the
+// pointer is over; mirrored onto the sibling charts (echarts.connect alone
+// didn't reliably sync the crosshair from the separate-curve panels back to the
+// price chart). null = no hover.
+const hoverIndex = ref<number | null>(null)
 
 // --- Derived series (recomputed instantly on parameter change) --------------
 const { prices, dates } = usePriceSeries(() => props.raw)
@@ -170,7 +190,19 @@ function setRange(days: number | 'all') {
       <button @click="emit('refresh')">Retry</button>
     </section>
 
-    <section class="controls metrics-menu">
+    <section
+      class="metrics-section"
+      :class="{ collapsed: menuCollapsed }"
+      @click="menuCollapsed = !menuCollapsed"
+    >
+      <div class="metrics-header">
+        <span class="chev">{{ menuCollapsed ? '▸' : '▾' }}</span> Metrics
+        <span class="menu-summary" v-if="menuCollapsed">
+          {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
+        </span>
+        <span class="menu-hint" v-else>tap to collapse</span>
+      </div>
+      <div v-show="!menuCollapsed" class="controls metrics-menu" @click.stop>
       <!-- Overlay: moving average -->
       <div class="metric">
         <div class="metric-head">
@@ -294,6 +326,7 @@ function setRange(days: number | 'all') {
           </label>
         </div>
       </div>
+      </div>
     </section>
 
     <section class="ranges">
@@ -318,7 +351,9 @@ function setRange(days: number | 'all') {
       :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
+      :hover-index="hoverIndex"
       v-model:zoom="zoom"
+      @hover="hoverIndex = $event"
     />
 
     <section v-if="anyCurve && dates.length" class="curves">
@@ -338,7 +373,9 @@ function setRange(days: number | 'all') {
         :band="bandSeries"
         :band-label="bandLabel"
         :show-run-slope="showRunDetection"
+        :hover-index="hoverIndex"
         v-model:zoom="zoom"
+        @hover="hoverIndex = $event"
       />
     </section>
 
@@ -379,8 +416,44 @@ function setRange(days: number | 'all') {
   align-items: center;
   margin-bottom: 0.75rem;
 }
+/* Purple container (matches the Calibration section on the Mechanics tab).
+   Clicking the container face / header collapses it; clicks inside the menu
+   (the metric cards/configs) are stopped so they don't collapse it. */
+.metrics-section {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--accent-violet, #9b6dff);
+  background: rgba(155, 109, 255, 0.06);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+.metrics-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--accent-violet, #9b6dff);
+  font-size: 0.85rem;
+  font-weight: 600;
+  user-select: none;
+}
+.menu-summary {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+  font-weight: 400;
+}
+.menu-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
 .metrics-menu {
   align-items: flex-start;
+  margin-top: 0.55rem;
+  margin-bottom: 0;
+  cursor: default;
 }
 .metric {
   display: flex;

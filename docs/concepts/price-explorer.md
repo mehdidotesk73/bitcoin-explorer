@@ -1,9 +1,11 @@
 # Price Explorer
 
 A descriptive lens on Bitcoin's price history. The default view is **price
-only**; you switch on metrics individually, each with its own collapsible
-config. Some metrics draw **on** the price chart (overlays); others draw as
-**separate curves** in a collapsible panel below.
+only**; you switch on metrics individually from the collapsible **Metrics**
+menu, each with its own config. (Collapse the menu once you've picked your
+metrics — when folded it lists the active ones.) Some metrics draw **on** the
+price chart (overlays); others draw as **separate curves** in a collapsible
+panel below.
 
 ## Mental model
 
