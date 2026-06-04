@@ -409,10 +409,17 @@ an explicit shared `zoom` model (§6).
 - **PWA / app shell.** `vite-plugin-pwa` (Workbox `generateSW`) precaches the
   built assets; `src/pwa.ts` registers the service worker, polls for a new deploy
   every 60 s, auto-reloads on a new build, and exposes the footer **Reload
-  latest** button. That button forces `registration.update()` and waits for the
-  new worker to install before activating + reloading — otherwise it would reload
-  the cached bundle, since `version.json` reports a new build before the SW has
-  fetched it. See `CLAUDE.md` for the stale-cache caveat.
+  latest** button. The polite skip-waiting path (`registration.update()` → wait
+  for the new worker → `updateServiceWorker(true)` → reload) proved unreliable on
+  **iOS Safari PWAs**: when `update()` doesn't actually swap in a new worker, the
+  old SW keeps controlling the page and replays the *precached* `index.html` +
+  hashed bundle out of Cache Storage, so the reload lands on the same build. The
+  button now **hard-resets** instead — since it only fires once `version.json` has
+  confirmed a newer build is live: it unregisters every service worker, clears
+  Cache Storage, and navigates with a `?fresh=<ts>` cache-buster so neither the SW
+  precache nor the HTTP cache can replay the stale build. The SW re-registers and
+  re-precaches on the next load; `main.ts` strips the `fresh` marker on boot. See
+  `CLAUDE.md` for the stale-cache caveat, and `experience.md` for the dead-end.
 - **Version freshness.** A build-time Vite plugin (`emit-version-json`) writes
   `version.json` (`{ commit, builtAt }`) into the build root, deliberately
   **outside** the Workbox precache. `lib/useVersionCheck.ts` fetches it
