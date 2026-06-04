@@ -133,7 +133,38 @@ out of Done into Later / ideas.
 
 ## Version history
 
-### 2026-06-04 — "Reload latest" force-fetches the new build
+### 2026-06-04 — UI: `<Panel>` container abstraction + Update-available button
+- **Added (component-framework step 2):** `components/Panel.vue` — the single
+  themed container, prop-driven from the UI inventory: `theme` (`default|violet`),
+  `size` (`regular|compact`), `collapsible` (`none|header|face|icon`),
+  `v-model:collapsed`, with `#header` / `#summary` / `#actions` slots. Foundation
+  token `--accent-violet-tint`.
+- **Migrated** 8 containers onto it (bespoke CSS deleted, slotted body controls
+  unchanged): the Price Explorer **Metrics** menu (violet/compact/face) + its
+  **five metric cards** (compact/icon, the ⚙ is Panel's built-in toggle), and the
+  Price Mechanics **Calibration / Value-baseline-growth / Volatility** panels
+  (header-tap). Visible change: the metric-card gear moved from inline (after the
+  `?`) to the card's right edge.
+- **Added:** a top-bar **Update available** button (opposite Help, shown only when
+  `useVersionCheck` reports `update-ready`) whose popover mirrors the footer's
+  build / new-published-commit / reload info — reachable without scrolling.
+- **Docs:** README refocused on what the project *is* (the three tabs + PWA/Pages
+  delivery); the native-like (PWA) and dormant Capacitor native paths folded into
+  `TODO.md` → *Delivery & native targets*; system-design §5.0 documents `<Panel>`.
+
+### 2026-06-04 — UI touch-ups: inline help dots, clamped tooltips, default-collapsed panels
+- **Fixed:** the `InfoTip` `?` dots dropped onto their own row beneath labels in
+  column-flex labels; wrapping the label text + `InfoTip` in an inline `<span>`
+  keeps the dot next to its label across Forecast / Hodl / Price Explorer.
+- **Fixed (tooltip overflow + zoom):** the popover is viewport-clamped on open
+  (`getBoundingClientRect` → inline left offset), and `overflow-x: clip` on the
+  root stops a transiently-wide popover (measured at `left:0`) from widening the
+  page and triggering mobile-Safari's zoom-to-fit, which never zoomed back.
+- **Changed:** the Price Mechanics Calibration / growth / volatility panels and the
+  Price Explorer Metrics menu now **default to collapsed** with a tap-to-expand /
+  collapse hint; collapsed panels slimmed.
+- **Docs (TODO):** seeded the UI **component-framework / design-system** initiative
+  (component inventory, variants, abstraction order, valuable-vs-overengineering).
 - **Fixed:** the footer button reloaded the *same* version even when it said
   "Update ready". `version.json` (network, no-store) sees a new build before the
   service worker has fetched it, so `updateServiceWorker(true)` had nothing
