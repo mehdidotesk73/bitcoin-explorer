@@ -27,6 +27,12 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+// Parameter panels collapse by default to keep the controls compact on a phone;
+// tap a panel header to expand it.
+const calibCollapsed = ref(true)
+const growthCollapsed = ref(true)
+const volCollapsed = ref(true)
+
 // --- Base series ------------------------------------------------------------
 const times = computed(() => props.raw.map((p) => p.time))
 const { prices } = usePriceSeries(() => props.raw)
@@ -395,11 +401,14 @@ const fmtNum = (v: number) =>
 
     <!-- Calibration: knobs that drive the auto-fit and overwrite the model
          parameters below (same effect as "Reset to fit"). -->
-    <section class="params calibration">
-      <h3>
+    <section class="params calibration" :class="{ collapsed: calibCollapsed }">
+      <h3 class="sec-head" @click="calibCollapsed = !calibCollapsed">
+        <span class="chev">{{ calibCollapsed ? '▸' : '▾' }}</span>
         Calibration
         <span class="fit">auto-fits the model parameters below</span>
+        <span class="sec-hint">{{ calibCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!calibCollapsed">
       <div class="param-grid">
         <label>
           <span>Baseline MA window (days) <InfoTip term="valueBaseline" /></span>
@@ -427,14 +436,18 @@ const fmtNum = (v: number) =>
         Changing any calibration knob re-fits the model and overwrites the
         parameter boxes below — hand-edits persist only until the next re-fit.
       </p>
+      </div>
     </section>
 
     <!-- Model parameters: hand-tunable, persist until the next calibration -->
-    <section class="params">
-      <h3>
+    <section class="params" :class="{ collapsed: growthCollapsed }">
+      <h3 class="sec-head" @click="growthCollapsed = !growthCollapsed">
+        <span class="chev">{{ growthCollapsed ? '▸' : '▾' }}</span>
         Value baseline — growth
         <span class="fit-note">auto-filled · editable</span>
+        <span class="sec-hint">{{ growthCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!growthCollapsed">
 
       <template v-if="growthType === 'exponential'">
         <h4>
@@ -515,16 +528,20 @@ const fmtNum = (v: number) =>
         </p>
         <p class="eq">MA = last_MA + rate · Δt</p>
       </template>
+      </div>
     </section>
 
     <!-- Model parameters: volatility -->
-    <section class="params">
-      <h3>
+    <section class="params" :class="{ collapsed: volCollapsed }">
+      <h3 class="sec-head" @click="volCollapsed = !volCollapsed">
+        <span class="chev">{{ volCollapsed ? '▸' : '▾' }}</span>
         Volatility projection
         <span class="fit-note">
           {{ envelopeType === 'exponential-decay' ? 'auto-filled · editable' : 'manual' }}
         </span>
+        <span class="sec-hint">{{ volCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </h3>
+      <div v-show="!volCollapsed">
       <template v-if="envelopeType === 'exponential-decay'">
         <div class="param-grid">
           <label>
@@ -624,6 +641,7 @@ const fmtNum = (v: number) =>
         </ul>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
       </template>
+      </div>
     </section>
 
     <div class="chart-tabs" v-if="forecast">
@@ -730,6 +748,25 @@ const fmtNum = (v: number) =>
   color: var(--text-muted);
   font-weight: 400;
   font-size: 0.72rem;
+}
+/* Collapsible panel header: the whole h3 is the tap target. */
+.sec-head {
+  cursor: pointer;
+  user-select: none;
+}
+.sec-head .chev {
+  font-size: 0.7rem;
+}
+.sec-head .sec-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+/* Tighten the header's bottom margin when the body is hidden. */
+.params.collapsed h3 {
+  margin-bottom: 0.2rem;
 }
 .params h4 {
   margin: 0.5rem 0 0.4rem;

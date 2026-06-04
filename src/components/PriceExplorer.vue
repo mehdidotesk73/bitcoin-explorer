@@ -44,7 +44,7 @@ const curvesCollapsed = ref(false)
 // The metric-toggle menu folds into a single disclosure so it can get out of the
 // way once metrics are chosen (mobile screen space). When collapsed, summarise
 // which metrics are active.
-const menuCollapsed = ref(false)
+const menuCollapsed = ref(true)
 const activeMetricLabels = computed(() => {
   const out: string[] = []
   if (showMa.value) out.push('MA')
@@ -200,7 +200,7 @@ function setRange(days: number | 'all') {
         <span class="menu-summary" v-if="menuCollapsed">
           {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
         </span>
-        <span class="menu-hint" v-else>tap to collapse</span>
+        <span class="menu-hint">{{ menuCollapsed ? 'tap to expand' : 'tap to collapse' }}</span>
       </div>
       <div v-show="!menuCollapsed" class="controls metrics-menu" @click.stop>
       <!-- Overlay: moving average -->
