@@ -57,10 +57,6 @@
       button in the top-right of the header that opens the modal on the active
       page's doc.
 
-- [x] Indicator setup — metric registry. `lib/metricRegistry.ts` (id, label,
-      kind, param schema, shared-param groups) drives the Price Explorer's metric
-      toggles from data; enabled metrics + params persist (localStorage / URL).
-
 - [x] Hodl Explorer (own tab) — buying-strategy sandbox. Seed-layer combinator in
       `lib/hodl.ts`: drivers (price ÷ MA band, Bollinger-score band, uniform
       spacing, manual dates) resolve to frozen layers unioned into a strategy;
@@ -182,6 +178,13 @@ reverse direction doesn't fully propagate. Architecture to keep in mind:
 
 ## Later / ideas
 
+- **Metric registry + persistence (prototyped, not merged).** A spec-driven
+  metric system (`lib/metricRegistry.ts`: `MetricSpec`/`MetricState`, data-driven
+  toggle rendering, localStorage + URL-encoded persistence for shareable views)
+  was built on `claude/inspiring-bardeen-lHExI` (commit `cec9ac2`) but **never
+  merged** — on `main` the toggles are plain in-memory refs with no persistence.
+  Was previously (incorrectly) marked Done. Revive only if the indirection earns
+  its keep; see the "Metric registry … never merged" entry in `experience.md`.
 - **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into
   a collection of market/macro patterns and pool them into one explainable
   buy-vs-hodl score (weighting, agreement, regime awareness). Heuristic, not

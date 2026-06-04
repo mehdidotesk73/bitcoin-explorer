@@ -10,9 +10,10 @@ reference for developers and AI agents.
 - For **what's been tried / version history**, see `experience.md`.
 - For the **backlog**, see `TODO.md`.
 
-> **Status:** in progress. Many sections below are **placeholders** marked
-> _TODO_; the Price Mechanics / forecast model is fully documented. Filling the
-> placeholders is tracked in `TODO.md`.
+> **Status:** in progress. The forecast model (§5.2) plus the
+> lib/composable/persistence/build sections (§3, §4, §7, §8) are written; still
+> **placeholder** stubs: §2 data layer, §5.1 Price Explorer, §5.3 Hodl Explorer,
+> §6 charting, §9 glossary. Filling the rest is tracked in `TODO.md`.
 
 ---
 
@@ -37,9 +38,8 @@ PriceExplorer   ForecastView           HodlExplorer
   MetricsPanel)
             │
    pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
-   spec / registry:  metricRegistry.ts
-   shared helpers:   format.ts · chartTheme.ts · period.ts
-   composables:      usePriceSeries.ts · useBandScore.ts
+   shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts
+   composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
 ```
 
 > _TODO: add a richer module-dependency diagram and call out the
@@ -59,24 +59,72 @@ PriceExplorer   ForecastView           HodlExplorer
 
 ## 3. Shared libraries (`src/lib/`)
 
-> _TODO. One subsection each:_
-> - _`indicators.ts` — `sma`, `ema`, `bollinger`, `bandPosition` (the centered
->   "Bollinger score" band-position; see the formula in §5.1)._
-> - _`runs.ts` — `scaleDiag(price, hd)`: causal EMA, rolling mean/std, OLS trend
->   operator, sustained-trend vote, run segmentation._
-> - _`forecast.ts` — `fitParams` / `projectForecast` (spec in §5.2)._
-> - _`hodl.ts` — seed combinator + `simulateStrategy` (spec in §5.3)._
-> - _`metricRegistry.ts` — spec-driven Price-Explorer metrics + persistence._
-> - _`format.ts`, `chartTheme.ts`, `period.ts` — shared formatters, ECharts
->   colour tokens, and period-unit helpers (`toDays`, `namedScaleLabel`)._
+All pure, framework-free functions over the already-fetched arrays — they
+recompute instantly with no refetch, and every signal is **causal** (a value for
+day `i` uses only data at days ≤ `i`).
+
+**`indicators.ts`** — the core technical indicators:
+- `sma(values, period)` — trailing simple moving average; the first `period − 1`
+  entries are `null` so the output aligns 1:1 with the input.
+- `ema(values, span)` — causal exponential MA, seeded with the first value;
+  `span ≤ 1` is a no-op (the smoothing coefficient becomes 1).
+- `bollinger(values, period, k)` → `{ middle, upper, lower }` — a `period`-SMA
+  middle band with ±`k`·(population σ) bands.
+- `bandPosition(values, smoothSpan, window, k)` — the centered **Bollinger
+  score**: `b = (EMAₛ(price) − SMA_W) / (k·σ_W)`, `0` on the mean, `±1` on the
+  ±kσ bands (so `b = 2·%B − 1`); `null` until the window warms up or when σ = 0.
+
+**`runs.ts`** — sustained-run detection at one continuously-tunable scale `hd`
+(days). `scaleDiag(price, hd, params?)` → `ScaleDiag { hd, ma, smoothed, b,
+vote, runs }`. Every window scales from `hd` via `RunParams` (N/α/β/γ). Pipeline:
+causal EMA of price (`smoothed`, span α·hd) → trailing mean/σ over the band
+window N·hd → band position `b` → an OLS log-price **trend operator**
+`τ = sign(slope)·r²·min(|slope|/scale, 1)` over β·hd → a **vote** = share of
+up-days (τ > 0) over γ·hd, mapped to [−1, 1] → `segmentRuns` cuts maximal
+stretches that clear `sustThresh` in one direction; sub-threshold (choppy) days
+break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
+
+**`forecast.ts`** — the Price Mechanics fit/projection engine (`fitParams` /
+`projectForecast`). Full spec in **§5.2**.
+
+**`hodl.ts`** — the Hodl Explorer seed combinator + simulator. Full spec in
+**§5.3**; key exports: `unionIndices`, `snapDateToIndex`, `uniformSpacedDates`,
+`ratioSeries`, `windowIndices`, `selectBandBuyDates`, `simulateStrategy`.
+
+**Helpers (single source of truth):**
+- `format.ts` — `fmtUSD` (cents under $10, whole dollars above), `fmtPct`,
+  `fmtBtc`; all return an em-dash for `null`.
+- `chartTheme.ts` — shared ECharts colour tokens (`AXIS`, `SPLIT`, `ORANGE`,
+  `BLUE`, `PURPLE`, `AMBER`, the run/direction `UP`/`DOWN`/`UP_RUN`/`DOWN_RUN`,
+  and `BAND_FILL`).
+- `period.ts` — period-unit helpers: `toDays(period, unit)`, `UNIT_ABBR`, and
+  `namedScaleLabel(days)` (snaps a day-count to the nearest named horizon —
+  daily…multi-year — by log-distance).
+- `glossary.ts` — the `GLOSSARY` map (term → 1–3-sentence plain-English `def`)
+  powering the beginner `InfoTip` tooltips.
+
+> **Note:** there is **no** `metricRegistry.ts` on `main` — the spec-driven
+> registry was prototyped on a branch but never merged. See §7 and
+> `experience.md` ("Metric registry … never merged").
 
 ---
 
 ## 4. Composables
 
-> _TODO. `usePriceSeries(raw)` → `{ prices, dates }`. `useBandScore(prices)` →
-> the Bollinger-score state (Period/unit/σ/smoothing refs + labels + series);
-> each call owns independent params, so the two tabs don't share tuning._
+Vue composables wrapping reactive state/derivation; like the libs they stay thin
+and recompute over the shared arrays.
+
+- **`usePriceSeries(raw)`** → `{ prices, dates }` — splits the raw
+  `PricePoint[]` into aligned number / ISO-date arrays (accepts a ref or getter).
+  The companion `toDateInput(ms)` gives the `YYYY-MM-DD` (UTC) label.
+- **`useBandScore(prices)`** → the Bollinger-score state: `smooth` / `period` /
+  `unit` / `k` refs, the derived `windowDays`, `label` / `smoothLabel`, and the
+  `series` (a `bandPosition` call). **Each call owns its own params**, so the
+  Price Explorer curve and the Hodl `bscore` driver tune independently. Defaults
+  reproduce the canonical look: 20 months · 2σ · 31-day EMA.
+- **`useBitcoinData()`** — the shared data loader (detailed in §2): shows the
+  cache instantly then refreshes in the background, exposed once and handed to
+  every tab so the full daily series is fetched only once.
 
 ---
 
@@ -254,18 +302,51 @@ engine**, not a predictor.
 
 ## 7. State, persistence & sharing
 
-> _TODO. `metricRegistry` enabled-metrics + params via localStorage / URL;
-> per-tab independent tuning (MA window, Bollinger-score params); PWA
-> service-worker cache + "Reload latest"._
+- **Price-data cache.** `useBitcoinData` writes the merged series to
+  `localStorage["btc-daily-v1"]` as `{ points, ts }`. On load it shows the cache
+  instantly (also works offline) then refreshes in the background; `lastUpdated`
+  drives the footer "updated" stamp.
+- **PWA / app shell.** `vite-plugin-pwa` (Workbox `generateSW`) precaches the
+  built assets; `src/pwa.ts` registers the service worker, polls for a new deploy
+  every 60 s, auto-reloads on a new build, and exposes the footer **Reload
+  latest** button. See `CLAUDE.md` for the stale-cache caveat.
+- **Per-tab tuning is independent.** `useBandScore` (and the per-tab long-MA
+  refs) give each tab its own params — nothing is shared implicitly between the
+  Price Explorer and Hodl Explorer.
+- **No metric persistence or URL sharing.** The Price Explorer's metric toggles
+  (`showMa`, `showBb`, …) and their per-metric configs are plain in-memory `ref`s
+  in `PriceExplorer.vue`; they reset on reload and aren't encoded in the URL. A
+  spec-driven registry with localStorage/URL persistence was prototyped but
+  **never merged** (see `experience.md`, and the backlog note in `TODO.md` →
+  Later / ideas).
 
 ---
 
 ## 8. Build, deploy, CI & testing
 
-> _TODO. `npm run build` (vue-tsc + vite) is the gate; CI (`.github/workflows/ci.yml`)
-> runs `npm ci` → `test:run` → `build` on PRs; Vitest unit tests over `src/lib`
-> (tests excluded from the app type-check); GitHub Pages prod deploy + Netlify
-> previews. See `CLAUDE.md` for the lifecycle and `TODO.md` for the DevOps backlog._
+- **Build gate.** `npm run build` = `vue-tsc -b && vite build` — catches TS
+  errors *and* Vue template parse errors. This is the bar before every commit;
+  since the price API is unreachable from the sandbox, it's also the main offline
+  check.
+- **Scripts** (`package.json`): `dev`, `build`, `preview`, `test` (Vitest watch),
+  `test:run` (one-shot, used by CI), plus `generate-pwa-assets` and the Capacitor
+  `cap:*` helpers.
+- **CI.** `.github/workflows/ci.yml` runs on PR → `main` and push → `main`:
+  `npm ci` → `npm run test:run` → `npm run build`. Node 22 + npm cache (matches
+  `deploy.yml`); `concurrency` cancels superseded runs. *Still manual: mark the
+  `build` check **required** in branch protection so red PRs can't merge.*
+- **Tests.** Vitest over `src/lib/*.test.ts` (`hodl.test.ts`,
+  `indicators.test.ts`): hodl ROI / cost-basis + the band-date selectors, and
+  `sma`/`ema`/`bollinger`/`bandPosition` including a **causality** assertion
+  (mutating `price[>i]` mustn't change `b` at `i`). Tests are excluded from the
+  production type-check (`tsconfig.app.json`).
+- **Deploy.** Production is **GitHub Pages** (`.github/workflows/deploy.yml`, on
+  push → `main`), which bakes `BASE_PATH=/<repo>/` into the asset paths (a repo
+  rename needs a fresh deploy). **Netlify** builds per-PR/branch **preview**
+  deploys (`netlify.toml`).
+- **Known gaps** (tracked in `TODO.md` → DevOps): no ESLint/Prettier, no
+  `.nvmrc`/`engines` Node pin, no Dependabot, and no bundle-size guard (the main
+  echarts chunk warns at > 500 kB).
 
 ---
 
