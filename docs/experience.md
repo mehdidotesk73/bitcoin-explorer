@@ -113,9 +113,33 @@ inputs in the end, after sliders proved fiddly).
   explorer should take any causal metric (price ÷ MA, b, run state) → buy-days,
   reusing the rolling-horizon vs-uniform scoring as one of several lenses.
 
+### Metric registry (data-driven toggles + persistence) — built, never merged
+On `claude/inspiring-bardeen-lHExI` (commit `cec9ac2`), a spec-driven metric
+system replaced the Price Explorer's individual toggle refs: `lib/metricRegistry.ts`
+with `MetricSpec` / `MetricState`, `defaultMetricState` / `load` / `save`, and
+`encode` / `decodeMetricState` for URL-shareable views, with `PriceExplorer.vue`
+rendering `v-for` over the specs from a single `metricState` ref + localStorage
+persistence. **Status:** lives only on that branch — **never merged to `main`**.
+**Why it didn't land (mostly direction):** the indirection (spec registry +
+encode/decode + a state blob) outweighed the benefit for ~five toggles, and the
+later Bollinger-score unification and consolidation kept the simpler plain-ref
+toggles. **Doc drift it left behind:** `TODO.md` lists "Indicator setup — metric
+registry" under **Done** and `system-design.md` referenced `metricRegistry.ts`,
+but on `main` the toggles are plain in-memory refs with **no** persistence or URL
+sharing (system-design §3/§7 now say so; the TODO Done entry still needs fixing).
+
 ---
 
 ## Version history
+
+### 2026-06-03 — Concept tooltips (InfoTip + glossary)
+- **Added:** `components/InfoTip.vue` — a tap/hover info bubble for beginners —
+  and `lib/glossary.ts`, a `GLOSSARY` map (term → 1–3-sentence plain-English
+  definition) referenced by key (`<InfoTip term="ma" />`), seeded with the
+  indicator/forecast terms.
+- **Why:** the indicators are heuristics; inline definitions lower the barrier
+  without cluttering the controls. Single source — one glossary entry per
+  concept, reused wherever the term appears.
 
 ### 2026-06-03 — Code consolidation (single source of truth)
 De-duplication pass after the feature run (Indicator setup, Hodl Explorer,
@@ -131,6 +155,34 @@ Also reconciled `docs/TODO.md` (merged work → Done) and started
 (formerly `forecast-model.md`) is reorganised into §5.2, with placeholder
 sections for the rest of the system (tracked in `TODO.md`).
 
+### 2026-06-03 — CI gate + unit tests (Vitest)
+- **Added:** `.github/workflows/ci.yml` — on PR → `main` and push → `main`:
+  `npm ci` → `npm run test:run` → `npm run build` (`vue-tsc -b && vite build`).
+  Node 22 + npm cache (matches `deploy.yml`); `concurrency` cancels superseded
+  runs. The first automated guard against a broken build reaching history.
+- **Added:** Vitest + seed tests in `src/lib/{hodl,indicators}.test.ts` (hodl
+  ROI / cost-basis + band-date selectors; `sma`/`ema`/`bollinger`/`bandPosition`
+  incl. a causality assertion). Tests excluded from the app type-check
+  (`tsconfig.app.json`).
+- **Remaining:** mark the `build` check **required** in branch protection
+  (manual GitHub setting; see `TODO.md`).
+
+### 2026-06-03 — Bollinger score unified onto `bandPosition`; marked renderer
+- **Changed:** the Bollinger score became a single source of truth —
+  `indicators.ts` `bandPosition = (EMAₛ(price) − SMA_W) / (k·σ_W)`, centered
+  (±1 = ±kσ). Replaced the old run-scale score and the separate classic-%B curve
+  (%B is just smoothing 0 + a short window). Used by both the Price Explorer
+  curve and the Hodl `bscore` driver, each keeping **independent** Period / σ /
+  Smoothing params; the long-MA window is likewise decoupled per tab.
+- **Changed:** help rendering switched from the hand-rolled `lib/markdown.ts` to
+  `marked`.
+- **Defaults:** Bollinger score → 20 months · 2σ · 31-day smoothing (both tabs).
+
+### 2026-06-02 — Rebrand to bitcoin1460
+- **Changed:** app name + icon to **bitcoin1460** (the 1,460-day = 4-year MA
+  motif), with a centered Ubuntu/Orbitron title banner and PWA icons generated
+  from a single source image.
+
 ### 2026-06-03 — Conceptual help docs + in-app help button
 - **Added:** `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
   — conceptual documentation of each page (purpose, controls, how it works,
@@ -145,6 +197,18 @@ sections for the rest of the system (tracked in `TODO.md`).
 - **Why this shape:** keeping the docs as plain `.md` in `docs/concepts/` (not
   inline in components) means they stay diff-able, agent-readable, and reusable;
   the app renders the same files rather than a duplicated copy.
+
+### 2026-06-02 — Hodl Explorer tab
+- **Added:** a buying-strategy sandbox (`lib/hodl.ts`): a seed-layer combinator
+  where drivers (price ÷ MA band, Bollinger-score band, uniform spacing, manual
+  dates) resolve to frozen layers unioned into a strategy; a trailing-days **or**
+  from/to comparison window; a shared cash budget; `simulateStrategy` (ROI / cost
+  basis / BTC) with strategy-vs-baseline **and** live preview-vs-baseline stats
+  (`StatsCompare.vue`); and a Buy/Hodl indicator card (per-pattern BUY/HODL for
+  today). Price + driver-metric charts x-synced; out-of-window manual dates are
+  flagged and excluded.
+- **Context:** supersedes the stranded heat-band DCA prototype (see "What didn't
+  work") — actual budget/position simulation rather than average price ratios.
 
 ### 2026-06-02 — Run/scale metric framework (replaces composite heat)
 Merge of the metric-framework work. Changes vs previous version:
