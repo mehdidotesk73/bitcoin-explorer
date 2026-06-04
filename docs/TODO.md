@@ -129,6 +129,118 @@ Single-source-of-truth pass — concrete duplication removed across components:
       origin can reach `raw.githubusercontent.com` (public, fine — sandbox can't, so
       device-validated).
 
+## Stochastic price mechanics — projections with confidence
+
+**Goal.** Turn the deterministic point projection into a **predictive
+distribution**: a mid (median) path plus low/high bands at chosen confidence
+levels, derived soundly from the fit rather than eyeballed. The same recipe must
+cover **both** the value-growth curve and the volatility curve.
+
+### The statistical core (recommended — simple, elegant, sound)
+
+Everything happens in **log space**, because price is multiplicative and
+strictly positive (a lognormal model is the natural choice; additive/linear
+bands would allow negative prices and mis-scale the swings). Decompose:
+
+```
+log(price_t) = log(baseline_t) + r_t
+```
+
+- `baseline_t` — the fitted growth curve (the *mean/centre* trend; today's
+  `modelMa`). This is the value-growth model.
+- `r_t = log(price_t / baseline_t)` — the **log-residual**, which *is* the log of
+  the volatility multiplier the tab already models. Its spread is the volatility.
+
+There are two distinct, separable uncertainty sources — name them and treat them
+separately:
+
+1. **Residual dispersion** (dominant for BTC) — how far price swings around the
+   baseline, i.e. the distribution of `r_t`. This is what gives wide, useful
+   bands.
+2. **Parameter uncertainty** — how well-pinned the fit coefficients are. Small
+   in-sample, **grows on extrapolation**; for BTC it's dwarfed by (1), so it's a
+   refinement, not the headline.
+
+**Predictive band at future time t** (level `q`, e.g. 80/90/95%):
+
+```
+price_q(t) = exp( ŷ(t) + Q_q(t) )         ŷ(t) = log baseline_t
+```
+
+with two interchangeable ways to get the spread `Q_q(t)`:
+
+- **Parametric (lognormal):** `Q_q(t) = z_q · s(t)`, where `s(t)` is the
+  log-residual std and `z_q` the normal quantile (1.28 / 1.645 / 1.96 for
+  80/90/95%). Two-number summary; elegant.
+- **Empirical (distribution-free):** `Q_q(t) = quantile_q(residuals)` via the
+  existing `percentile()` helper. Robust to BTC's heavy tails / skew; preferred
+  as the default, with the parametric form as a smooth fallback.
+
+`mid = exp(ŷ(t))` (or the residual median if residuals aren't centred). This
+directly yields **high/mid/low with confidence levels** — the stated end goal.
+
+### Unify the spread with the existing volatility envelope
+
+Right now the envelope is fit only to **peak** `price/MA` ratios (an upper
+*ceiling*). Reinterpret it as the **conditional scale of the residuals**: fit the
+decay model (the existing `value-exponential-decay` etc. forms) to a rolling
+robust scale of `r_t` (trailing std, or MAD for robustness) instead of to peaks.
+Then `s(t)` *is* the envelope, the cone **narrows as volatility decays**, and the
+"future variability knob" the owner described becomes concrete: **the recency
+window / decay rate used to estimate `s(t)`** (how much of the past variance to
+carry forward). Same fit→centre + residual-scale recipe is then laid out
+identically for value growth and for volatility growth, as requested.
+
+### On the owner's ad-hoc idea (tune to MA ± a Bollinger band)
+
+Tuning the growth fit to the MA *and* to ±k·σ bands is a **special case** of the
+above: a Bollinger band is exactly `baseline · exp(±k·σ)`, so picking `k` is
+picking a confidence level (k=1.645 → 90%). The cleaner equivalent is to fit the
+centre once (to log-price or its MA) and let the bands fall out of the
+**residual** σ — no separate "tune to the bands" step, and `k`/quantile maps to a
+real probability. So: keep the instinct (centre + symmetric spread, a single
+future-variability knob), but source the spread from the growth-fit residuals.
+
+### Phased implementation
+
+- [ ] **Phase 0 — stub the predictive cone (this branch's candidate goal).**
+      Pure functions in `forecast.ts`: `residuals(price, baseline)` →
+      `dispersion(r, {weights})` (reuse the recency weights `γ`) → quantiles
+      (empirical via `percentile`, or `z·σ`). Extend `ForecastResult` with `lo /
+      mid / hi` arrays per level; `ForecastChart` renders a shaded fan + lines.
+      UI: a **confidence-level** picker (80/90/95%) and a **σ-lookback/recency**
+      knob. Stationary σ first — honest and minimal.
+- [ ] **Phase 1 — heteroscedastic `s(t)` via the envelope.** Fit the decay model
+      to the rolling residual scale; bands narrow over time; retire the
+      peaks-only envelope (or keep it as a separate "ceiling" overlay).
+- [ ] **Phase 2 — parameter uncertainty + path-wise fans.** Either the analytic
+      OLS prediction-interval term `σ²·(1 + 1/n + (x*−x̄)²/Sxx)` from `linregress`
+      (extend it to return the coefficient covariance), or a **bootstrap**
+      (resample residuals; refit → ensemble of baselines → CI). For honest fan
+      charts, **moving-block bootstrap / AR(1)** on `r_t` to preserve
+      autocorrelation, optionally Monte-Carlo sample paths.
+
+### Caveats to honour (don't oversell the probabilities)
+
+- **Autocorrelation.** BTC residuals are strongly serially correlated (multi-year
+  cycles). i.i.d. quantiles give *marginal* (per-horizon) bands, **not** path
+  probabilities, and understate how long price can sit above/below trend. Phase 0
+  bands must be labelled as marginal; path-wise honesty needs Phase 2's block
+  bootstrap/AR.
+- **Non-stationarity / regime change.** Every band is conditional on "the future
+  resembles the past." Volatility has structurally declined; if it reverts, the
+  cone is too tight. These are scenarios, not guarantees — keep the existing
+  not-advice framing.
+- **Distribution shape.** Residuals are heavy-tailed/skewed → prefer empirical
+  quantiles over normal-`z` for the headline bands.
+- **Cycle peaks** shift the *mean* deterministically; uncertainty in peak
+  timing/height is a separate source (could widen bands near projected halving
+  peaks) — out of scope until Phase 2+.
+- **Calibration ≠ in-sample fit.** R² measures historical fit, not interval
+  coverage. Add a **backtest**: do the 90% bands actually contain ≈90% of
+  held-out points? (a PIT histogram makes mis-calibration visible). This is the
+  real test of "confidence levels."
+
 ## Later / ideas
 
 - **Metric registry + persistence (prototyped, not merged).** A spec-driven
