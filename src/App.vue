@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import PriceExplorer from './components/PriceExplorer.vue'
 import ForecastView from './components/ForecastView.vue'
 import HodlExplorer from './components/HodlExplorer.vue'
@@ -13,6 +13,20 @@ const buildId = __BUILD_ID__
 const buildTime = __BUILD_TIME__
 const showDebug = ref(false)
 const copied = ref(false)
+
+// Header "Update available" affordance: when a newer build is live, surface a
+// top-bar button (opposite Help) that opens a small popover with the same
+// build/version/reload info as the footer — so the prompt is reachable without
+// scrolling to the bottom of a long page.
+const showUpdatePanel = ref(false)
+const updateSlot = ref<HTMLElement>()
+function onDocClickUpdate(e: MouseEvent) {
+  if (showUpdatePanel.value && updateSlot.value && !updateSlot.value.contains(e.target as Node)) {
+    showUpdatePanel.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClickUpdate))
+onBeforeUnmount(() => document.removeEventListener('click', onDocClickUpdate))
 
 // Copy the whole log buffer (plus build stamp) so it can be pasted back here.
 async function copyLog() {
@@ -72,6 +86,27 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   <main class="app">
     <header>
       <div class="title-row">
+        <div class="update-slot" ref="updateSlot">
+          <button
+            v-if="versionStatus === 'update-ready'"
+            class="update-btn"
+            @click="showUpdatePanel = !showUpdatePanel"
+          >
+            Update available
+          </button>
+          <div
+            v-if="showUpdatePanel && versionStatus === 'update-ready'"
+            class="update-pop"
+            role="dialog"
+          >
+            <div class="up-line">build {{ buildId }} · {{ buildTime }}</div>
+            <div class="up-line">new version: {{ published?.commit }}</div>
+            <button class="reload-btn update-ready" @click="onReloadLatest">
+              Update ready — Reload
+            </button>
+            <span v-if="reloadMsg" class="up-line">{{ reloadMsg }}</span>
+          </div>
+        </div>
         <h1 class="app-title">
           <span class="t-bitcoin">bitcoin</span><span class="t-1460">1460</span>
         </h1>
@@ -189,6 +224,55 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   margin-left: 0.3em;
   letter-spacing: 0.02em;
   text-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
+}
+/* Top-left update affordance, mirroring the Help button on the right. */
+.update-slot {
+  grid-column: 1;
+  justify-self: start;
+  align-self: start;
+  position: relative;
+}
+.update-btn {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--accent-blue);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius, 0.4rem);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.update-btn:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+.update-pop {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 70;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 1rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--radius, 0.4rem);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  text-align: left;
+}
+.up-line {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+.update-pop .reload-btn {
+  margin-left: 0;
+  align-self: flex-start;
 }
 .help-btn {
   grid-column: 3;

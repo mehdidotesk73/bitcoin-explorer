@@ -237,19 +237,23 @@ means and no magic numbers sprinkled across scoped styles.
 
 ### Suggested abstraction order (foundation → leaves → template)
 
-1. **Design tokens + variants + utility classes first.** Promote the repeated
+1. [~] **Design tokens + variants + utility classes first.** Promote the repeated
    colours, radii, spacing, the violet-accent container theme, and the button
    styles into CSS custom properties + the `size` (compact/regular) and `emphasis`
    (ghost/regular/bold) variant bundles + a few utility classes (extends the
    existing `:root` vars and `lib/chartTheme.ts`). Cheap, low-risk, and everything
    else consumes these instead of magic numbers. **Buttons stay native** —
    variants ship as CSS classes (`btn btn-bold btn-compact`), no `<Button>`
-   wrapper.
-2. **`<Panel>`** — the themed container. Props: `title`, `subtitle`, `theme`,
-   `size`, `collapsible` (`none|header|icon`), `defaultCollapsed`, plus a
-   `visible` flag so an external driver can show/hide it; summary/action slots.
-   Migrate `metrics-section`, `params`/`calibration`, `metric`.
-   Biggest dedupe and kills the collapse-pattern drift.
+   wrapper. **Done:** `--accent-violet-tint` token; `size`/`theme` variants on
+   `<Panel>`. **Remaining:** the button `emphasis` (ghost/regular/bold) variant
+   classes + broader token extraction.
+2. [x] **`<Panel>`** *(done — `claude/ui-panel-foundation`)*. Props landed:
+   `title`, `subtitle`, `theme` (`default|violet`), `size` (`regular|compact`),
+   `collapsible` (`none|header|face|icon`), `v-model:collapsed`; `#header` /
+   `#summary` / `#actions` slots. Migrated the Metrics menu (face), the five
+   metric cards (icon), and the Calibration / growth / volatility panels (header)
+   — biggest dedupe, kills the collapse-pattern drift. **Remaining:** a `visible`
+   prop for external (tab/toggle) visibility control (lands with `<Tabs>`).
 3. **`<Field>` / `<LabeledControl>`** — label + optional `InfoTip` + control +
    unit adornment, in row or column layout. Folds the tooltip-wrap fix in
    structurally and removes the most boilerplate.
@@ -335,3 +339,29 @@ so a broken build can (and once did) reach history. Prioritised backlog:
 - [ ] **Preview-deploy provenance.** The footer already stamps `build <sha>`;
       consider surfacing the same in CI artifacts so a Netlify preview can be
       tied back to a commit at a glance.
+
+## Delivery & native targets (down the line)
+
+The "one codebase, three delivery targets" path (web → installable PWA → native
+app) folded out of the README. Today only **web + PWA** ship; the native-like
+polish and the native shells are future work:
+
+- [~] **PWA / native-like install.** Live today: `vite-plugin-pwa` emits the
+      manifest + service worker, the app is installable ("Add to Home Screen")
+      and works offline, and icons generate from `public/logo.svg`
+      (`npm run generate-pwa-assets`). **Down the line:** harden the on-device
+      install/standalone experience — splash + maskable icons, iOS standalone
+      quirks (status-bar, safe-area, no-bounce), and an in-app "install" prompt.
+      (Freshness/reload — a related PWA concern — is tracked under *Version
+      freshness / reload*.)
+- [ ] **Capacitor native apps (iOS / Android).** Pre-wired but **dormant**:
+      `capacitor.config.ts` exists and `cap:add:ios` / `cap:add:android` /
+      `cap:sync` scripts are present, but **no `ios/` or `android/` project is
+      committed**. Down the line, to ship real store apps from the same web build:
+      add the native projects (needs macOS + Xcode / Android Studio), wire
+      `cap:sync` into the build, decide which native plugins (if any) are needed,
+      and sort out signing + store listings. Decide first whether native is worth
+      it over the PWA, or keep it as an optional path.
+- [ ] **Pick the canonical install story.** PWA and native overlap; choose what
+      we actually point users to (likely PWA-first) so the docs/UX don't promise
+      two things we half-maintain.

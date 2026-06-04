@@ -38,6 +38,7 @@ PriceExplorer   ForecastView           HodlExplorer
    pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
    shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts
    composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
+   shared UI:        Panel.vue (container) · InfoTip.vue (glossary tooltip)
 ```
 
 **Dependency direction.** `api/*` → `useBitcoinData` → `App.vue` → the three
@@ -160,6 +161,29 @@ and recompute over the shared arrays.
 ---
 
 ## 5. Features
+
+### 5.0 Shared UI components
+
+The first abstractions of the UI component-framework initiative (see `TODO.md` →
+*UI component framework*) live in `src/components/`:
+
+- **`Panel.vue`** — the themed container behind the app's bordered "panel" boxes.
+  Variation is prop-driven, not per-call CSS: `theme` (`default` | `violet`),
+  `size` (`regular` | `compact`), `collapsible` (`none` | `header` | `face` |
+  `icon`), and `v-model:collapsed`, plus `#header` / `#summary` / `#actions`
+  slots. The accent tint is the `--accent-violet-tint` design token (`style.css`).
+  Used by the Price Explorer **Metrics** menu (violet/compact/face), its **five
+  metric cards** (compact/icon — the ⚙ is the Panel's built-in toggle), and the
+  Price Mechanics **Calibration / Value-baseline-growth / Volatility** panels
+  (header-tap). Slotted body content keeps each view's own scoped styles, so the
+  controls inside are unchanged.
+- **`InfoTip.vue`** — the glossary `?` tooltip (see §3): a tap-to-toggle popover,
+  viewport-clamped on open with an `overflow-x: clip` root guard.
+
+`App.vue` also surfaces a top-bar **Update available** button (shown when
+`useVersionCheck` reports `update-ready`) that opens a popover with the current
+build, the new published commit, and the reload button — the footer's version
+info, reachable without scrolling. See §7.
 
 ### 5.1 Price Explorer
 
@@ -437,7 +461,10 @@ an explicit shared `zoom` model (§6).
   *published* commit to the loaded `__BUILD_ID__`, so the footer can honestly
   show **Up to date** vs **Update ready** instead of silently reloading into the
   same build. (Phase 2 — a *built-vs-published* "publishing…" state — is queued
-  in `TODO.md`.)
+  in `TODO.md`.) When the status is `update-ready`, `App.vue` also shows a top-bar
+  **Update available** button (opposite Help) whose popover mirrors this footer
+  info — build, new published commit, and the reload button — so the prompt is
+  reachable without scrolling to the footer.
 - **Per-tab tuning is independent.** `useBandScore` (and the per-tab long-MA
   refs) give each tab its own params — nothing is shared implicitly between the
   Price Explorer and Hodl Explorer.
