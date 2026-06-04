@@ -146,6 +146,116 @@ Single-source-of-truth pass — concrete duplication removed across components:
   Price Explorer's metric registry so any indicator can spread buy-dates.
 - **`forecast.ts` unit tests** — fit/projection invariants, to extend the CI net.
 
+## UI component framework / design system
+
+**Goal.** Today every tab hand-rolls its own markup + scoped CSS, so the same
+visual ideas (collapsible containers, labelled inputs, tooltips, tabs) are
+re-implemented per file with subtle drift — e.g. the label/tooltip wrap bug we
+just fixed existed because the label-with-`InfoTip` pattern wasn't a component.
+Categorise the recurring UI, extract a small set of abstracted components +
+design tokens, and migrate the tabs onto them. **Long-term vision:** make the
+app a tree of nested components under one page shell, and harvest that into a
+**reusable project template** (premade widgets + styles, à la Palantir Foundry
+Workshop) that new apps can assemble from.
+
+### Component inventory (category · functionality · where it appears)
+
+- **Page shell** — title bar, help button, tab nav, footer build-stamp/debug
+  panel. One instance: `App.vue` (`.app`, `.title-row`, `nav.tabs`,
+  `footer.debug`). This is the "one big page container" the rest nests under.
+- **Tabs / segmented control** — a set of mutually-exclusive buttons with an
+  `.active` state. Three near-identical re-impls: main nav (`App.vue nav.tabs`),
+  forecast chart switcher (`ForecastView` `.chart-tabs`), Hodl driver-chart
+  switcher; plus the 2-state Trailing/Range `.toggle` button (`HodlExplorer`).
+- **Container / panel** *(highest-variation category)* — a bordered, optionally
+  themed, optionally collapsible box with a header. Variants seen:
+  - `.metrics-section` (`PriceExplorer`) — violet theme, **whole-face tap** to
+    collapse, header shows chevron + active-summary + hint.
+  - `.params` / `.calibration` (`ForecastView`) — bordered card, **header-tap**
+    collapse (chevron + hint); `.calibration` is the violet-accent variant.
+  - `.metric` (`PriceExplorer`) — per-metric card whose body is toggled by a
+    **gear icon** (`.cfg`), header = checkbox-label + `InfoTip` + gear.
+  - `.indicator` (`HodlExplorer` Buy/Hodl), `.window-panel`, `.ctrl-label`
+    groups, StatsCompare `.stat-col` — bordered groupings, mostly non-collapsing.
+  - Variation axes to fold into props: **theme** (default / violet / accent),
+    **collapse mode** (none / header-tap / icon), **header slots** (title, sub-
+    note, hint, summary, trailing action), background tint, edge colour.
+- **Labelled field** — a label (often with an `InfoTip`) above/beside a control,
+  sometimes with a **unit adornment**. Everywhere: `.controls label`,
+  `.ctrl-label`, `.param-grid label`, the `.period` composite (number + unit
+  `<select>`), `.num-input` (+ `.sm`) with `.unit` prefix/suffix (`$`, `days`,
+  `to`, `→`, `offset`). The tooltip-wrap fix lives here — a `Field` component
+  would make it structural.
+- **Inputs** — number / date / `<select>` / range slider (`.slider` + `.val`
+  readout). Globally themed in `style.css`; the composite/adorned forms recur.
+- **Buttons** — one base style (`style.css`) + many ad-hoc variants: primary/
+  accent (`.reset` violet), icon-only (`.cfg` gear, `.peak-remove` ×), ghost/
+  text (`.curves-toggle`), chip/segmented (`.toggle`, tab buttons), plus
+  `.help-btn`, `+ Add layer`, `Retry`, `.debug-toggle`, `Copy log`.
+- **Stat / indicator row + status badge** — `label · value · BUY/HODL pill`
+  (`HodlExplorer` `.indicator`) and `label · value` (`StatsCompare`). The
+  BUY/HODL/`.active` pill is a reusable **badge**.
+- **Charts** — ECharts wrappers: `PriceChart`, `MetricsPanel`, `ForecastChart`,
+  Hodl driver chart. Already share `lib/chartTheme.ts` tokens, an
+  `echarts.connect` group, and the self-drawn crosshair bridge — but the bridge
+  logic is copy-pasted between `PriceChart` and `MetricsPanel`.
+- **Custom HTML legend** — the colour-key rows above the forecast/Hodl charts.
+- **Captions / notes** — `.fit-note`, `.calib-note`, `.cfg-note`, `.eq`,
+  `.indicator-note`, disclaimers: a shared muted-text typography role.
+- **Status / banner** — `.status`, `.status.error` (loading/retry), footer
+  debug panel.
+
+### Suggested abstraction order (foundation → leaves → template)
+
+1. **Design tokens + utility classes first.** Promote the repeated colours,
+   radii, spacing, the violet-accent container theme, and the button variants
+   into CSS custom properties + a few utility classes (extends the existing
+   `:root` vars and `lib/chartTheme.ts`). Cheap, low-risk, and everything else
+   builds on it.
+2. **`<Panel>`** — the collapsible themed container. Props: `title`, `subtitle`,
+   `theme`, `collapsible` (`none|header|icon`), `defaultCollapsed`, summary/
+   action slots. Migrate `metrics-section`, `params`/`calibration`, `metric`.
+   Biggest dedupe and kills the collapse-pattern drift.
+3. **`<Field>` / `<LabeledControl>`** — label + optional `InfoTip` + control +
+   unit adornment, in row or column layout. Folds the tooltip-wrap fix in
+   structurally and removes the most boilerplate.
+4. **`<SegmentedControl>` / `<Tabs>`** — unify main nav, chart switchers, and the
+   Trailing/Range toggle behind one `v-model`-driven component.
+5. **`<Badge>` + `<StatRow>`** — the value/pill rows in the indicator and stats.
+6. **Chart concerns as composables, not one mega-component** — extract
+   `useCrosshairBridge()` and a small `useEChart()` setup helper; optionally a
+   `<ChartLegend>`. Keep each chart its own component.
+7. **Template harvest (phase 3).** Once 1–6 land, document the kit (a gallery/
+   Storybook-style page), and only then consider spec/registry-driven assembly
+   — this is where the dormant `metricRegistry` prototype (see *Later / ideas*)
+   could return as the data-driven layer.
+
+### My take — valuable vs. over-engineering
+
+- **Clearly worth it:** the **design tokens**, **`<Panel>`**, and **`<Field>`**
+  abstractions. They're the most duplicated, the most drift-prone (this branch
+  alone touched all three by hand), and each has obvious, bounded props. Start
+  here.
+- **Worth it, smaller:** `<SegmentedControl>`, `<Badge>`/`<StatRow>`, and pulling
+  the crosshair bridge into a composable (removes a real copy-paste between two
+  charts).
+- **Likely over-engineering (defer / avoid):**
+  - A `<Button>` wrapper around every native button — CSS variant classes give
+    90% of the value with none of the prop-plumbing; only componentise if a
+    button grows real behaviour.
+  - A single generic `<Chart>` component — the charts are genuinely different
+    (axes, overlays, stacked grids, crosshair math). One abstraction would be
+    lossy; share *helpers*, not a god-component.
+  - A full theming engine / many container themes before there are consumers —
+    ship 2–3 themes (default / violet / danger), not a configurable palette.
+  - Registry/slot-driven page assembly *now* — it's the end-state vision, but
+    premature before the leaf components and their props have settled; it's how
+    the earlier metric-registry attempt over-reached and went unmerged.
+- **Sequencing principle:** abstract only on the *third* occurrence and only
+  once the variation axes are known, so the props match reality instead of being
+  guessed up front. Tokens → `Panel`/`Field` → the rest, migrating one tab at a
+  time behind a green build.
+
 ## DevOps / CI
 
 The only workflow today is `deploy.yml` (Pages deploy on push to `main`). There
