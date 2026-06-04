@@ -317,8 +317,8 @@ engine**, not a predictor.
   (`showMa`, `showBb`, …) and their per-metric configs are plain in-memory `ref`s
   in `PriceExplorer.vue`; they reset on reload and aren't encoded in the URL. A
   spec-driven registry with localStorage/URL persistence was prototyped but
-  **never merged** (see `experience.md`); `TODO.md` still lists it under Done — a
-  known doc drift to reconcile.
+  **never merged** (see `experience.md`, and the backlog note in `TODO.md` →
+  Later / ideas).
 
 ---
 

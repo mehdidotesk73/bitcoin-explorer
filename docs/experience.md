@@ -126,7 +126,8 @@ later Bollinger-score unification and consolidation kept the simpler plain-ref
 toggles. **Doc drift it left behind:** `TODO.md` lists "Indicator setup — metric
 registry" under **Done** and `system-design.md` referenced `metricRegistry.ts`,
 but on `main` the toggles are plain in-memory refs with **no** persistence or URL
-sharing (system-design §3/§7 now say so; the TODO Done entry still needs fixing).
+sharing. Reconciled: system-design §3/§7 now say so, and the TODO entry was moved
+out of Done into Later / ideas.
 
 ---
 
