@@ -1,34 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { fitCurve, type CurveModel } from './fitCurve'
-import { linregress } from './forecast'
+import { fitCurve } from './fitCurve'
+import { linregress, expGrowthModel, powGrowthModel, envelopeModel } from './forecast'
 
 // Phase A parity: the generic fitter must reproduce, to numerical precision, the
 // exact `linregress`-based fits that `fitParams` performs today — for each of the
-// three transforms used in forecast.ts. These are the same model specs Phase B
-// will wire into `fitParams`, so matching here guarantees end-to-end parity then.
+// three transforms used in forecast.ts. We use the very model specs Phase B
+// wires into `fitParams`, so matching here pins the engine end-to-end.
 
 const CLOSE = 1e-9
 const expectClose = (a: number, b: number, eps = CLOSE) =>
   expect(Math.abs(a - b)).toBeLessThan(eps + eps * Math.abs(b))
 
-// --- the three forecast models, expressed as CurveModels -------------------
-// Growth: ln(MA) = ln C + α·x          (exp)  → features [1, x],        space log
-// Growth: ln(MA) = ln C + β·ln(x+1)    (power)→ features [1, ln(x+1)],  space log
-// Envelope: ln(ratio) = ln C − λ·x            → features [1, x],        space log,
-//           with the decay rate read off as −slope.
-
-const expGrowth: CurveModel<{ constant: number; exponent: number }> = {
-  features: (x) => [1, x],
-  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: c[1] }),
-}
-const powGrowth: CurveModel<{ constant: number; exponent: number }> = {
-  features: (x) => [1, Math.log(x + 1)],
-  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: c[1] }),
-}
-const envelope: CurveModel<{ constant: number; exponent: number }> = {
-  features: (x) => [1, x],
-  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: -c[1] }),
-}
+// The three forecast models (imported, not redefined):
+//   exp growth   ln(MA)    = ln C + α·x         features [1, x],        space log
+//   power growth ln(MA)    = ln C + β·ln(x+1)   features [1, ln(x+1)],  space log
+//   envelope     ln(ratio) = ln C − λ·x         features [1, x],        space log
+const expGrowth = expGrowthModel
+const powGrowth = powGrowthModel
+const envelope = envelopeModel
 
 // Synthetic but realistic: an exponential-ish MA over ~6 years of "days", and a
 // decaying overshoot ratio sampled at a handful of "cycle tops".

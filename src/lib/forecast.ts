@@ -12,6 +12,8 @@
 // Every "automatic" calibration here reduces to ordinary least-squares in
 // log-space, so it runs instantly in the browser with no optimizer.
 
+import { fitCurve, type CurveModel } from './fitCurve'
+
 export const DAY_MS = 86_400_000
 export const DEFAULT_DAY_ZERO = '2010-07-13'
 export const DEFAULT_MA_WINDOW = 1460 // 4 years
@@ -163,11 +165,7 @@ export function percentile(sorted: number[], p: number): number {
 }
 
 /** Rolling slope of `ma` over a trailing `windowDays` window, per sample. */
-function rollingSlopes(
-  times: number[],
-  ma: (number | null)[],
-  windowDays: number,
-): number[] {
+function rollingSlopes(times: number[], ma: (number | null)[], windowDays: number): number[] {
   const out: number[] = new Array(times.length).fill(NaN)
   const span = windowDays * DAY_MS
   for (let i = 0; i < times.length; i++) {
@@ -183,6 +181,94 @@ function rollingSlopes(
     if (xs.length >= 2) out[i] = linregress(xs, ys).slope
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// Curve models + point providers (shared by fitParams and, later, the
+// uncertainty bands). Each model is linear-in-features after a log transform, so
+// fitCurve solves it as closed-form weighted OLS — the same math as the
+// linregress fits these replaced. Point selection lives in the providers, kept
+// separate from the fitter so a richer peak detector can drop in later.
+// ---------------------------------------------------------------------------
+
+interface GrowthParams {
+  constant: number
+  exponent: number
+}
+
+/** ln(MA) = ln C + α·x  →  MA = C·e^(α·x). */
+export const expGrowthModel: CurveModel<GrowthParams> = {
+  features: (x) => [1, x],
+  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: c[1] }),
+}
+
+/** ln(MA) = ln C + β·ln(x+1)  →  MA = C·(x+1)^β. */
+export const powGrowthModel: CurveModel<GrowthParams> = {
+  features: (x) => [1, Math.log(x + 1)],
+  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: c[1] }),
+}
+
+/** ln(ratio) = ln C − λ·x  →  ratio = C·e^(−λx); the decay λ is read as −slope. */
+export const envelopeModel: CurveModel<GrowthParams> = {
+  features: (x) => [1, x],
+  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: -c[1] }),
+}
+
+/**
+ * Value-curve points: every valid MA sample inside the calibration window, as
+ * (daysSince(t), MA). Both growth models fit these same points.
+ */
+export function maPoints(
+  times: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  fitCutoff = -Infinity,
+): { xs: number[]; ys: number[] } {
+  const xs: number[] = []
+  const ys: number[] = []
+  for (let i = 0; i < times.length; i++) {
+    const m = ma[i]
+    if (m == null || m <= 0) continue
+    if (times[i] < fitCutoff) continue
+    const x = daysSince(times[i], dayZeroMs)
+    if (x <= 0) continue
+    xs.push(x)
+    ys.push(m)
+  }
+  return { xs, ys }
+}
+
+/**
+ * Envelope points: the price/MA − 1 ratio at each observable cycle top (within
+ * `snapDays` of a peak date, ratio > 0), as (daysSince(t), ratio). This is the
+ * hand-picked-dates selection — swappable later for a data-driven peak detector
+ * without touching the fitter.
+ */
+export function peakPoints(
+  times: number[],
+  prices: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  peakDatesMs: number[],
+  lastTime: number,
+  snapDays = 45,
+): { xs: number[]; ys: number[] } {
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const pd of peakDatesMs) {
+    if (pd > lastTime) continue // future top: not observable yet
+    const i = nearestIndex(times, pd)
+    if (i < 0) continue
+    if (Math.abs(times[i] - pd) > snapDays * DAY_MS) continue
+    const m = ma[i]
+    if (m == null || m <= 0) continue
+    const ratio = prices[i] / m - 1
+    if (ratio > 0) {
+      xs.push(daysSince(times[i], dayZeroMs))
+      ys.push(ratio)
+    }
+  }
+  return { xs, ys }
 }
 
 /**
@@ -206,72 +292,50 @@ export function fitParams(
   const lastTime = times[times.length - 1] ?? 0
   const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
 
-  const xExp: number[] = []
-  const yExp: number[] = []
-  const xPow: number[] = []
-  const yPow: number[] = []
+  // Growth: both baselines fit ln(MA) over the same calibration-window MA points
+  // (maPoints); they differ only in the model's features and the power fit's
+  // recency weighting.
+  const gPts = maPoints(times, ma, dayZeroMs, fitCutoff)
+  const expFit = fitCurve(gPts.xs, gPts.ys, expGrowthModel, { space: 'log' })
   // Daily samples are uniform in x but the power fit regresses on ln(x+1), so
   // recent years are exponentially over-represented. Weighting each point by
   // (x+1)^(−γ) counteracts that: γ=0 is plain per-sample OLS, γ=1 gives equal
   // weight per log-time decade (lets early cycles steepen the slope).
-  const wPow: number[] = []
-  for (let i = 0; i < times.length; i++) {
-    const m = ma[i]
-    if (m == null || m <= 0) continue
-    if (times[i] < fitCutoff) continue // outside the calibration window
-    const x = daysSince(times[i], dayZeroMs)
-    if (x <= 0) continue
-    xExp.push(x)
-    yExp.push(Math.log(m)) // ln(MA) = ln C + α·x
-    xPow.push(Math.log(x + 1))
-    yPow.push(Math.log(m)) // ln(MA) = ln C + β·ln(x+1)
-    wPow.push(powFitGamma !== 0 ? Math.pow(x + 1, -powFitGamma) : 1)
-  }
-  const expFit = linregress(xExp, yExp)
-  const powFit = linregress(xPow, yPow, powFitGamma !== 0 ? wPow : undefined)
+  const wPow = powFitGamma !== 0 ? gPts.xs.map((x) => Math.pow(x + 1, -powFitGamma)) : undefined
+  const powFit = fitCurve(gPts.xs, gPts.ys, powGrowthModel, { space: 'log', weights: wPow })
 
   // Envelope: at a cycle top, price/MA ≈ envelope, so price/MA − 1 ≈ C·e^(−λx).
-  const xEnv: number[] = []
-  const yEnv: number[] = []
-  for (const pd of peakDatesMs) {
-    if (pd > lastTime) continue // future top: not observable yet
-    const i = nearestIndex(times, pd)
-    if (i < 0) continue
-    if (Math.abs(times[i] - pd) > 45 * DAY_MS) continue
-    const m = ma[i]
-    if (m == null || m <= 0) continue
-    const ratio = prices[i] / m - 1
-    if (ratio > 0) {
-      xEnv.push(daysSince(times[i], dayZeroMs))
-      yEnv.push(Math.log(ratio))
-    }
+  // Fit ln(ratio) over the observable tops; fall back to the prior hand-picked
+  // constants when fewer than two tops are in range.
+  const envPts = peakPoints(times, prices, ma, dayZeroMs, peakDatesMs, lastTime)
+  let envConstant = 48.77
+  let envExponent = 0.000511
+  if (envPts.xs.length >= 2) {
+    const envFit = fitCurve(envPts.xs, envPts.ys, envelopeModel, { space: 'log' })
+    envConstant = envFit.params.constant
+    envExponent = envFit.params.exponent
   }
-  const envFit =
-    xEnv.length >= 2
-      ? linregress(xEnv, yEnv)
-      : { slope: -0.000511, intercept: Math.log(48.77), r2: 0 }
 
   // Linear rate: the chosen percentile of the trailing MA slopes. Each slope is
   // measured over a `slopeWindowDays` window (daily/weekly/monthly/yearly), and
   // samples are gathered across the last `slopeRangeDays` of history (0 = all).
   // A short window relative to the very smooth 4yr MA gives the slope
   // distribution real spread, so the percentile meaningfully changes the rate.
-  const slopeCutoff =
-    slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
+  const slopeCutoff = slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
   const slopes = rollingSlopes(times, ma, Math.max(slopeWindowDays, 2))
     .filter((s, i) => Number.isFinite(s) && times[i] >= slopeCutoff)
     .sort((a, b) => a - b)
   const linRate = percentile(slopes, slopePercentile)
 
   return {
-    expConstant: Math.exp(expFit.intercept),
-    expExponent: expFit.slope,
-    expR2: expFit.r2,
-    powConstant: Math.exp(powFit.intercept),
-    powExponent: powFit.slope,
-    powR2: powFit.r2,
-    envConstant: Math.exp(envFit.intercept),
-    envExponent: -envFit.slope,
+    expConstant: expFit.params.constant,
+    expExponent: expFit.params.exponent,
+    expR2: expFit.metrics.r2,
+    powConstant: powFit.params.constant,
+    powExponent: powFit.params.exponent,
+    powR2: powFit.metrics.r2,
+    envConstant,
+    envExponent,
     linRate,
   }
 }
@@ -372,8 +436,7 @@ export function projectForecast(
     } else if (cfg.envelopeType === 'value-exponential-decay') {
       env =
         1 +
-        cfg.vedConstant *
-          Math.exp(-cfg.vedExponent * Math.pow(Math.max(mval, 1e-9), cfg.vedPower))
+        cfg.vedConstant * Math.exp(-cfg.vedExponent * Math.pow(Math.max(mval, 1e-9), cfg.vedPower))
     } else {
       env = cfg.constValue
     }
