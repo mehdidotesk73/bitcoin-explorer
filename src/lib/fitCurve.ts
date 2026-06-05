@@ -49,6 +49,13 @@ const dot = (a: number[], b: number[]): number => {
   return s
 }
 
+/** Fit-space transform pair: identity for 'linear', ln/exp for 'log'. */
+function transforms(space: FitSpace): { T: (v: number) => number; invT: (v: number) => number } {
+  return space === 'log'
+    ? { T: Math.log, invT: Math.exp }
+    : { T: (v) => v, invT: (v) => v }
+}
+
 /**
  * Solve A·x = b for a small k×k system via Gaussian elimination with partial
  * pivoting. `A` is row-major (k rows of k), `b` has length k. A singular system
@@ -97,8 +104,7 @@ export function fitCurve<P>(
 ): FitResult<P> {
   const space = opts.space ?? 'linear'
   const n = xs.length
-  const T = space === 'log' ? Math.log : (v: number) => v
-  const invT = space === 'log' ? Math.exp : (v: number) => v
+  const { T, invT } = transforms(space)
 
   const Phi: number[][] = new Array(n)
   const ty: number[] = new Array(n)
@@ -146,4 +152,152 @@ export function fitCurve<P>(
     eval: (x: number) => invT(dot(model.features(x), coeffs)),
     metrics: { r2, residuals, n },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase C — resampling → ensemble of alternative tunes.
+//
+// Each strategy perturbs the inputs and re-fits, yielding an ensemble of
+// plausible coefficient sets. The strategy must match the data density (see the
+// stochastic-projection plan in docs/TODO.md):
+//   • residual-block — for the many autocorrelated value-curve points: shuffle
+//     blocks of fit-space residuals (preserving short-range autocorrelation) and
+//     re-apply them to the fitted curve (model·exp(r*) in log space), then refit.
+//   • jackknife / cases — for the few hand-picked cycle-top points: a residual
+//     bootstrap on 3–4 near-perfectly-fit points gives a fake-tight band; the
+//     real uncertainty is "only 3–4 cycles", so resample *whole points* (each
+//     point is one cycle, so this is the composite provider+fit varying which
+//     tops form the edge). jackknife = leave-one-out; cases = draw n w/ replace.
+// The fit stays closed-form, so B≈1000 refits remain near-instant.
+// ---------------------------------------------------------------------------
+
+export type Resample =
+  | { kind: 'residual-block'; blockLen: number; B: number; seed?: number }
+  | { kind: 'jackknife' }
+  | { kind: 'cases'; B: number; seed?: number }
+
+export interface Ensemble<P> {
+  /** The fit on the unperturbed data — the central tune. */
+  base: FitResult<P>
+  /** One refit per resample draw (jackknife: one per dropped point). */
+  members: FitResult<P>[]
+  /**
+   * Predictive spread from the ensemble: for each quantile q (0–100), the
+   * member-`eval` values across `xs`. Returns one number[] per quantile, aligned
+   * with `quantiles`. (Parameter/trend uncertainty — see the Phase D labelling.)
+   */
+  bandAt: (xs: number[], quantiles: number[]) => number[][]
+}
+
+/** Deterministic, seedable PRNG (mulberry32) so ensembles reproduce. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Linear-interpolated p-th percentile (0–100) of an ascending array. */
+function quantileSorted(sorted: number[], p: number): number {
+  const n = sorted.length
+  if (n === 0) return NaN
+  if (n === 1) return sorted[0]
+  const rank = (Math.min(100, Math.max(0, p)) / 100) * (n - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo)
+}
+
+/** Circular moving-block bootstrap of a residual vector (preserves runs). */
+function blockResample(res: number[], blockLen: number, rng: () => number): number[] {
+  const n = res.length
+  const L = Math.max(1, Math.min(Math.floor(blockLen), n))
+  const out: number[] = []
+  while (out.length < n) {
+    const start = Math.floor(rng() * n)
+    for (let k = 0; k < L && out.length < n; k++) out[out.length] = res[(start + k) % n]
+  }
+  return out
+}
+
+/**
+ * Build an ensemble of refits via the chosen `resample` strategy. `bandAt` reads
+ * predictive quantiles off the members. Closed-form refits keep this cheap.
+ */
+export function fitEnsemble<P>(
+  xs: number[],
+  ys: number[],
+  model: CurveModel<P>,
+  resample: Resample,
+  opts: FitOptions = {},
+): Ensemble<P> {
+  const base = fitCurve(xs, ys, model, opts)
+  const n = xs.length
+  const k = n > 0 ? model.features(xs[0]).length : 0
+  const { T, invT } = transforms(opts.space ?? 'linear')
+  const members: FitResult<P>[] = []
+
+  if (resample.kind === 'residual-block') {
+    const rng = mulberry32(resample.seed ?? 0x9e3779b9)
+    // Fitted fit-space values, so synthetic targets are fitted + shuffled resid.
+    const fittedT = xs.map((x) => T(base.eval(x)))
+    for (let b = 0; b < resample.B; b++) {
+      const star = blockResample(base.metrics.residuals, resample.blockLen, rng)
+      const ysStar = fittedT.map((f, i) => invT(f + star[i]))
+      members.push(fitCurve(xs, ysStar, model, opts))
+    }
+  } else if (resample.kind === 'jackknife') {
+    // Leave-one-cycle-out: drop each point in turn (needs > k points to fit).
+    if (n > k) {
+      for (let drop = 0; drop < n; drop++) {
+        const xj: number[] = []
+        const yj: number[] = []
+        const wj: number[] | undefined = opts.weights ? [] : undefined
+        for (let i = 0; i < n; i++) {
+          if (i === drop) continue
+          xj.push(xs[i])
+          yj.push(ys[i])
+          if (wj && opts.weights) wj.push(opts.weights[i])
+        }
+        members.push(fitCurve(xj, yj, model, { ...opts, weights: wj }))
+      }
+    }
+  } else {
+    // cases: draw n points with replacement; skip degenerate (< k distinct x).
+    const rng = mulberry32(resample.seed ?? 0x85ebca6b)
+    for (let b = 0; b < resample.B; b++) {
+      const xc: number[] = []
+      const yc: number[] = []
+      const wc: number[] | undefined = opts.weights ? [] : undefined
+      const seen = new Set<number>()
+      for (let i = 0; i < n; i++) {
+        const j = Math.floor(rng() * n)
+        seen.add(xs[j])
+        xc.push(xs[j])
+        yc.push(ys[j])
+        if (wc && opts.weights) wc.push(opts.weights[j])
+      }
+      if (seen.size < k) continue
+      members.push(fitCurve(xc, yc, model, { ...opts, weights: wc }))
+    }
+  }
+
+  const bandAt = (gx: number[], quantiles: number[]): number[][] => {
+    const pool = members.length > 0 ? members : [base]
+    return quantiles.map((q) =>
+      gx.map((x) => {
+        const vals = pool
+          .map((m) => m.eval(x))
+          .filter((v) => Number.isFinite(v))
+          .sort((a, b) => a - b)
+        return quantileSorted(vals, q)
+      }),
+    )
+  }
+
+  return { base, members, bandAt }
 }

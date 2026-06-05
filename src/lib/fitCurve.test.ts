@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fitCurve } from './fitCurve'
+import { fitCurve, fitEnsemble } from './fitCurve'
 import { linregress, expGrowthModel, powGrowthModel, envelopeModel } from './forecast'
 
 // Phase A parity: the generic fitter must reproduce, to numerical precision, the
@@ -75,5 +75,73 @@ describe('fitCurve parity with linregress (the engine fitParams uses)', () => {
     expectClose(got.coeffs[0], ref.intercept)
     expectClose(got.coeffs[1], ref.slope)
     expectClose(got.metrics.r2, ref.r2, 1e-6)
+  })
+})
+
+describe('fitEnsemble — Phase C resampling', () => {
+  const sortedAtX = (band: number[][], col: number) => band.map((row) => row[col])
+
+  it('residual-block: B members, seed-reproducible, band brackets the base fit', () => {
+    const rs = { kind: 'residual-block', blockLen: 13, B: 200, seed: 42 } as const
+    const a = fitEnsemble(xs, ma, expGrowth, rs, { space: 'log' })
+    const b = fitEnsemble(xs, ma, expGrowth, rs, { space: 'log' })
+    expect(a.members.length).toBe(200)
+    // Same seed → identical ensemble (deterministic).
+    expectClose(a.members[0].params.exponent, b.members[0].params.exponent)
+
+    const gx = [100, 1000, 2100]
+    const band = a.bandAt(gx, [10, 50, 90])
+    for (let c = 0; c < gx.length; c++) {
+      const [lo, mid, hi] = sortedAtX(band, c)
+      expect(lo).toBeLessThanOrEqual(mid)
+      expect(mid).toBeLessThanOrEqual(hi)
+      // The unperturbed fit sits inside the 10–90 band.
+      const baseY = a.base.eval(gx[c])
+      expect(baseY).toBeGreaterThanOrEqual(lo)
+      expect(baseY).toBeLessThanOrEqual(hi)
+    }
+  })
+
+  it('jackknife: one leave-one-out member per cycle top', () => {
+    const e = fitEnsemble(peakX, peakRatio, envelope, { kind: 'jackknife' }, { space: 'log' })
+    expect(e.members.length).toBe(peakX.length)
+    // Dropping a clean point barely moves the fit; band stays tight but ordered.
+    const band = e.bandAt([1000], [5, 95])
+    expect(band[0][0]).toBeLessThanOrEqual(band[1][0])
+  })
+
+  it('cases: resamples whole points and skips degenerate draws', () => {
+    const e = fitEnsemble(
+      peakX,
+      peakRatio,
+      envelope,
+      { kind: 'cases', B: 300, seed: 7 },
+      { space: 'log' },
+    )
+    // Most draws are non-degenerate (≥ 2 distinct of 5), so we keep plenty.
+    expect(e.members.length).toBeGreaterThan(250)
+    expect(e.members.length).toBeLessThanOrEqual(300)
+  })
+
+  it('perf checkpoint: B=1000 full-history refits stay near-instant', () => {
+    // ~4000 daily points — the full-history scale the plan budgets for.
+    const bx: number[] = []
+    const by: number[] = []
+    for (let d = 1; d <= 4000; d++) {
+      bx.push(d)
+      by.push(100 * Math.exp(0.0016 * d) * (1 + 0.04 * Math.sin(d / 80)))
+    }
+    const t0 = performance.now()
+    const e = fitEnsemble(
+      bx,
+      by,
+      expGrowth,
+      { kind: 'residual-block', blockLen: 30, B: 1000, seed: 1 },
+      { space: 'log' },
+    )
+    const ms = performance.now() - t0
+    expect(e.members.length).toBe(1000)
+    // Generous CI-safe bound; locally this is well under a second.
+    expect(ms).toBeLessThan(5000)
   })
 })
