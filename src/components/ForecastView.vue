@@ -338,7 +338,12 @@ const chartFormat = computed<'usd' | 'ratio'>(() =>
 const confLevel = ref(90)
 const CONF_LEVELS = [80, 90, 95]
 const BAND_B = 400 // bootstrap draws for the growth fan
-const BAND_BLOCK_DAYS = 90 // moving-block length (preserves short-run autocorr)
+// Moving-block length for the growth-fan bootstrap. The fit is to the very smooth
+// 4yr MA, whose deviations from trend persist over a *full halving cycle*, so
+// short blocks (e.g. 90d) treat overlapping windows as independent and collapse
+// the fan to a sliver. A cycle-scale block honestly encodes that we have only
+// ~3–4 independent cycles of trend information (≪ the ~5000 daily points).
+const BAND_BLOCK_DAYS = 1460
 const BAND_SEED = 1
 
 // Growth fan around the value baseline (exp/power only; linear has no LS fit).
