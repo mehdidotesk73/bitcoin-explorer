@@ -299,6 +299,20 @@ the orthogonality the owner flagged at the outset). Pick it up after Phase E.
 
 ## Later / ideas
 
+- **Numerical (Jacobian) solver for the fitter — fit genuinely nonlinear params.**
+  Today `fitCurve` is **closed-form weighted LS only**, so any nonlinear param is
+  *held fixed* during the fit (e.g. value-exponential-decay's shape exponent `p`
+  is a user knob; only `C` and `λ` are solved — see `vedModel`). When there's time
+  and reason, add an iterative path (Gauss–Newton / Levenberg–Marquardt with a
+  numerical Jacobian, models supplying just `eval`) so `p`-like params can be fit
+  jointly. Heed the conditioning caveats we already mapped: MA spans ~6 orders →
+  `MA^p` has huge dynamic range, `λ`/`p` are confounded, and there are only ~3–4
+  peak points for 3 params (near-degenerate). The robust, low-conditioning route
+  is **separable LS / variable projection** — a bounded 1-D search over `p` with
+  `C`,`λ` solved closed-form inside each step — rather than throwing all three into
+  a raw solver. Keep the closed-form path for the linear-in-features models (it's
+  exact and instant); the solver is only for the truly nonlinear knobs.
+
 - **Metric registry + persistence (prototyped, not merged).** A spec-driven
   metric system (`lib/metricRegistry.ts`: `MetricSpec`/`MetricState`, data-driven
   toggle rendering, localStorage + URL-encoded persistence for shareable views)
