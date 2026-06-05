@@ -6,6 +6,8 @@ import {
   movingAverage,
   fitParams,
   projectForecast,
+  growthBand,
+  envelopeBand,
   DEFAULT_DAY_ZERO,
   DEFAULT_MA_WINDOW,
   DEFAULT_PEAK_DATES,
@@ -191,7 +193,7 @@ const config = computed<ForecastConfig>(() => ({
   peakDatesMs: peakDatesMs.value,
   peakSpread: peakSpread.value,
   horizonMs: horizonMs.value,
-  resolutionDays: 7,
+  resolutionDays: RESOLUTION_DAYS,
 }))
 
 const forecast = computed(() =>
@@ -206,9 +208,23 @@ const forecast = computed(() =>
 
 const nowDate = new Date().toISOString().slice(0, 10)
 const DAY_MS = 86_400_000
+const RESOLUTION_DAYS = 7 // projection grid step; shared by config + the band grid
 
 // --- Cycle-peak editing -----------------------------------------------------
 const horizonMs = computed(() => Date.parse(`${horizonYear.value}-12-31`))
+
+// The projection's daysSince grid, derived independently of peak edits so the
+// (expensive) growth-fan bootstrap doesn't recompute when only peaks move. Built
+// to match projectForecast's grid exactly (same first sample, step, horizon).
+const gridXg = computed(() => {
+  const ts = times.value
+  if (!ts.length) return []
+  const step = RESOLUTION_DAYS * DAY_MS
+  const dz = dayZeroMs.value
+  const out: number[] = []
+  for (let t = ts[0]; t <= horizonMs.value; t += step) out.push((t - dz) / DAY_MS)
+  return out
+})
 const toISODate = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
 // Sliders span from the first data point to the projection horizon.
@@ -315,16 +331,88 @@ const chartFormat = computed<'usd' | 'ratio'>(() =>
   chartTab.value === 'ratio' || chartTab.value === 'envelope' ? 'ratio' : 'usd',
 )
 
-// Price-tab shaded band: lower = value baseline (modelMa), upper = the same
-// baseline lifted by the volatility envelope (modelMa × envelope). Shows the
-// projection's plausible range as a cone that widens/narrows with volatility.
+// --- Parameter-uncertainty bands (Phase D) ----------------------------------
+// The "trend-line fan": resample the fit and show where the fitted curve could
+// sit. Epistemic, marginal per-horizon — not a price-scatter forecast. The
+// confidence level picks the central coverage (80/90/95).
+const confLevel = ref(90)
+const CONF_LEVELS = [80, 90, 95]
+const BAND_B = 400 // bootstrap draws for the growth fan
+const BAND_BLOCK_DAYS = 90 // moving-block length (preserves short-run autocorr)
+const BAND_SEED = 1
+
+// Growth fan around the value baseline (exp/power only; linear has no LS fit).
+// Uses the peak-independent `gridXg` so it doesn't re-bootstrap on peak edits.
+const valueFan = computed(() => {
+  if (!gridXg.value.length) return null
+  return growthBand(
+    times.value,
+    ma.value,
+    dayZeroMs.value,
+    growthType.value,
+    gridXg.value,
+    fitWindowDays.value,
+    powFitGamma.value,
+    { level: confLevel.value, B: BAND_B, blockLen: BAND_BLOCK_DAYS, seed: BAND_SEED },
+  )
+})
+
+// Envelope band: leave-one-cycle-out jackknife of the hand-picked tops.
+const envFan = computed(() => {
+  const f = forecast.value
+  if (!f) return null
+  return envelopeBand(
+    times.value,
+    prices.value,
+    ma.value,
+    dayZeroMs.value,
+    envelopeType.value,
+    peakDatesMs.value,
+    gridXg.value,
+    f.modelMa,
+    p.vedPower,
+    confLevel.value,
+  )
+})
+
+// Shaded band, per chart tab:
+//  • price    — the volatility cone (modelMa → modelMa × envelope), as before.
+//  • baseline — the growth trend-line fan (where the fitted curve could sit).
+//  • envelope — the leave-one-cycle-out envelope band.
 const chartBand = computed(() => {
   const f = forecast.value
-  if (!f || chartTab.value !== 'price') return undefined
-  return {
-    lower: f.modelMa,
-    upper: f.modelMa.map((m, i) => m * f.envelope[i]),
-    color: C_BLUE,
+  if (!f) return undefined
+  if (chartTab.value === 'price') {
+    return {
+      lower: f.modelMa,
+      upper: f.modelMa.map((m, i) => m * f.envelope[i]),
+      color: C_BLUE,
+    }
+  }
+  if (chartTab.value === 'baseline' && valueFan.value) {
+    return { lower: valueFan.value.lo, upper: valueFan.value.hi, color: C_BLUE }
+  }
+  if (chartTab.value === 'envelope' && envFan.value) {
+    return { lower: envFan.value.lo, upper: envFan.value.hi, color: C_TEAL }
+  }
+  return undefined
+})
+
+// Honest, per-tab description of what the shaded band means.
+const bandNote = computed(() => {
+  switch (chartTab.value) {
+    case 'baseline':
+      return valueFan.value
+        ? `Shaded: ${confLevel.value}% trend-line fan — where the fitted growth curve could sit given the data (parameter uncertainty, marginal per year). Not a price-scatter forecast; assumes the curve shape is right.`
+        : 'Linear growth is a percentile-slope statistic, not a fitted curve, so it has no trend-line fan.'
+    case 'envelope':
+      return envFan.value
+        ? `Shaded: ${confLevel.value}% band from leaving each cycle top out in turn. Only ~3–4 cycles exist, so it is deliberately wide — it reflects "few cycles", not day-to-day scatter.`
+        : 'This volatility form has no fitted band (constant, or not yet wired).'
+    case 'price':
+      return 'Shaded: the volatility cone (baseline up to baseline × envelope) — the modelled overshoot range, not a confidence interval.'
+    default:
+      return ''
   }
 })
 
@@ -656,15 +744,23 @@ const fmtNum = (v: number) =>
       </template>
     </Panel>
 
-    <div class="chart-tabs" v-if="forecast">
-      <button
-        v-for="t in CHART_TABS"
-        :key="t.id"
-        :class="{ active: chartTab === t.id }"
-        @click="chartTab = t.id"
-      >
-        {{ t.label }}
-      </button>
+    <div class="chart-toolbar" v-if="forecast">
+      <div class="chart-tabs">
+        <button
+          v-for="t in CHART_TABS"
+          :key="t.id"
+          :class="{ active: chartTab === t.id }"
+          @click="chartTab = t.id"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+      <label class="conf-pick">
+        <span>Band <InfoTip term="trendFan" /></span>
+        <select v-model.number="confLevel">
+          <option v-for="lvl in CONF_LEVELS" :key="lvl" :value="lvl">{{ lvl }}%</option>
+        </select>
+      </label>
     </div>
 
     <ForecastChart
@@ -679,6 +775,7 @@ const fmtNum = (v: number) =>
       :value-format="chartFormat"
       :band="chartBand"
     />
+    <p class="band-note" v-if="forecast && bandNote">{{ bandNote }}</p>
   </div>
 </template>
 
@@ -847,11 +944,35 @@ h4 {
   color: #fff;
   border-color: var(--accent-violet);
 }
+.chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.conf-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.conf-pick select {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.4rem;
+}
+.band-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
 .chart-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-  margin-bottom: 0.5rem;
 }
 .chart-tabs button {
   font-size: 0.78rem;

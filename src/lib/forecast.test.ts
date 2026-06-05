@@ -6,6 +6,8 @@ import {
   maPoints,
   peakPoints,
   peakValuePoints,
+  growthBand,
+  envelopeBand,
   DAY_MS,
 } from './forecast'
 
@@ -149,6 +151,35 @@ describe('value-exponential-decay fit (C and λ at a held p)', () => {
     // A different exponent yields a different fit than the default.
     const base = fitParams(times, prices, ma, DZ, peaks)
     expect(Math.abs(a.vedExponent - base.vedExponent)).toBeGreaterThan(0)
+  })
+})
+
+describe('Phase D — parameter-uncertainty bands', () => {
+  // A grid of daysSince(DZ) spanning history + a little future.
+  const gridXg = [200, 1000, 2000, 2920, 3600].map((d) => (START + d * DAY_MS - DZ) / DAY_MS)
+
+  it('growthBand: lo ≤ hi everywhere and a wider level gives a wider band', () => {
+    const spec = (level: number) => ({ level, B: 150, blockLen: 20, seed: 3 })
+    const b80 = growthBand(times, ma, DZ, 'power', gridXg, 0, 1, spec(80))!
+    const b95 = growthBand(times, ma, DZ, 'power', gridXg, 0, 1, spec(95))!
+    expect(b80).not.toBeNull()
+    for (let i = 0; i < gridXg.length; i++) {
+      expect(b80.lo[i]).toBeLessThanOrEqual(b80.hi[i])
+      // 95% must be at least as wide as 80% at each grid point.
+      expect(b95.hi[i] - b95.lo[i]).toBeGreaterThanOrEqual(b80.hi[i] - b80.lo[i] - 1e-9)
+    }
+  })
+
+  it('growthBand: linear growth has no fitted fan (null)', () => {
+    expect(growthBand(times, ma, DZ, 'linear', gridXg, 0, 0, { level: 90, B: 50, blockLen: 20 })).toBeNull()
+  })
+
+  it('envelopeBand: value-exponential-decay yields an ordered band; constant is null', () => {
+    const gridMa = gridXg.map((x) => 1e-5 * Math.pow(x, 3)) // stand-in baseline
+    const ved = envelopeBand(times, prices, ma, DZ, 'value-exponential-decay', peaks, gridXg, gridMa, 0.245, 90)
+    expect(ved).not.toBeNull()
+    for (let i = 0; i < gridXg.length; i++) expect(ved!.lo[i]).toBeLessThanOrEqual(ved!.hi[i])
+    expect(envelopeBand(times, prices, ma, DZ, 'constant', peaks, gridXg, gridMa, 0.245, 90)).toBeNull()
   })
 })
 

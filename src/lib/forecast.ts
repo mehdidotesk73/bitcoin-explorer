@@ -12,7 +12,7 @@
 // Every "automatic" calibration here reduces to ordinary least-squares in
 // log-space, so it runs instantly in the browser with no optimizer.
 
-import { fitCurve, type CurveModel } from './fitCurve'
+import { fitCurve, fitEnsemble, type CurveModel } from './fitCurve'
 
 export const DAY_MS = 86_400_000
 export const DEFAULT_DAY_ZERO = '2010-07-13'
@@ -428,6 +428,7 @@ export interface ForecastConfig {
 
 export interface ForecastResult {
   dates: string[]
+  xG: number[] // daysSince(dayZero) for each grid point — the band x-basis
   actual: (number | null)[] // real price sampled onto the grid (null in future)
   actualMa: (number | null)[] // real trailing MA sampled onto the grid (null in future)
   modelMa: number[] // value baseline
@@ -459,6 +460,7 @@ export function projectForecast(
   const step = cfg.resolutionDays * DAY_MS
 
   const dates: string[] = []
+  const xGs: number[] = []
   const actual: (number | null)[] = []
   const actualMa: (number | null)[] = []
   const modelMa: number[] = []
@@ -514,6 +516,7 @@ export function projectForecast(
     }
 
     dates.push(toISO(t))
+    xGs.push(xG)
     modelMa.push(mval)
     envelope.push(env)
     priceOverMa.push(pom)
@@ -528,5 +531,111 @@ export function projectForecast(
     }
   }
 
-  return { dates, actual, actualMa, modelMa, envelope, priceOverMa, projected }
+  return { dates, xG: xGs, actual, actualMa, modelMa, envelope, priceOverMa, projected }
+}
+
+// ---------------------------------------------------------------------------
+// Phase D — parameter-uncertainty bands (the trend-line fan).
+//
+// Resample the *same* fit points (Phase C) and read predictive quantiles off the
+// ensemble over the projection grid. This is epistemic — "where could the fitted
+// line sit" — NOT a price-scatter forecast, and it is *marginal* per horizon. The
+// band also assumes the chosen curve *shape* is right (model-form risk on long
+// extrapolation). Surface those caveats in the UI.
+// ---------------------------------------------------------------------------
+
+export interface BandSpec {
+  level: number // central coverage %, e.g. 80 / 90 / 95
+  B: number // bootstrap draws for the value-curve fan
+  blockLen: number // moving-block length (days) for the residual bootstrap
+  seed?: number
+}
+
+export interface Band {
+  lo: number[]
+  hi: number[]
+}
+
+const twoSidedQuantiles = (level: number): [number, number] => {
+  const tail = (100 - Math.min(100, Math.max(0, level))) / 2
+  return [tail, 100 - tail]
+}
+
+/**
+ * Trend-line fan for the value baseline: block-residual-bootstrap the growth fit
+ * (Phase C) and read lo/hi `modelMa` over `gridXg` (the projection's daysSince
+ * grid). Only the LS growth models get a fan; linear growth is a percentile-slope
+ * statistic, not a curve fit, so it returns null.
+ */
+export function growthBand(
+  times: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  growthType: GrowthType,
+  gridXg: number[],
+  fitWindowDays: number,
+  powFitGamma: number,
+  spec: BandSpec,
+): Band | null {
+  if (growthType !== 'exponential' && growthType !== 'power') return null
+  const lastTime = times[times.length - 1] ?? 0
+  const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
+  const pts = maPoints(times, ma, dayZeroMs, fitCutoff)
+  if (pts.xs.length < 3) return null
+  const model = growthType === 'exponential' ? expGrowthModel : powGrowthModel
+  const weights =
+    growthType === 'power' && powFitGamma !== 0
+      ? pts.xs.map((x) => Math.pow(x + 1, -powFitGamma))
+      : undefined
+  const ens = fitEnsemble(
+    pts.xs,
+    pts.ys,
+    model,
+    { kind: 'residual-block', blockLen: spec.blockLen, B: spec.B, seed: spec.seed },
+    { space: 'log', weights },
+  )
+  const [loQ, hiQ] = twoSidedQuantiles(spec.level)
+  const [lo, hi] = ens.bandAt(gridXg, [loQ, hiQ])
+  return { lo, hi }
+}
+
+/**
+ * Uncertainty band for the volatility envelope, from a leave-one-cycle-out
+ * jackknife of the hand-picked tops — small-N, so deliberately wide (the real
+ * uncertainty is "only 3–4 cycles", not their scatter). Supports the LS envelope
+ * forms: time-based decay reads over `gridXg`, value-based exponential decay over
+ * `gridMa` (the projected baseline). Constant / value-power-decay return null.
+ */
+export function envelopeBand(
+  times: number[],
+  prices: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  envelopeType: EnvelopeType,
+  peakDatesMs: number[],
+  gridXg: number[],
+  gridMa: number[],
+  vedPower: number,
+  level: number,
+): Band | null {
+  const lastTime = times[times.length - 1] ?? 0
+  let pts: { xs: number[]; ys: number[] }
+  let model: CurveModel<GrowthParams>
+  let grid: number[]
+  if (envelopeType === 'exponential-decay') {
+    pts = peakPoints(times, prices, ma, dayZeroMs, peakDatesMs, lastTime)
+    model = envelopeModel
+    grid = gridXg
+  } else if (envelopeType === 'value-exponential-decay') {
+    pts = peakValuePoints(times, prices, ma, dayZeroMs, peakDatesMs, lastTime)
+    model = vedModel(vedPower)
+    grid = gridMa
+  } else {
+    return null // constant + value-power-decay: no band in this pass
+  }
+  if (pts.xs.length < 3) return null // need > k points for the jackknife to vary
+  const ens = fitEnsemble(pts.xs, pts.ys, model, { kind: 'jackknife' }, { space: 'log' })
+  const [loQ, hiQ] = twoSidedQuantiles(level)
+  const [lo, hi] = ens.bandAt(grid, [loQ, hiQ])
+  return { lo: lo.map((r) => 1 + r), hi: hi.map((r) => 1 + r) } // envelope = 1 + ratio
 }

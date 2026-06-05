@@ -8,6 +8,12 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: Record<string, GlossaryEntry> = {
+  // --- Price Mechanics: uncertainty ---
+  trendFan: {
+    term: 'Trend-line fan',
+    def: 'A shaded band showing where the fitted curve could reasonably sit, found by re-fitting on resampled history. It captures uncertainty in the fit — not how far day-to-day price can swing — and a higher % makes it wider.',
+  },
+
   // --- Price Explorer: indicators ---
   ma: {
     term: 'Moving average (MA)',
