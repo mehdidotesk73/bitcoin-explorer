@@ -334,9 +334,10 @@ const chartFormat = computed<'usd' | 'ratio'>(() =>
 // --- Parameter-uncertainty bands (Phase D) ----------------------------------
 // The "trend-line fan": resample the fit and show where the fitted curve could
 // sit. Epistemic, marginal per-horizon — not a price-scatter forecast. The
-// confidence level picks the central coverage (80/90/95).
-const confLevel = ref(90)
-const CONF_LEVELS = [80, 90, 95]
+// confidence level picks the central coverage: a band at level L spans the
+// central L% of the resampled re-fits at each point (90/95/99).
+const confLevel = ref(95)
+const CONF_LEVELS = [90, 95, 99]
 const BAND_B = 400 // bootstrap draws for the growth fan
 // Moving-block length for the growth-fan bootstrap. The fit is to the very smooth
 // 4yr MA, whose deviations from trend persist over a *full halving cycle*, so
@@ -408,11 +409,11 @@ const bandNote = computed(() => {
   switch (chartTab.value) {
     case 'baseline':
       return valueFan.value
-        ? `Shaded: ${confLevel.value}% trend-line fan — where the fitted growth curve could sit given the data (parameter uncertainty, marginal per year). Not a price-scatter forecast; assumes the curve shape is right.`
+        ? `Shaded: the trend-line fan — re-fitting the growth curve on resampled history, the band covers the central ${confLevel.value}% of those fits. It is uncertainty in where the fitted line sits (marginal per year), NOT a price-scatter forecast, and assumes the curve shape is right.`
         : 'Linear growth is a percentile-slope statistic, not a fitted curve, so it has no trend-line fan.'
     case 'envelope':
       return envFan.value
-        ? `Shaded: ${confLevel.value}% band from leaving each cycle top out in turn. Only ~3–4 cycles exist, so it is deliberately wide — it reflects "few cycles", not day-to-day scatter.`
+        ? `Shaded: leaving each cycle top out in turn and re-fitting, the band covers the central ${confLevel.value}% of those fits. Only ~3–4 cycles exist, so it is deliberately wide — it reflects "few cycles", not day-to-day scatter.`
         : 'This volatility form has no fitted band (constant, or not yet wired).'
     case 'price':
       return 'Shaded: the volatility cone (baseline up to baseline × envelope) — the modelled overshoot range, not a confidence interval.'
@@ -761,7 +762,7 @@ const fmtNum = (v: number) =>
         </button>
       </div>
       <label class="conf-pick">
-        <span>Band <InfoTip term="trendFan" /></span>
+        <span>Band <InfoTip term="bandLevel" /></span>
         <select v-model.number="confLevel">
           <option v-for="lvl in CONF_LEVELS" :key="lvl" :value="lvl">{{ lvl }}%</option>
         </select>

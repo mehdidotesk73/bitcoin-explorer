@@ -9,6 +9,10 @@ export interface GlossaryEntry {
 
 export const GLOSSARY: Record<string, GlossaryEntry> = {
   // --- Price Mechanics: uncertainty ---
+  bandLevel: {
+    term: 'Band % (confidence level)',
+    def: 'How much of the re-fit spread the shaded band covers. We re-fit the model many times on resampled history; the band spans the central X% of those fits at each point. So 95% means 95 out of 100 re-fits land inside it. It measures uncertainty in the fitted line — not how far day-to-day price can swing — and a higher % is wider.',
+  },
   trendFan: {
     term: 'Trend-line fan',
     def: 'A shaded band showing where the fitted curve could reasonably sit, found by re-fitting on resampled history. It captures uncertainty in the fit — not how far day-to-day price can swing — and a higher % makes it wider.',
