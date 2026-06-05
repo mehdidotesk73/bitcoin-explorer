@@ -35,7 +35,25 @@ chart leads. Tap a panel's header to expand it (tap again to collapse).
   exponential decay) or **constant**.
 - **Cycle peaks:** **Laplacian** bumps at chosen peak dates, or none.
 - **Horizon:** projection end year (2030 … 2050).
+- **Band:** the **confidence level** (90 / 95 / 99) for the shaded *trend-line
+  fan* — see below.
 - **Log X / Log Y:** axis scaling for the charts.
+
+### The trend-line fan (the shaded band)
+
+The shaded band around the fitted curve is a **trend-line fan**. It is built by
+re-fitting the model many times on resampled history and showing the spread of
+those fits. The **Band %** picks how much of that spread to cover: a band at
+**95%** spans the central 95% of the re-fits — i.e. 95 out of 100 re-fits land
+inside it at each point. A higher % is wider.
+
+**What it does *not* mean:** it is *not* a forecast of how far price can swing.
+It measures only **how well the fitted line is pinned down** ("the fit could have
+landed slightly higher or lower, and those alternatives diverge long-term"). For
+Bitcoin the fit is tightly constrained by history, so **this band is genuinely
+narrow** — do not read it as a future-variance / price-range forecast. The
+wide "where could price actually be" cone (day-to-day volatility) is a separate
+piece not yet built.
 
 ### Calibration (drives the auto-fit)
 Changing anything here re-fits the model:
@@ -61,6 +79,10 @@ controlling peak width).
   chosen growth model → baseline, the chosen envelope → multiplier amplitude,
   applies the peak kernel `Σ e^(−spread·|x − dᵢ|)` if peaks are on, and multiplies
   to get projected price. Actual price/MA are interpolated onto the same grid.
+- The trend-line fan comes from `fitEnsemble()` (`lib/fitCurve.ts`): it resamples
+  history and re-fits many times (a block bootstrap for the value curve;
+  leave-one-cycle-out for the few envelope peaks), then reads the chosen central
+  quantile band per point.
 - Four chart tabs compare model vs actuals: **Price** (with a shaded
   baseline→ceiling band), **Baseline**, **Ratio** (price ÷ MA, log), and
   **Volatility** (the envelope).
@@ -79,8 +101,9 @@ controlling peak width).
 - **History is assumed representative.** All fits extrapolate the past regime;
   regulatory/macro/tech shocks break that.
 - **R² measures historical fit, not forecast accuracy.** These are explicit
-  scenarios, not probabilities — there are no confidence bands. A what-if, not
-  advice.
+  scenarios, not probabilities. The one band that *is* shown — the trend-line fan
+  — is **epistemic** (uncertainty in the fitted line) and deliberately narrow; it
+  is **not** a future price-range band. A what-if, not advice.
 
 For the full equations, calibrated constants, and the fitting method behind this
 tab, see §5.2 of the developer docs

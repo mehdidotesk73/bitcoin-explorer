@@ -133,6 +133,36 @@ out of Done into Later / ideas.
 
 ## Version history
 
+### 2026-06-05 — Forecast: stochastic projection — epistemic trend-line fan
+- **Added (one branch, Phases A–E):** a shared closed-form LS fitter and a
+  resampling ensemble that surface a **trend-line fan** on the Price Mechanics
+  curves.
+  - **`lib/fitCurve.ts` — `fitCurve()`**: generic weighted least-squares for any
+    model linear-in-features after a log/linear transform (`CurveModel` =
+    `features`/`rebuild`/`eval`). Power-law, exponential and the decay envelopes
+    all collapse to closed-form OLS — instant, no optimizer.
+  - **Point providers** decouple selection from fitting: value curve = all MA
+    points; envelope = the hand-picked cycle tops. `forecast.ts` now fits through
+    these (behaviour-preserving refactor).
+  - **`fitEnsemble()` + `bandAt()`**: per-use-case resampling — **block residual
+    bootstrap** for the many value points, **leave-one-cycle-out (jackknife)** for
+    the ~3–4 envelope peaks (a residual bootstrap there would be fake-tight). A
+    seedable mulberry32 PRNG makes bands reproducible.
+- **UI:** a **Band** confidence picker on the Forecast tab. Shipped as
+  **90 / 95 / 99 (default 95)** — a band at level *L* covers the central *L*% of
+  the re-fits. A new `bandLevel` glossary entry on the picker's `?` and per-tab
+  captions explain the percentage in plain language.
+- **Key finding (carried into TODO):** these epistemic re-fit bands are **very
+  narrow** — for BTC the fit is well-pinned in-sample, so the spread of
+  alternative tunes is small. They are *demonstrably not* a valid future-variance
+  band; every label says so to avoid mistaking the fan for a price forecast. The
+  wide aleatoric dispersion cone (`projection = trend fan ⊕ overshoot envelope`)
+  is the **next branch**.
+- **Defaults:** confidence level default 95 (was the now-removed 80/90/95 set).
+- **Docs:** system-design §5.2 gains a *Trend-line fan* subsection + corrected
+  closed-form calibration; `concepts/price-mechanics.md` documents the band and
+  its narrowness; TODO Phases A–E marked done with the narrow-band finding.
+
 ### 2026-06-04 — UI: `<Panel>` container abstraction + Update-available button
 - **Added (component-framework step 2):** `components/Panel.vue` — the single
   themed container, prop-driven from the UI inventory: `theme` (`default|violet`),

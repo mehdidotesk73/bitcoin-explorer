@@ -227,7 +227,18 @@ Run **all phases on one branch**. **Between each phase, stop for a sanity check
 preserving) and a performance check (bootstrap refit count within budget on full
 history).**
 
-- [ ] **Phase A — generic `fitCurve` core (LS, closed-form; no uncertainty yet).**
+**Status (branch `claude/stochastic-projection-plan`, merged):** Phases A–E
+landed — the shared closed-form `fitCurve`, point providers, the resampling
+ensemble + `bandAt`, and the surfaced **trend-line fan** / **cycle band** with a
+90/95/99 confidence picker. **Key finding to carry forward:** these epistemic
+re-fit bands come out **very narrow** — for BTC the fit is well-pinned in-sample,
+so the spread of alternative tunes is small. They are *demonstrably not* a
+reasonable estimate of **future price variance**; they only answer "how well do
+we know the fitted line." The wide, useful future-variance bands are the
+**deferred aleatoric cone** below, and the UI is labelled to say exactly this so
+the narrow fan is not mistaken for a forecast.
+
+- [x] **Phase A — generic `fitCurve` core (LS, closed-form; no uncertainty yet).**
       `fitCurve({ xs, ys, model, space, objective: 'ls' }) → { params, eval,
       metrics: { r2, residuals } }`, with
       `model = { features: x=>number[], rebuild: coeffs=>params, eval:(x,p)=>y }`
@@ -236,14 +247,14 @@ history).**
       *Checkpoint:* reproduces the current `fitParams` growth + envelope
       coefficients exactly (parity test), build green.
 
-- [ ] **Phase B — point providers (decouple selection from fitting).**
+- [x] **Phase B — point providers (decouple selection from fitting).**
       `maPoints(times, ma)` (value curve — all valid MA points) and
       `peakPoints(times, prices, ma, peakDatesMs, snapDays)` (envelope — extract
       today's hand-picked-dates + ±45-day-snap + `ratio−1>0` logic verbatim).
       Rewire `fitParams` to fit via `fitCurve(provider(...))`. *Checkpoint:*
       forecast output identical to today (pure refactor), build green.
 
-- [ ] **Phase C — resampling → ensemble of alternative tunes.** Add `resample`:
+- [x] **Phase C — resampling → ensemble of alternative tunes.** Add `resample`:
       `{ kind:'residual-block', blockLen, B }` (value curve),
       `{ kind:'jackknife' }` / `{ kind:'cases', B }` (hand-picked envelope).
       Returns `ensemble: params[]` + `bandAt(xGrid, quantiles)`. Block residuals
@@ -252,16 +263,17 @@ history).**
       uncertainty in *which* points form the edge is counted. *Checkpoint (perf):*
       B≈1000 full-history refits stay near-instant (closed-form) — measure & record.
 
-- [ ] **Phase D — surface the trend-line fan.** Evaluate `bandAt` over the
+- [x] **Phase D — surface the trend-line fan.** Evaluate `bandAt` over the
       projection grid (incl. future) → extend `ForecastResult` with `lo/mid/hi`
       per level; `ForecastChart` shades the value-curve fan (and the envelope
-      band). UI: confidence-level picker (80/90/95). **Label honestly:** this is
+      band). UI: confidence-level picker (shipped as **90/95/99**, default 95).
+      **Label honestly:** this is
       *parameter / trend-line* uncertainty ("where the fitted line could sit"),
       **not** a price-scatter forecast, and it is *marginal* per-horizon.
       Note the long-extrapolation **model-form** caveat (the fan assumes the curve
       shape is right). *Checkpoint:* on-device screenshot (mind the SW cache).
 
-- [ ] **Phase E — envelope honesty + future-provider seam.** Keep the hand-picked
+- [x] **Phase E — envelope honesty + future-provider seam.** Keep the hand-picked
       provider; document its band as **leave-one-cycle-out** (small-N, deliberately
       wide — say so in the UI). Lock the provider interface so the owner's richer
       peak detector (rolling high-quantile of `price/MA` → same `expDecay` model,
@@ -274,7 +286,10 @@ spread …" above (centre + spread from the *distribution* of `r_t`, heterosceda
 `s(t)`, block-bootstrap/AR sample paths, PIT backtest) is the **future-variance**
 layer. It composes on top of the fan without double-counting —
 `projection = value-trend fan ⊕ overshoot envelope` (epistemic ⟂ aleatoric,
-the orthogonality the owner flagged at the outset). Pick it up after Phase E.
+the orthogonality the owner flagged at the outset). **This is now the next
+branch** — Phase E confirmed on-device that the epistemic fan is too narrow to
+serve as a future-variance band, so the aleatoric dispersion layer is what
+actually delivers the wide, useful "where could price be" cone.
 
 ### Caveats to honour (don't oversell the probabilities)
 

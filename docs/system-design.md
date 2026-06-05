@@ -329,12 +329,63 @@ Nth-percentile (range/window/percentile are tunable) as the per-day rate `r`.
 
 #### Calibration
 
-Parameters are **fit to history**, not hand-tuned:
-- **Optimizer:** `scipy.optimize.minimize` (L-BFGS-B, bounded).
-- **Objective:** weighted MSE $= \operatorname{mean}((y_{\text{actual}} - y_{\text{pred}})^2 w)$.
+Parameters are **fit to history**, not hand-tuned. The original `bitcoin-model`
+repo used `scipy.optimize.minimize`; the TS app instead fits everything with a
+single **closed-form weighted least-squares** solver, so calibration is instant
+in the browser with no optimizer:
+- **`lib/fitCurve.ts` — `fitCurve({ xs, ys, model, space, weights })`** solves
+  any model that is *linear in its features* after a log/linear transform. A
+  `CurveModel` supplies `features(x) → number[]`, `rebuild(coeffs) → params`, and
+  `eval(x, p)`. Power-law uses features `[1, ln(x+1)]`, exp/exp-decay use
+  `[1, x]` — all closed-form OLS in log space. Returns `params`, `eval`, and
+  `metrics: { r2, residuals }` (residuals in fit space — what the ensemble
+  resamples).
+- **Point selection is decoupled from fitting** (Phase B): the *caller* provides
+  the points. Value growth = all valid MA points; the envelope = the
+  hand-picked cycle-top points (snap-to-±45-day, `ratio−1>0`). The same LS
+  fitter serves both; the envelope's asymmetry lives in point selection, not the
+  loss.
 - **MA growth fits** in log-space (`ln(MA) = ln C + α·x` or `+ β·ln(x+1)`), then
-  `C = exp(ln C)`. **Envelope fits** use only historical peak days.
+  `C = exp(ln C)`. **Envelope fits** use only historical peak days. Weights `γ`
+  give recency weighting.
+- Nonlinear shape knobs (e.g. value-exp-decay's `p`) are **held fixed** during
+  the fit (only `C`, `λ` are solved); a numerical/separable solver for fitting
+  them jointly is a tracked backlog item.
 - Diagnostics: R², max/mean abs residual, MSE improvement, parameter deltas.
+
+#### Trend-line fan — epistemic (parameter) uncertainty band
+
+On top of the point fit, `lib/fitCurve.ts` → **`fitEnsemble(...)`** builds an
+*ensemble of alternative tunes* by resampling and re-fitting, and exposes
+`bandAt(xs, quantiles)` for the shaded band. The resampling strategy is
+**per-use-case**, matched to data density:
+- **Value growth — `{ kind: 'residual-block', blockLen, B }`.** Many
+  autocorrelated MA points, so a *block* residual bootstrap: shuffle blocks of
+  fit-space residuals (`blockLen` ≈ one cycle so serial correlation is
+  preserved), reapply, refit `B` times.
+- **Envelope — `{ kind: 'jackknife' }` (leave-one-cycle-out).** Only ~3–4
+  cycle-top points exist, so a residual bootstrap would fit ~perfectly and give a
+  *fake-tight* band. The real uncertainty is "only 3–4 cycles," which lives in
+  *which points* form the edge — so we drop each cycle in turn and refit. (A
+  `{ kind: 'cases', B }` whole-point resample is also wired for a future
+  many-point peak detector.)
+
+`bandAt` evaluates every ensemble member over the projection grid and reads
+quantiles per point. `ForecastView` surfaces a **confidence-level picker
+(90 / 95 / 99, default 95)**: a band at level *L* spans the **central L%** of the
+re-fits at each point (95% ⇒ 95 of 100 re-fits land inside). The fan is shaded on
+the value curve; the envelope gets the analogous cycle band. Both are seedable
+(mulberry32 PRNG) so they reproduce.
+
+**Crucial caveat — this is *epistemic*, not a future-variance forecast.** The fan
+answers "how well do we know the fitted line," **not** "how far can price swing."
+For BTC the fit is well-pinned in-sample, so these bands come out **very narrow
+and are demonstrably not a reasonable estimate of future price variance** — the
+UI labels them as such (the `bandLevel` glossary entry spells out that it
+measures uncertainty in the fitted line, not day-to-day scatter). The wide,
+useful future-variance cone is the **aleatoric** residual-dispersion layer, which
+is orthogonal (`projection = value-trend fan ⊕ overshoot envelope`) and tracked
+as the next branch in `TODO.md`.
 
 #### End-to-end pipeline
 
@@ -353,7 +404,11 @@ Build future date grid (→ 2050, weekly)
 ```
 
 Each {growth} × {envelope} × {distribution} is one **scenario**; a run produces
-several, together representing uncertainty — there is **no** probabilistic band.
+several, together representing uncertainty. Layered on top is the **epistemic
+trend-line fan** (see *Trend-line fan* above) — a re-fit quantile band on the
+value/envelope curves. There is still **no aleatoric (future-variance)
+probabilistic band**: the fan is narrow by design and must not be read as a
+price-scatter forecast.
 
 #### Key assumptions
 
