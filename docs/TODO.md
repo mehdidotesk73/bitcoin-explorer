@@ -201,24 +201,80 @@ centre once (to log-price or its MA) and let the bands fall out of the
 real probability. So: keep the instinct (centre + symmetric spread, a single
 future-variability knob), but source the spread from the growth-fit residuals.
 
-### Phased implementation
+### Phased implementation (agreed plan — one branch, checkpoints between phases)
 
-- [ ] **Phase 0 — stub the predictive cone (this branch's candidate goal).**
-      Pure functions in `forecast.ts`: `residuals(price, baseline)` →
-      `dispersion(r, {weights})` (reuse the recency weights `γ`) → quantiles
-      (empirical via `percentile`, or `z·σ`). Extend `ForecastResult` with `lo /
-      mid / hi` arrays per level; `ForecastChart` renders a shaded fan + lines.
-      UI: a **confidence-level** picker (80/90/95%) and a **σ-lookback/recency**
-      knob. Stationary σ first — honest and minimal.
-- [ ] **Phase 1 — heteroscedastic `s(t)` via the envelope.** Fit the decay model
-      to the rolling residual scale; bands narrow over time; retire the
-      peaks-only envelope (or keep it as a separate "ceiling" overlay).
-- [ ] **Phase 2 — parameter uncertainty + path-wise fans.** Either the analytic
-      OLS prediction-interval term `σ²·(1 + 1/n + (x*−x̄)²/Sxx)` from `linregress`
-      (extend it to return the coefficient covariance), or a **bootstrap**
-      (resample residuals; refit → ensemble of baselines → CI). For honest fan
-      charts, **moving-block bootstrap / AR(1)** on `r_t` to preserve
-      autocorrelation, optionally Monte-Carlo sample paths.
+Supersedes the earlier Phase 0/1/2 sketch. Reordered per the owner's call to
+**establish model-accuracy / "how well do I know the curve" first** — the
+*parameter-uncertainty fan* ("the fit could have tuned slightly higher/lower, and
+those alternatives diverge long-term") — and to **defer the aleatoric projection
+cone** to the end. The through-line is a **single generic fitter both curves
+share**, with point-selection decoupled from fitting:
+
+- The **fitter** owns fitting + uncertainty; it's agnostic to where points come
+  from. Closed-form weighted **LS only** (no optimizer, matching `forecast.ts`'s
+  existing instant-OLS property). The envelope's required asymmetry lives in
+  *point selection*, not in the loss — so an LS fitter serves both curves.
+- The **caller** owns point selection (a provider): value curve = all MA points;
+  envelope = hand-picked cycle-top points **now**, a richer peak detector later.
+- The **resampling strategy is per-use-case** and must match data density:
+  block-residual bootstrap for the many autocorrelated value points; jackknife /
+  case-resampling for the few hand-picked peaks (a residual bootstrap on 3–4
+  points fits ~perfectly → a *fake-tight* band; the real uncertainty is "only 3–4
+  cycles", which lives in the points, not their scatter).
+
+Run **all phases on one branch**. **Between each phase, stop for a sanity check
+(build green; forecast output unchanged where a phase is meant to be behaviour-
+preserving) and a performance check (bootstrap refit count within budget on full
+history).**
+
+- [ ] **Phase A — generic `fitCurve` core (LS, closed-form; no uncertainty yet).**
+      `fitCurve({ xs, ys, model, space, objective: 'ls' }) → { params, eval,
+      metrics: { r2, residuals } }`, with
+      `model = { features: x=>number[], rebuild: coeffs=>params, eval:(x,p)=>y }`
+      so power-law (`[1, ln(x+1)]`) and exp-decay (`[1, x]`) both stay closed-form
+      weighted OLS in log space (refactor `linregress` into it; keep weights `γ`).
+      *Checkpoint:* reproduces the current `fitParams` growth + envelope
+      coefficients exactly (parity test), build green.
+
+- [ ] **Phase B — point providers (decouple selection from fitting).**
+      `maPoints(times, ma)` (value curve — all valid MA points) and
+      `peakPoints(times, prices, ma, peakDatesMs, snapDays)` (envelope — extract
+      today's hand-picked-dates + ±45-day-snap + `ratio−1>0` logic verbatim).
+      Rewire `fitParams` to fit via `fitCurve(provider(...))`. *Checkpoint:*
+      forecast output identical to today (pure refactor), build green.
+
+- [ ] **Phase C — resampling → ensemble of alternative tunes.** Add `resample`:
+      `{ kind:'residual-block', blockLen, B }` (value curve),
+      `{ kind:'jackknife' }` / `{ kind:'cases', B }` (hand-picked envelope).
+      Returns `ensemble: params[]` + `bandAt(xGrid, quantiles)`. Block residuals
+      shuffled and **reapplied in fit space** (`model·exp(r*)` in log). For the
+      envelope, the resampled `refitFn` is the **composite** provider+fit, so the
+      uncertainty in *which* points form the edge is counted. *Checkpoint (perf):*
+      B≈1000 full-history refits stay near-instant (closed-form) — measure & record.
+
+- [ ] **Phase D — surface the trend-line fan.** Evaluate `bandAt` over the
+      projection grid (incl. future) → extend `ForecastResult` with `lo/mid/hi`
+      per level; `ForecastChart` shades the value-curve fan (and the envelope
+      band). UI: confidence-level picker (80/90/95). **Label honestly:** this is
+      *parameter / trend-line* uncertainty ("where the fitted line could sit"),
+      **not** a price-scatter forecast, and it is *marginal* per-horizon.
+      Note the long-extrapolation **model-form** caveat (the fan assumes the curve
+      shape is right). *Checkpoint:* on-device screenshot (mind the SW cache).
+
+- [ ] **Phase E — envelope honesty + future-provider seam.** Keep the hand-picked
+      provider; document its band as **leave-one-cycle-out** (small-N, deliberately
+      wide — say so in the UI). Lock the provider interface so the owner's richer
+      peak detector (rolling high-quantile of `price/MA` → same `expDecay` model,
+      resample flipped to `residual-block` once it yields many points) drops in
+      later with **no fitter change**.
+
+**Deferred — aleatoric projection cone (the orthogonal piece).** The
+residual-*dispersion* work described in "The statistical core" and "Unify the
+spread …" above (centre + spread from the *distribution* of `r_t`, heteroscedastic
+`s(t)`, block-bootstrap/AR sample paths, PIT backtest) is the **future-variance**
+layer. It composes on top of the fan without double-counting —
+`projection = value-trend fan ⊕ overshoot envelope` (epistemic ⟂ aleatoric,
+the orthogonality the owner flagged at the outset). Pick it up after Phase E.
 
 ### Caveats to honour (don't oversell the probabilities)
 
