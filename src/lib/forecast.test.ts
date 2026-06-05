@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { fitParams, movingAverage, linregress, maPoints, peakPoints, DAY_MS } from './forecast'
+import {
+  fitParams,
+  movingAverage,
+  linregress,
+  maPoints,
+  peakPoints,
+  peakValuePoints,
+  DAY_MS,
+} from './forecast'
 
 // Phase B parity: `fitParams` now fits via the generic `fitCurve` + point
 // providers instead of inline loops + `linregress`. This pins the refactor to be
@@ -110,6 +118,37 @@ describe('fitParams parity after the fitCurve refactor', () => {
     expectClose(p.powConstant, g.powConstant)
     expectClose(p.powExponent, g.powExponent)
     expectClose(p.powR2, g.powR2)
+  })
+})
+
+describe('value-exponential-decay fit (C and λ at a held p)', () => {
+  // Closed-form check: ln(ratio) = ln C − λ·MA^p is OLS over (MA^p, ln ratio),
+  // so slope = −λ and intercept = ln C. The fit must hold p fixed and solve only
+  // C and λ — and move when p changes.
+  const goldenVed = (p: number) => {
+    const pts = peakValuePoints(times, prices, ma, DZ, peaks, lastTime)
+    const fit = linregress(
+      pts.xs.map((m) => Math.pow(m, p)),
+      pts.ys.map((r) => Math.log(r)),
+    )
+    return { vedConstant: Math.exp(fit.intercept), vedExponent: -fit.slope }
+  }
+
+  it('matches a closed-form log-space OLS at the default p', () => {
+    const f = fitParams(times, prices, ma, DZ, peaks) // vedPower defaults to 0.245
+    const g = goldenVed(0.245)
+    expectClose(f.vedConstant, g.vedConstant)
+    expectClose(f.vedExponent, g.vedExponent)
+  })
+
+  it('re-fits C and λ when the held p changes', () => {
+    const a = fitParams(times, prices, ma, DZ, peaks, 0, 0, undefined, undefined, undefined, 0.5)
+    const g = goldenVed(0.5)
+    expectClose(a.vedConstant, g.vedConstant)
+    expectClose(a.vedExponent, g.vedExponent)
+    // A different exponent yields a different fit than the default.
+    const base = fitParams(times, prices, ma, DZ, peaks)
+    expect(Math.abs(a.vedExponent - base.vedExponent)).toBeGreaterThan(0)
   })
 })
 

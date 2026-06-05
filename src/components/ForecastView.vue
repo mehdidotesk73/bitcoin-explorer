@@ -13,6 +13,7 @@ import {
   DEFAULT_SLOPE_RANGE_DAYS,
   DEFAULT_SLOPE_WINDOW_DAYS,
   DEFAULT_SLOPE_PERCENTILE,
+  DEFAULT_VED_POWER,
   type GrowthType,
   type EnvelopeType,
   type DistributionType,
@@ -67,6 +68,7 @@ const fitted = computed(() =>
         slopeRangeDays.value,
         slopeWindowDays.value,
         slopePercentile.value,
+        p.vedPower,
       )
     : null,
 )
@@ -105,7 +107,7 @@ const p = reactive({
   vpdPower: 0.6,
   vedConstant: 50,
   vedExponent: 0.245,
-  vedPower: 0.245,
+  vedPower: DEFAULT_VED_POWER,
   constValue: 1,
 })
 
@@ -119,6 +121,8 @@ function resetToFit() {
   p.powExponent = f.powExponent
   p.envConstant = f.envConstant
   p.envExponent = f.envExponent
+  p.vedConstant = f.vedConstant
+  p.vedExponent = f.vedExponent
   p.linRate = f.linRate
 }
 
@@ -146,6 +150,7 @@ watch(
     slopeRangeDays,
     slopeWindowDays,
     slopePercentile,
+    () => p.vedPower,
   ],
   () => {
     if (seeded) resetToFit()

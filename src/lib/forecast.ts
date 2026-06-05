@@ -30,6 +30,10 @@ export const DEFAULT_PEAK_DATES = [
   '2039-09-24',
 ]
 export const DEFAULT_PEAK_SPREAD = 0.008
+// Value-exponential-decay envelope: the shape exponent p in ratio = C·e^(−λ·MA^p).
+// Held fixed (user-set) during the fit so only C and λ are solved — keeps it a
+// closed-form log-space OLS. See vedModel / fitParams.
+export const DEFAULT_VED_POWER = 0.245
 // Linear growth: take the Nth-percentile of the trailing MA slopes.
 //   slopeRangeDays  — how far back to gather slope samples (0 = all history).
 //   slopeWindowDays — the span each individual slope is measured over
@@ -145,6 +149,8 @@ export interface FittedParams {
   powR2: number
   envConstant: number
   envExponent: number
+  vedConstant: number // value-exponential-decay C, fit at the held p
+  vedExponent: number // value-exponential-decay λ, fit at the held p
   linRate: number // chosen-percentile trailing MA slope (per day)
 }
 
@@ -215,6 +221,17 @@ export const envelopeModel: CurveModel<GrowthParams> = {
 }
 
 /**
+ * Value-exponential-decay envelope, regressed against the MA value (not time):
+ * ln(ratio) = ln C − λ·MA^p. The shape exponent `p` is held fixed, so the model
+ * stays linear in features `[1, MA^p]` — a closed-form log-space OLS that solves
+ * only C and λ. Pass the current `p`; re-fit with a new one to move the exponent.
+ */
+export const vedModel = (p: number): CurveModel<GrowthParams> => ({
+  features: (ma) => [1, Math.pow(ma, p)],
+  rebuild: (c) => ({ constant: Math.exp(c[0]), exponent: -c[1] }),
+})
+
+/**
  * Value-curve points: every valid MA sample inside the calibration window, as
  * (daysSince(t), MA). Both growth models fit these same points.
  */
@@ -239,11 +256,36 @@ export function maPoints(
 }
 
 /**
- * Envelope points: the price/MA − 1 ratio at each observable cycle top (within
- * `snapDays` of a peak date, ratio > 0), as (daysSince(t), ratio). This is the
+ * Observable cycle tops: each peak date snapped to its nearest sample (within
+ * `snapDays`, MA > 0, ratio > 0), as { days, ma, ratio }. This is the
  * hand-picked-dates selection — swappable later for a data-driven peak detector
- * without touching the fitter.
+ * without touching the fitter. The two `peak*Points` providers below project it
+ * onto whichever independent variable a given envelope model regresses against.
  */
+function peakSamples(
+  times: number[],
+  prices: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  peakDatesMs: number[],
+  lastTime: number,
+  snapDays = 45,
+): { days: number; ma: number; ratio: number }[] {
+  const out: { days: number; ma: number; ratio: number }[] = []
+  for (const pd of peakDatesMs) {
+    if (pd > lastTime) continue // future top: not observable yet
+    const i = nearestIndex(times, pd)
+    if (i < 0) continue
+    if (Math.abs(times[i] - pd) > snapDays * DAY_MS) continue
+    const m = ma[i]
+    if (m == null || m <= 0) continue
+    const ratio = prices[i] / m - 1
+    if (ratio > 0) out.push({ days: daysSince(times[i], dayZeroMs), ma: m, ratio })
+  }
+  return out
+}
+
+/** Envelope points keyed by time: (daysSince(t), ratio). Feeds time-based models. */
 export function peakPoints(
   times: number[],
   prices: number[],
@@ -253,22 +295,22 @@ export function peakPoints(
   lastTime: number,
   snapDays = 45,
 ): { xs: number[]; ys: number[] } {
-  const xs: number[] = []
-  const ys: number[] = []
-  for (const pd of peakDatesMs) {
-    if (pd > lastTime) continue // future top: not observable yet
-    const i = nearestIndex(times, pd)
-    if (i < 0) continue
-    if (Math.abs(times[i] - pd) > snapDays * DAY_MS) continue
-    const m = ma[i]
-    if (m == null || m <= 0) continue
-    const ratio = prices[i] / m - 1
-    if (ratio > 0) {
-      xs.push(daysSince(times[i], dayZeroMs))
-      ys.push(ratio)
-    }
-  }
-  return { xs, ys }
+  const s = peakSamples(times, prices, ma, dayZeroMs, peakDatesMs, lastTime, snapDays)
+  return { xs: s.map((p) => p.days), ys: s.map((p) => p.ratio) }
+}
+
+/** Envelope points keyed by MA value: (MA, ratio). Feeds the value-based models. */
+export function peakValuePoints(
+  times: number[],
+  prices: number[],
+  ma: (number | null)[],
+  dayZeroMs: number,
+  peakDatesMs: number[],
+  lastTime: number,
+  snapDays = 45,
+): { xs: number[]; ys: number[] } {
+  const s = peakSamples(times, prices, ma, dayZeroMs, peakDatesMs, lastTime, snapDays)
+  return { xs: s.map((p) => p.ma), ys: s.map((p) => p.ratio) }
 }
 
 /**
@@ -288,6 +330,7 @@ export function fitParams(
   slopeRangeDays = DEFAULT_SLOPE_RANGE_DAYS,
   slopeWindowDays = DEFAULT_SLOPE_WINDOW_DAYS,
   slopePercentile = DEFAULT_SLOPE_PERCENTILE,
+  vedPower = DEFAULT_VED_POWER,
 ): FittedParams {
   const lastTime = times[times.length - 1] ?? 0
   const fitCutoff = fitWindowDays > 0 ? lastTime - fitWindowDays * DAY_MS : -Infinity
@@ -316,6 +359,19 @@ export function fitParams(
     envExponent = envFit.params.exponent
   }
 
+  // Value-exponential-decay envelope: the same tops, regressed against MA value.
+  // p is held fixed (vedPower), so vedModel(p) is linear in [1, MA^p] and the fit
+  // solves only C and λ in closed form. Re-fitting with a changed p moves the
+  // exponent. Same observable-tops fallback as the time-based envelope above.
+  const vedPts = peakValuePoints(times, prices, ma, dayZeroMs, peakDatesMs, lastTime)
+  let vedConstant = 50
+  let vedExponent = 0.245
+  if (vedPts.xs.length >= 2) {
+    const vedFit = fitCurve(vedPts.xs, vedPts.ys, vedModel(vedPower), { space: 'log' })
+    vedConstant = vedFit.params.constant
+    vedExponent = vedFit.params.exponent
+  }
+
   // Linear rate: the chosen percentile of the trailing MA slopes. Each slope is
   // measured over a `slopeWindowDays` window (daily/weekly/monthly/yearly), and
   // samples are gathered across the last `slopeRangeDays` of history (0 = all).
@@ -336,6 +392,8 @@ export function fitParams(
     powR2: powFit.metrics.r2,
     envConstant,
     envExponent,
+    vedConstant,
+    vedExponent,
     linRate,
   }
 }
