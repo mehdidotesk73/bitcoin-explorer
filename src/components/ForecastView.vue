@@ -88,6 +88,10 @@ const SLOPE_WINDOW_PRESETS = [
   { label: 'Yearly', days: 365 },
 ]
 const envelopeType = ref<EnvelopeType>('value-exponential-decay')
+// When on, changing the held exponent p re-fits the ved envelope's C and λ
+// (p joins the recalibration watch below). When off, p is a manual override and
+// the fitted C/λ stay put.
+const vedRecalibrateOnP = ref(true)
 const distributionType = ref<DistributionType>('peaks')
 const peakSpread = ref(DEFAULT_PEAK_SPREAD)
 const horizonYear = ref(2030)
@@ -150,10 +154,18 @@ watch(
     slopeRangeDays,
     slopeWindowDays,
     slopePercentile,
-    () => p.vedPower,
   ],
   () => {
     if (seeded) resetToFit()
+  },
+)
+
+// The ved exponent p only re-fits C and λ while the toggle is on; otherwise p is
+// a manual override and the fitted C/λ are left as-is.
+watch(
+  () => p.vedPower,
+  () => {
+    if (seeded && vedRecalibrateOnP.value) resetToFit()
   },
 )
 
@@ -580,6 +592,10 @@ const fmtNum = (v: number) =>
             <input type="number" v-model.number="p.vedPower" step="any" />
           </label>
         </div>
+        <label class="checkbox">
+          <input type="checkbox" v-model="vedRecalibrateOnP" />
+          Recalibrate C and λ on change of p
+        </label>
         <p class="eq">envelope = 1 + C · e^(−λ · MA^p)</p>
       </template>
       <template v-else>
