@@ -25,6 +25,14 @@ const near = (a: number, b: number) => Math.abs(a - b) < 0.05
 const LONG_PRESS_MS = 320
 const MOVE_TOL = 10 // px of finger travel that commits a press to a pan
 
+// Suppression is shared across every chart in a connect group. A programmatic
+// `dataZoom` dispatch fires `datazoom` not just on the target chart but — via
+// connect — on its grouped siblings too; without a *shared* guard those echoes
+// re-emit and feed back into each other, flooding dispatches and locking the
+// slider whenever a group has 2+ charts. Keyed by group name; standalone charts
+// use a private counter.
+const groupSuppress = new Map<string, number>()
+
 type Mode = 'pan' | 'crosshair'
 
 export function useChartSync(opts: {
@@ -49,7 +57,18 @@ export function useChartSync(opts: {
     window.matchMedia('(hover: none) and (pointer: coarse)').matches
 
   // --- Zoom bridge ----------------------------------------------------------
-  let suppress = false
+  let localSuppress = 0
+  const suppressed = () => (opts.group ? (groupSuppress.get(opts.group) ?? 0) : localSuppress) > 0
+  function withSuppressed(fn: () => void) {
+    if (opts.group) groupSuppress.set(opts.group, (groupSuppress.get(opts.group) ?? 0) + 1)
+    else localSuppress++
+    try {
+      fn()
+    } finally {
+      if (opts.group) groupSuppress.set(opts.group, (groupSuppress.get(opts.group) ?? 0) - 1)
+      else localSuppress--
+    }
+  }
   function currentZoom(): [number, number] {
     const dz = (opts.chart.value?.getOption() as any)?.dataZoom?.[0]
     return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
@@ -58,9 +77,7 @@ export function useChartSync(opts: {
     watch(opts.getZoom!, ([s, e]) => {
       const [cs, ce] = currentZoom()
       if (near(cs, s) && near(ce, e)) return
-      suppress = true
-      opts.chart.value?.dispatchAction({ type: 'dataZoom', start: s, end: e })
-      suppress = false
+      withSuppressed(() => opts.chart.value?.dispatchAction({ type: 'dataZoom', start: s, end: e }))
     })
   }
 
@@ -97,6 +114,7 @@ export function useChartSync(opts: {
   const clearTip = () => opts.chart.value?.dispatchAction({ type: 'hideTip' })
 
   let timer: ReturnType<typeof setTimeout> | null = null
+  let active = false // the current touch started inside the plot (we own it)
   let crosshair = false // finger currently driving the crosshair
   let panning = false
   let persisted = false // a sticky crosshair is showing from a previous gesture
@@ -115,8 +133,14 @@ export function useChartSync(opts: {
   }
 
   function onTouchStart(ev: TouchEvent) {
+    active = false
     if (ev.touches.length > 1) { clearTimer(); return } // two-finger → native pinch
     const [x, y] = localXY(ev.touches[0])
+    // Ignore touches that begin outside the plot grid (zoom slider, axis, legend)
+    // so those keep their native behaviour — notably the slider stays draggable.
+    const c = opts.chart.value
+    if (c && !c.containPixel({ gridIndex: 0 }, [x, y])) return
+    active = true
     sx = lx = x; sy = ly = y
     panning = false
     crosshair = false
@@ -125,6 +149,7 @@ export function useChartSync(opts: {
     timer = setTimeout(enterCrosshair, LONG_PRESS_MS)
   }
   function onTouchMove(ev: TouchEvent) {
+    if (!active) return
     if (ev.touches.length > 1) { clearTimer(); return }
     const [x, y] = localXY(ev.touches[0])
     lx = x; ly = y
@@ -141,6 +166,8 @@ export function useChartSync(opts: {
     }
   }
   function onTouchEnd() {
+    if (!active) return
+    active = false
     clearTimer()
     if (crosshair) {
       // Leave the crosshair where the finger lifted (sticky read-out). Re-enable
@@ -167,7 +194,7 @@ export function useChartSync(opts: {
     }
     if (syncZoom) {
       c.on('datazoom', () => {
-        if (suppress) return
+        if (suppressed()) return
         const [s, e] = currentZoom()
         const [ps, pe] = opts.getZoom!()
         if (near(s, ps) && near(e, pe)) return
