@@ -9,7 +9,7 @@ import { LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { AXIS, SPLIT } from '../lib/chartTheme'
-import { useChartSync } from '../lib/useChartSync'
+import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
 
 echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
 
@@ -60,6 +60,7 @@ function render() {
 const { attach } = useChartSync({
   chart,
   el,
+  group: EXPLORER_GROUP,
   getZoom: () => props.zoom,
   onZoom: (z) => emit('update:zoom', z),
 })

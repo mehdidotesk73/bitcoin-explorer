@@ -12,6 +12,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
+import { useChartSync } from '../lib/useChartSync'
 
 echarts.use([
   LineChart,
@@ -138,6 +139,7 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20, 27, 42, 0.95)',
@@ -268,11 +270,32 @@ function render() {
   applyYBounds()
 }
 
+// Pan/crosshair gesture (drag = pan; press-and-hold = crosshair on touch; native
+// hover on desktop). Standalone chart: no connect group, no zoom bridge. The
+// x-axis is numeric (value/log), so map a pixel to the nearest sample index for
+// the sticky read-out rather than rounding a category position.
+function pixelToIndex(px: number, py: number): number | null {
+  const c = chart.value
+  if (!c || !c.containPixel({ gridIndex: 0 }, [px, py])) return null
+  const r = c.convertFromPixel({ gridIndex: 0 }, [px, py]) as number[] | null
+  if (!r) return null
+  const xv = r[0]
+  let best = -1
+  let bestD = Infinity
+  for (let i = 0; i < props.x.length; i++) {
+    const d = Math.abs(props.x[i] - xv)
+    if (d < bestD) { bestD = d; best = i }
+  }
+  return best >= 0 ? best : null
+}
+const { attach } = useChartSync({ chart, el, pixelToIndex })
+
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   chart.value.on('datazoom', applyYBounds)
   render()
+  attach()
   resizeObserver.observe(el.value)
 })
 

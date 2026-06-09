@@ -30,6 +30,7 @@ import {
 } from '../lib/hodl'
 import StatsCompare from './StatsCompare.vue'
 import InfoTip from './InfoTip.vue'
+import { useChartSync } from '../lib/useChartSync'
 
 echarts.use([
   LineChart,
@@ -348,28 +349,9 @@ function removeManualDate(d: string) {
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
-// Shared graphed-range, kept in sync between the price chart and the driver-
-// metric chart (echarts.connect alone doesn't carry the slider range to the
-// second chart). Both charts read this for their dataZoom start/end.
+// Shared graphed-range, mirrored between the two charts (and their sliders) by
+// the useChartSync zoom bridge declared below, once both chart refs exist.
 const zoom = ref<[number, number]>([0, 100])
-let suppressZoom = false
-const nearZ = (a: number, b: number) => Math.abs(a - b) < 0.05
-function currentRange(c?: echarts.ECharts): [number, number] {
-  const dz = (c?.getOption() as any)?.dataZoom?.[0]
-  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
-}
-function onZoom(src?: echarts.ECharts) {
-  if (suppressZoom || !src) return
-  const [s, e] = currentRange(src)
-  if (nearZ(s, zoom.value[0]) && nearZ(e, zoom.value[1])) return
-  zoom.value = [s, e]
-  const other = src === chart.value ? chartMetric.value : chart.value
-  if (other) {
-    suppressZoom = true
-    other.dispatchAction({ type: 'dataZoom', start: s, end: e })
-    suppressZoom = false
-  }
-}
 
 function buildPriceOption(): echarts.EChartsCoreOption {
   const cats = dates.value
@@ -390,6 +372,7 @@ function buildPriceOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20,27,42,0.95)',
@@ -474,6 +457,11 @@ function buildPriceOption(): echarts.EChartsCoreOption {
 const elMetric = ref<HTMLDivElement>()
 const chartMetric = shallowRef<echarts.ECharts>()
 
+// Both figures share the `btc-hodl` connect group (native crosshair + zoom sync)
+// and the pan/crosshair gesture, via the shared composable.
+const priceSync = useChartSync({ chart, el, group: GROUP, getZoom: () => zoom.value, onZoom: (z) => (zoom.value = z) })
+const metricSync = useChartSync({ chart: chartMetric, el: elMetric, group: GROUP, getZoom: () => zoom.value, onZoom: (z) => (zoom.value = z) })
+
 function buildMetricOption(): echarts.EChartsCoreOption {
   const cats = dates.value
   const b = builderBand.value
@@ -494,6 +482,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       text: `${metricTitle.value} — buy band shaded`,
       textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' },
     },
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20,27,42,0.95)',
@@ -564,19 +553,11 @@ function render() {
 }
 
 onMounted(async () => {
-  if (el.value) {
-    chart.value = echarts.init(el.value)
-    chart.value.group = GROUP
-  }
-  if (elMetric.value) {
-    chartMetric.value = echarts.init(elMetric.value)
-    chartMetric.value.group = GROUP
-  }
+  if (el.value) chart.value = echarts.init(el.value)
+  if (elMetric.value) chartMetric.value = echarts.init(elMetric.value)
   render()
-  echarts.connect(GROUP)
-  // Keep the two charts' graphed range locked together.
-  chart.value?.on('datazoom', () => onZoom(chart.value))
-  chartMetric.value?.on('datazoom', () => onZoom(chartMetric.value))
+  priceSync.attach()
+  metricSync.attach()
   await nextTick()
   chart.value?.resize()
   chartMetric.value?.resize()

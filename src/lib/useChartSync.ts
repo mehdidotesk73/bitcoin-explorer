@@ -1,13 +1,13 @@
-// Cross-figure sync + the pan/crosshair interaction for the Price Explorer
-// charts. Built to use *the most of ECharts' own features*, so it stays as smooth
-// as the Hodl Explorer:
+// Cross-figure sync + the pan/crosshair interaction shared by every Explorer/
+// Forecast chart. Built to use *the most of ECharts' own features*, so it stays
+// smooth:
 //
-//   • Every chart joins the `btc-explorer` `echarts.connect` group → ECharts
-//     natively mirrors the crosshair/tooltip (axisPointer) and inside-zoom across
-//     all figures. No hand-drawn crosshair, no per-pointer setOption.
-//   • A tiny, idempotent zoom bridge carries the slider range + preset buttons
-//     across the separate chart components (connect alone doesn't move the
-//     slider on siblings).
+//   • Optional connect group → ECharts natively mirrors the crosshair/tooltip
+//     (axisPointer) and inside-zoom across the figures in that group. No
+//     hand-drawn crosshair, no per-pointer setOption.
+//   • Optional zoom bridge → a tiny, idempotent relay that carries the slider
+//     range + preset buttons across separate chart components (connect alone
+//     doesn't move the slider on siblings). Omit it for a lone chart.
 //   • Pan vs. crosshair is just two native flags flipped per gesture:
 //       - pan:       dataZoom.inside.moveOnMouseMove = true , tooltip.triggerOn = 'none'
 //       - crosshair: dataZoom.inside.moveOnMouseMove = false, tooltip.triggerOn = 'mousemove'
@@ -16,7 +16,7 @@
 // Touch model: drag = pan; long-press then drag = crosshair (pan frozen); on
 // release the crosshair stays (sticky, via a programmatic showTip) until the next
 // drag pans it away or a tap dismisses it. Desktop is left fully native — hover
-// shows the crosshair, drag pans, wheel zooms — which is what we want there.
+// shows the crosshair, drag pans, wheel zooms.
 import { watch, onBeforeUnmount, type Ref, type ShallowRef } from 'vue'
 import * as echarts from 'echarts/core'
 
@@ -30,9 +30,17 @@ type Mode = 'pan' | 'crosshair'
 export function useChartSync(opts: {
   chart: ShallowRef<echarts.ECharts | undefined>
   el: Ref<HTMLElement | undefined>
-  getZoom: () => [number, number]
-  onZoom: (z: [number, number]) => void
+  /** Connect group to join — omit for a single, standalone chart. */
+  group?: string
+  /** Current graphed range; provide with `onZoom` to enable the zoom bridge. */
+  getZoom?: () => [number, number]
+  onZoom?: (z: [number, number]) => void
+  /** Pixel → data index, for the sticky read-out. Defaults to a category axis
+   *  (round the converted x); pass a custom mapping for a value/log x-axis. */
+  pixelToIndex?: (px: number, py: number) => number | null
 }) {
+  const syncZoom = !!(opts.getZoom && opts.onZoom)
+
   // Touch device = no hover + coarse pointer. Desktop keeps the fully-native
   // hover-crosshair / drag-pan behaviour and skips all of the gesture handling.
   const isTouch =
@@ -46,13 +54,15 @@ export function useChartSync(opts: {
     const dz = (opts.chart.value?.getOption() as any)?.dataZoom?.[0]
     return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
   }
-  watch(opts.getZoom, ([s, e]) => {
-    const [cs, ce] = currentZoom()
-    if (near(cs, s) && near(ce, e)) return
-    suppress = true
-    opts.chart.value?.dispatchAction({ type: 'dataZoom', start: s, end: e })
-    suppress = false
-  })
+  if (syncZoom) {
+    watch(opts.getZoom!, ([s, e]) => {
+      const [cs, ce] = currentZoom()
+      if (near(cs, s) && near(ce, e)) return
+      suppress = true
+      opts.chart.value?.dispatchAction({ type: 'dataZoom', start: s, end: e })
+      suppress = false
+    })
+  }
 
   // --- Pan / crosshair mode (touch only) ------------------------------------
   let mode: Mode = 'pan'
@@ -70,7 +80,7 @@ export function useChartSync(opts: {
     const r = opts.el.value!.getBoundingClientRect()
     return [t.clientX - r.left, t.clientY - r.top]
   }
-  function indexFromXY(x: number, y: number): number | null {
+  function defaultIndexFromXY(x: number, y: number): number | null {
     const c = opts.chart.value
     if (!c || !c.containPixel({ gridIndex: 0 }, [x, y])) return null
     const r = c.convertFromPixel({ gridIndex: 0 }, [x, y]) as number[] | null
@@ -78,6 +88,9 @@ export function useChartSync(opts: {
     const i = Math.round(r[0])
     return i >= 0 ? i : null
   }
+  const indexFromXY = (x: number, y: number) =>
+    opts.pixelToIndex ? opts.pixelToIndex(x, y) : defaultIndexFromXY(x, y)
+
   // showTip/hideTip are synced across the connect group, so driving the touched
   // chart lights the crosshair on every figure.
   const showAt = (idx: number) => opts.chart.value?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
@@ -148,15 +161,19 @@ export function useChartSync(opts: {
   function attach() {
     const c = opts.chart.value
     if (!c) return
-    c.group = EXPLORER_GROUP
-    echarts.connect(EXPLORER_GROUP)
-    c.on('datazoom', () => {
-      if (suppress) return
-      const [s, e] = currentZoom()
-      const [ps, pe] = opts.getZoom()
-      if (near(s, ps) && near(e, pe)) return
-      opts.onZoom([s, e])
-    })
+    if (opts.group) {
+      c.group = opts.group
+      echarts.connect(opts.group)
+    }
+    if (syncZoom) {
+      c.on('datazoom', () => {
+        if (suppress) return
+        const [s, e] = currentZoom()
+        const [ps, pe] = opts.getZoom!()
+        if (near(s, ps) && near(e, pe)) return
+        opts.onZoom!([s, e])
+      })
+    }
     if (isTouch) {
       setMode('pan') // touch starts in pan mode (no crosshair until a long-press)
       const el = opts.el.value

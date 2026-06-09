@@ -6,7 +6,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } f
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
-import { useChartSync } from '../lib/useChartSync'
+import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
@@ -201,6 +201,7 @@ function render() {
 const { attach } = useChartSync({
   chart,
   el,
+  group: EXPLORER_GROUP,
   getZoom: () => props.zoom,
   onZoom: (z) => emit('update:zoom', z),
 })
