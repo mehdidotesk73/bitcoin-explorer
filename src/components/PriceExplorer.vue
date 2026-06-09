@@ -389,7 +389,9 @@ function setRange(days: number | 'all') {
     </section>
 
     <p class="hint">
-      Drag the slider under the chart (or pinch) to adjust the graphed range.
+      Drag to pan · pinch (or wheel) to zoom · press-and-hold then drag for the
+      crosshair · or use the slider under the chart for an exact range. The
+      crosshair lines up the same date across every graph.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
       market data (daily BTC/USDT closes from Aug 2017).
     </p>
