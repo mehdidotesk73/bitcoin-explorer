@@ -107,11 +107,8 @@ const runSensitivity = computed({
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
-// Crosshair bridge: the hovered day index reported by whichever chart the
-// pointer is over; mirrored onto the sibling charts (echarts.connect alone
-// didn't reliably sync the crosshair from the separate-curve panels back to the
-// price chart). null = no hover.
-const hoverIndex = ref<number | null>(null)
+// The crosshair and tooltip are synced across every figure natively, via the
+// shared `echarts.connect` group (see useChartSync) — no manual hover bridge.
 
 // --- Derived series (recomputed instantly on parameter change) --------------
 const { prices, dates } = usePriceSeries(() => props.raw)
@@ -360,9 +357,7 @@ function setRange(days: number | 'all') {
       :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
-      :hover-index="hoverIndex"
       v-model:zoom="zoom"
-      @hover="hoverIndex = $event"
     />
 
     <section v-if="anyCurve && dates.length" class="curves">
@@ -382,14 +377,15 @@ function setRange(days: number | 'all') {
         :band="bandSeries"
         :band-label="bandLabel"
         :show-run-slope="showRunDetection"
-        :hover-index="hoverIndex"
         v-model:zoom="zoom"
-        @hover="hoverIndex = $event"
       />
     </section>
 
     <p class="hint">
-      Drag the slider under the chart (or pinch) to adjust the graphed range.
+      Drag to pan · pinch (or wheel) to zoom · slider for an exact range. On a
+      phone, <strong>press-and-hold then drag</strong> to read values with the
+      crosshair (it stays put until you pan or tap away); on desktop the crosshair
+      follows the mouse. It lines up the same date across every graph.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
       market data (daily BTC/USDT closes from Aug 2017).
     </p>

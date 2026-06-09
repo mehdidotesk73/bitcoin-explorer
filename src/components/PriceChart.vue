@@ -2,12 +2,13 @@
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
+import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent, CanvasRenderer])
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps<{
   dates: string[]
@@ -28,13 +29,10 @@ const props = defineProps<{
   showRuns?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
-  /** Externally-driven hovered day index (crosshair bridge); null = none. */
-  hoverIndex?: number | null
 }>()
 
 const emit = defineEmits<{
   'update:zoom': [value: [number, number]]
-  hover: [number | null]
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -70,13 +68,9 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
-    // Crosshair line styling (the cross-chart sync is driven explicitly by the
-    // hover bridge below, not by echarts.connect, which didn't reliably mirror
-    // the pointer from the separate-curve panels back to here).
-    axisPointer: {
-      link: [{ xAxisIndex: 'all' }],
-      lineStyle: { color: '#8b94ac', type: 'dashed' },
-    },
+    // Native crosshair: the axisPointer line + tooltip are mirrored across every
+    // figure by the shared `echarts.connect` group (see useChartSync).
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20, 27, 42, 0.95)',
@@ -202,79 +196,25 @@ function render() {
   chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
 }
 
-// Guards against an infinite loop between the chart's `datazoom` event and the
-// prop-driven `dispatchAction` below: each can otherwise re-trigger the other.
-let suppressZoomEvent = false
-const near = (a: number, b: number) => Math.abs(a - b) < 0.05
+// Join the shared connect group (native crosshair/tooltip + zoom sync) and keep
+// the parent's graphed-range model in step for the slider + preset buttons.
+const { attach } = useChartSync({
+  chart,
+  el,
+  group: EXPLORER_GROUP,
+  getZoom: () => props.zoom,
+  onZoom: (z) => emit('update:zoom', z),
+})
 
-function currentZoom(): [number, number] {
-  const opt = chart.value?.getOption() as any
-  const dz = opt?.dataZoom?.[0]
-  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
-}
-
-// --- Crosshair bridge -------------------------------------------------------
-// Report the hovered day index to the parent; mirror the parent's shared index
-// by drawing the crosshair line ourselves as a `graphic` element. We don't rely
-// on echarts axisPointer linking — it didn't propagate a programmatic pointer
-// across the separate-curve panel's stacked grids.
-function pixelToIndex(px: number, py: number): number | null {
-  const c = chart.value
-  if (!c) return null
-  const r = c.convertFromPixel({ gridIndex: 0 }, [px, py]) as number[] | null
-  if (!r) return null
-  const idx = Math.round(r[0])
-  return idx >= 0 && idx < props.dates.length ? idx : null
-}
-function drawCrosshair(idx: number | null) {
-  const c = chart.value
-  if (!c) return
-  if (idx == null) {
-    c.setOption({ graphic: [{ id: 'xhair', $action: 'remove' }] })
-    return
-  }
-  const px = c.convertToPixel({ xAxisIndex: 0 }, idx) as number | null
-  if (px == null) return
-  const h = c.getHeight()
-  // Span the plot area (grid top 48 → bottom 72px from the chart bottom).
-  c.setOption({
-    graphic: [
-      {
-        id: 'xhair',
-        type: 'line',
-        z: 50,
-        silent: true,
-        shape: { x1: px, y1: 48, x2: px, y2: h - 72 },
-        style: { stroke: '#8b94ac', lineWidth: 1, lineDash: [4, 4] },
-      },
-    ],
-  })
-}
-watch(() => props.hoverIndex, (idx) => drawCrosshair(idx ?? null))
+const resizeObserver = new ResizeObserver(() => chart.value?.resize())
 
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
-  chart.value.group = 'btc-explorer' // sync x-zoom with the other panels
   render()
-  echarts.connect('btc-explorer')
-  // Keep the parent's zoom model in sync when the user drags/pinches, but only
-  // emit when the value actually changed (and not while we're applying one).
-  chart.value.on('datazoom', () => {
-    if (suppressZoomEvent) return
-    const [start, end] = currentZoom()
-    if (near(start, props.zoom[0]) && near(end, props.zoom[1])) return
-    emit('update:zoom', [start, end])
-  })
-  const zr = chart.value.getZr()
-  zr.on('mousemove', (ev: any) => {
-    const idx = pixelToIndex(ev.offsetX, ev.offsetY)
-    if (idx != null) emit('hover', idx) // keep last on margins; persistent line
-  })
+  attach()
   resizeObserver.observe(el.value)
 })
-
-const resizeObserver = new ResizeObserver(() => chart.value?.resize())
 
 onBeforeUnmount(() => {
   resizeObserver.disconnect()
@@ -284,18 +224,6 @@ onBeforeUnmount(() => {
 watch(
   () => [props.dates, props.price, props.ma, props.upper, props.lower, props.showMa, props.showBb, props.runOverlay, props.showRuns],
   render,
-)
-
-// Apply externally-driven zoom changes (preset range buttons) to the chart.
-watch(
-  () => props.zoom,
-  ([start, end]) => {
-    const [cs, ce] = currentZoom()
-    if (near(cs, start) && near(ce, end)) return
-    suppressZoomEvent = true
-    chart.value?.dispatchAction({ type: 'dataZoom', start, end })
-    suppressZoomEvent = false
-  },
 )
 </script>
 

@@ -46,12 +46,13 @@ tabs; each tab pulls pure logic from `lib/*` (and composables) but the libs
 import **nothing** from components — the arrow only points one way. This is what
 keeps logic testable in isolation (§8) and recomputable without a refetch.
 
-**Chart sync groups.** Within a tab, ECharts `connect` groups keep **x-zoom** in
-lockstep: **`btc-explorer`** (Price Explorer's `PriceChart` + `MetricsPanel`) and
-**`btc-hodl`** (Hodl Explorer's price + driver-metric charts). The explorer
-**crosshair** is synced separately via a shared `hoverIndex` + a self-drawn
-`graphic` line (connect/axisPointer wouldn't mirror it across the stacked grids).
-Details and the category-axis caveats are in §6.
+**Chart sync groups.** Within a tab, ECharts `connect` groups keep **x-zoom** and
+the **crosshair/tooltip** in lockstep: **`btc-explorer`** (Price Explorer's
+`PriceChart` + one `MetricChart` per separate curve) and **`btc-hodl`** (Hodl
+Explorer's price + driver-metric charts). The crosshair is the **native**
+`axisPointer` mirrored by `connect` — no hand-drawn line. The shared
+`lib/useChartSync.ts` composable wires the connect group, an idempotent zoom
+bridge, and the pan/crosshair touch gesture; details and caveats are in §6.
 
 ---
 
@@ -157,6 +158,12 @@ and recompute over the shared arrays.
 - **`useBitcoinData()`** — the shared data loader (detailed in §2): shows the
   cache instantly then refreshes in the background, exposed once and handed to
   every tab so the full daily series is fetched only once.
+- **`useChartSync({ chart, el, group?, getZoom?, onZoom?, pixelToIndex? })`** —
+  the shared chart-interaction wiring (§6). Optionally joins a `connect` group,
+  runs an idempotent zoom bridge (only when `getZoom`/`onZoom` are given), and
+  installs the touch **pan/crosshair gesture**. Returns `{ attach }`, called once
+  the chart is initialised. Used by `PriceChart`, `MetricChart`, `ForecastChart`
+  (gesture only) and Hodl's two charts (gesture only).
 
 ---
 
@@ -199,11 +206,14 @@ folded and shows a tap-to-expand/collapse hint). Two kinds:
   (`sma`), Bollinger bands (`bollinger`), and the **run skeleton** — a
   piecewise-linear line anchoring price at each run's start/end (`runOverlay`)
   with `connectNulls`, so each run renders at its average slope.
-- **Separate curves** (`MetricsPanel.vue`, one ECharts instance with stacked
-  grids in a collapsible "Additional graphs" panel): **Price ÷ MA** on a log
-  axis against an independent long baseline (`ratioMaDays`, default 1460),
-  **Bollinger score** (`useBandScore`), and **Run slope** bars (per-run average
-  daily %, coloured by direction).
+- **Separate curves** (`MetricsPanel.vue`, in a collapsible "Additional graphs"
+  panel): **Price ÷ MA** on a log axis against an independent long baseline
+  (`ratioMaDays`, default 1460), **Bollinger score** (`useBandScore`), and **Run
+  slope** bars (per-run average daily %, coloured by direction). `MetricsPanel`
+  is now pure "what to draw": it builds each active curve's series and renders
+  one single-grid **`MetricChart.vue`** instance per curve (each joins the
+  `btc-explorer` group), rather than one chart with stacked grids — so the native
+  crosshair lines up across every figure.
 
 **Run controls (shared).** Run detection, the run skeleton, and run slope share
 one engine call: `scaleDiag(prices, runScaleDays, { N, sustThresh })`. The
@@ -216,10 +226,11 @@ higher = more/longer runs.
 (±1 = the ±kσ bands), with independent Period / σ / Smoothing — see §3
 (`indicators.ts`) and §4 (`useBandScore`).
 
-**Sync.** Both chart components join the `btc-explorer` connect group for x-zoom
-and share the parent's `zoom` model (`v-model:zoom`) for the range presets; the
-crosshair is mirrored via a shared `hoverIndex` + self-drawn `graphic` line (§6).
-There is **no** persistence of toggles/params (§7).
+**Sync.** Every chart (the price chart + each `MetricChart`) joins the
+`btc-explorer` connect group, so the **native crosshair/tooltip** and inside-zoom
+mirror across all figures; the parent's `zoom` model (`v-model:zoom`) carries the
+slider range + range presets via `useChartSync`'s zoom bridge (§6). There is
+**no** persistence of toggles/params (§7).
 
 ### 5.2 Price Mechanics — forecast model
 
@@ -399,8 +410,11 @@ default (budget = 1 unit), so only ratios matter.
 **UI surfaces.** `StatsCompare.vue` shows strategy-vs-baseline **and** a live
 preview (the band you're dragging) vs baseline; a Buy/Hodl indicator card reads
 each pattern's verdict for today. Out-of-window manual dates are flagged and
-excluded. The price + driver-metric charts x-sync via the `btc-hodl` group plus
-an explicit shared `zoom` model (§6).
+excluded. The price + driver-metric charts share the `btc-hodl` connect group
+(native crosshair) plus an **explicit** shared `zoom` bridge that mirrors the
+range *including the slider* between the two charts (the metric chart has no
+slider to match by index, so `connect` can't carry it — §6). `useChartSync`
+supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
 
 ---
 
@@ -415,21 +429,37 @@ an explicit shared `zoom` model (§6).
   per-segment `lineStyle` colour do **not** bind. For per-point colour use a
   series with per-point `itemStyle` (see the run-slope bars in `MetricsPanel.vue`
   — each datum carries its own `{ value, itemStyle }`).
-- **X-zoom sync.** All chart instances within a tab set `chart.group = '<group>'`
-  and call `echarts.connect('<group>')` — `btc-explorer` and `btc-hodl`. `connect`
-  syncs the dataZoom **inside** action, but **not** the slider range, so the
-  explorer passes a `zoom` `v-model` to its charts and the Hodl tab keeps an
-  explicit shared `zoom` ref (`onZoom`/`suppressZoom` guard against feedback loops
-  between the `datazoom` event and `dispatchAction`).
-- **Crosshair sync (explorer).** `echarts.connect` / `axisPointer.link` would
-  **not** mirror a *programmatic* pointer onto the separate-curve panel's stacked
-  grids (only the first grid lit up), so the explorer crosshair is drawn
-  explicitly instead: each chart reports its hovered day index (`convertFromPixel`)
-  up to `PriceExplorer`, which holds a shared `hoverIndex` and feeds it back to
-  every chart. Each chart then draws the crosshair itself as a full-height dashed
-  `graphic` line at `convertToPixel(idx)` — one line spanning all of a chart's
-  grids (needs `GraphicComponent` registered). The line persists at the last index
-  (it doesn't clear on pointer-leave) so all panels stay in lockstep.
+- **All-native crosshair + sync (`lib/useChartSync.ts`).** Every figure is a
+  **single-grid** chart instance joined to a `connect` group (`btc-explorer` /
+  `btc-hodl`). `connect` mirrors the **native** `axisPointer`/tooltip and the
+  inside-zoom across the group — there is **no** hand-drawn crosshair and no
+  `setOption` on pointer move (that earlier approach was the source of the jank;
+  see `experience.md`). The composable owns: joining the group, the zoom bridge,
+  and the touch gesture.
+- **Zoom bridge.** `connect` syncs the inside action but **not** the slider
+  range, and only matches dataZoom components **by index** — so a slider (index 1)
+  doesn't reach a sibling that has only an inside zoom. Two shapes:
+  - *Explorer* (`PriceChart` + N `MetricChart`, separate components): the parent
+    `zoom` `v-model` is the source of truth; each chart's `useChartSync` emits on
+    `datazoom` and applies external changes (presets) via `dispatchAction`. A
+    **per-group** suppress (shared across the connected charts) stops a
+    programmatic dispatch and its `connect` echoes from feeding back.
+  - *Hodl* (two charts, one component): an **explicit** bridge in
+    `HodlExplorer.vue` mirrors the range — including the slider — directly to the
+    other chart on each `datazoom`, guarded by a shared `suppressZoom`. This is
+    the proven setup for the index-mismatched price (inside+slider) / metric
+    (inside) pair; `useChartSync` there supplies the gesture only.
+- **Pan / crosshair gesture (touch).** Pan vs. crosshair is two native flags
+  flipped per gesture: `dataZoom.inside.moveOnMouseMove` and `tooltip.triggerOn`.
+  Drag = pan; long-press (~320 ms) then drag = crosshair (pan frozen, ECharts
+  follows the finger); on release the crosshair stays put via a programmatic
+  `showTip` until a pan or tap clears it; two-finger pinch always zooms. Touches
+  starting outside the plot grid (slider/axis) are ignored so the slider keeps its
+  native drag. Desktop is left fully native: hover = crosshair, drag = pan, wheel =
+  zoom (gated by `matchMedia('(hover: none) and (pointer: coarse)')`).
+- **Value/log x-axis.** The sticky read-out maps a pixel to a data index; on a
+  category axis that's a rounded `convertFromPixel`, but a value/log axis
+  (`ForecastChart`) passes a custom `pixelToIndex` that finds the nearest sample.
 - **Theme.** Colours come from `lib/chartTheme.ts` tokens, never per-file literals.
 
 ---

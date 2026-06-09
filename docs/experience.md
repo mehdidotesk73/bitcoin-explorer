@@ -129,9 +129,60 @@ but on `main` the toggles are plain in-memory refs with **no** persistence or UR
 sharing. Reconciled: system-design §3/§7 now say so, and the TODO entry was moved
 out of Done into Later / ideas.
 
+### Hand-drawn crosshair + a bespoke long-press gesture machine
+The Price Explorer first synced its crosshair by reporting a hovered index up to
+the parent and **re-drawing a `graphic` line via `setOption` on every pointer
+move**, and the first cut of the pan/crosshair split was a full custom gesture
+state machine. **Why it didn't work (known):** a `setOption` per mouse/touch move
+is what made the chart feel janky, and the custom machine reimplemented panning
+and crosshairing that ECharts already does. The Hodl Explorer felt smooth because
+it was almost entirely native (separate single-grid charts + `connect` +
+`axisPointer`). Fix that stuck: go all-native — one single-grid instance per
+figure in a `connect` group (native crosshair/tooltip), and reduce the gesture to
+flipping two built-in flags (`dataZoom.inside.moveOnMouseMove` + `tooltip.
+triggerOn`) on a long-press. `lib/useChartGestures.ts` was deleted in favour of
+`lib/useChartSync.ts`.
+
+### Composable zoom bridge for a 2-chart connect group (locked the slider)
+After unifying sync into `useChartSync`, the Hodl slider drew a window that
+**never applied to the chart**. **Why (known):** with two charts in a `connect`
+group, the composable's watch-based bridge dispatched a `dataZoom` to a sibling,
+`connect` echoed it back, and (before a shared guard) the per-instance suppress
+flags didn't span the echo → a feedback loop that flooded `dispatchAction`. A
+per-group shared suppress unlocked the handles but the window still didn't stick.
+Rather than keep chasing the connect/bridge timing, **Hodl was reverted to its
+original, proven explicit bridge** — each chart mirrors the range (incl. the
+slider) directly to the other on `datazoom`, guarded by one shared `suppressZoom`
+— and `useChartSync` supplies only the gesture there. The composable bridge stays
+for the single-source-of-truth tabs (Price Explorer, Price Mechanics). Lesson:
+`connect` + a self-dispatching bridge is redundant; for index-mismatched charts
+(price has a slider, metric doesn't) the explicit per-sibling mirror is simpler
+and reliable.
+
 ---
 
 ## Version history
+
+### 2026-06-09 — All-native chart interaction (pan / crosshair / zoom) across all tabs
+- **Added:** `lib/useChartSync.ts` — shared chart wiring: optional `connect`
+  group, an idempotent (per-group-suppressed) zoom bridge, and a touch
+  **pan/crosshair gesture**. Pan vs. crosshair is two native flags flipped per
+  gesture (`dataZoom.inside.moveOnMouseMove` + `tooltip.triggerOn`); drag = pan,
+  long-press → crosshair with a **sticky** read-out (`showTip`), pinch/wheel =
+  zoom. Desktop stays fully native (hover crosshair, drag pan). `MetricChart.vue`
+  — one single-grid chart per separate curve.
+- **Changed:** the crosshair is now the **native** `axisPointer` mirrored by
+  `connect` across every figure (Price Explorer, Hodl, Price Mechanics). Price
+  Explorer's `MetricsPanel` became pure "what to draw," rendering one
+  `MetricChart` per active curve. `ForecastChart` adopted the gesture (with a
+  `pixelToIndex` for its value/log x-axis). Hodl kept its **explicit** two-chart
+  zoom/slider bridge and uses the composable for the gesture only.
+- **Removed:** `lib/useChartGestures.ts` and the hand-drawn `graphic` crosshair +
+  shared `hoverIndex` bridge.
+- **Docs:** system-design §1/§4/§5.1/§5.3/§6 rewritten for the native model;
+  concept pages (Price Explorer / Hodl / Price Mechanics) gained a "navigating the
+  charts" note; TODO crosshair-bridge debt marked resolved + multi-curve slider
+  follow-up queued; two "what didn't work" entries above.
 
 ### 2026-06-04 — UI: `<Panel>` container abstraction + Update-available button
 - **Added (component-framework step 2):** `components/Panel.vue` — the single

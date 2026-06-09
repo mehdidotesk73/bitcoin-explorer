@@ -66,6 +66,20 @@ or how stretched price is from its long-term baseline (price ÷ MA).
 - All panels share one x-zoom + crosshair group, so panning/zooming the price
   chart moves the curves in lockstep.
 
+## Navigating the charts
+
+The price chart and every separate curve move together — pan, zoom, and the
+crosshair all line up on the same date across graphs.
+
+- **Pan:** drag left/right.
+- **Zoom:** pinch (phone) or scroll-wheel (desktop); or drag the **slider** under
+  the price chart for an exact range. The quick-range buttons (1M / 3M / 1Y / 3Y /
+  All) set the window directly.
+- **Crosshair / read-out:** on a phone, **press-and-hold, then drag** — a
+  crosshair follows your finger and the values line up across every graph; it
+  stays put when you lift, until you pan or tap away. On desktop the crosshair
+  just follows the mouse.
+
 ## Assumptions & caveats
 
 - Indicators are **descriptive heuristics**, not signals or advice.

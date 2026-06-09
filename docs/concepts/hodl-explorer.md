@@ -72,6 +72,14 @@ current value, ROI, cost basis, BTC held, and the **edge** vs baseline.
 - The buy days are causal: an indicator day *i* is decided from data ≤ *i*
   (trailing MA, monthly b).
 
+## Navigating the charts
+
+The price chart and the driver-metric chart move together. **Pan** by dragging,
+**zoom** by pinching (phone) / scroll-wheel (desktop) or by dragging the **slider**
+under the price chart. For the **crosshair / read-out**, press-and-hold then drag
+on a phone (it stays put until you pan or tap away), or just hover on desktop —
+the value lines up on the same date in both charts.
+
 ## Assumptions & caveats
 
 - **Backtest, not a trading model:** buys execute at the exact daily close with

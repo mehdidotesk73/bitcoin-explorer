@@ -30,6 +30,7 @@ import {
 } from '../lib/hodl'
 import StatsCompare from './StatsCompare.vue'
 import InfoTip from './InfoTip.vue'
+import { useChartSync } from '../lib/useChartSync'
 
 echarts.use([
   LineChart,
@@ -349,8 +350,10 @@ const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
 // Shared graphed-range, kept in sync between the price chart and the driver-
-// metric chart (echarts.connect alone doesn't carry the slider range to the
-// second chart). Both charts read this for their dataZoom start/end.
+// metric chart by an explicit bridge: connect doesn't carry the slider range
+// across (the metric chart has no slider to match by index), so we mirror it by
+// hand on each chart's `datazoom`. This is the proven setup for these two
+// charts; the useChartSync composable below handles only the touch gesture.
 const zoom = ref<[number, number]>([0, 100])
 let suppressZoom = false
 const nearZ = (a: number, b: number) => Math.abs(a - b) < 0.05
@@ -390,6 +393,7 @@ function buildPriceOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20,27,42,0.95)',
@@ -474,6 +478,11 @@ function buildPriceOption(): echarts.EChartsCoreOption {
 const elMetric = ref<HTMLDivElement>()
 const chartMetric = shallowRef<echarts.ECharts>()
 
+// The pan/crosshair touch gesture for each figure. Connect + the zoom/slider
+// mirror are handled explicitly in onMounted (above), not by the composable.
+const priceGesture = useChartSync({ chart, el })
+const metricGesture = useChartSync({ chart: chartMetric, el: elMetric })
+
 function buildMetricOption(): echarts.EChartsCoreOption {
   const cats = dates.value
   const b = builderBand.value
@@ -494,6 +503,7 @@ function buildMetricOption(): echarts.EChartsCoreOption {
       text: `${metricTitle.value} — buy band shaded`,
       textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' },
     },
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20,27,42,0.95)',
@@ -564,19 +574,15 @@ function render() {
 }
 
 onMounted(async () => {
-  if (el.value) {
-    chart.value = echarts.init(el.value)
-    chart.value.group = GROUP
-  }
-  if (elMetric.value) {
-    chartMetric.value = echarts.init(elMetric.value)
-    chartMetric.value.group = GROUP
-  }
+  if (el.value) { chart.value = echarts.init(el.value); chart.value.group = GROUP }
+  if (elMetric.value) { chartMetric.value = echarts.init(elMetric.value); chartMetric.value.group = GROUP }
   render()
-  echarts.connect(GROUP)
-  // Keep the two charts' graphed range locked together.
+  echarts.connect(GROUP) // native crosshair/tooltip sync across both figures
+  // Mirror the graphed range (incl. the slider) between the two charts by hand.
   chart.value?.on('datazoom', () => onZoom(chart.value))
   chartMetric.value?.on('datazoom', () => onZoom(chartMetric.value))
+  priceGesture.attach()
+  metricGesture.attach()
   await nextTick()
   chart.value?.resize()
   chartMetric.value?.resize()

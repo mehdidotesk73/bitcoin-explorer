@@ -2,6 +2,17 @@
 
 ## Done
 
+- [x] All-native chart interaction model across all three tabs
+      (`claude/chart-gestures`). New `lib/useChartSync.ts` composable: joins the
+      `connect` group (native crosshair/tooltip — the hand-drawn `graphic`
+      crosshair + `hoverIndex` bridge are **gone**), an idempotent zoom bridge,
+      and a touch **pan/crosshair gesture** (drag = pan, long-press = crosshair
+      with a sticky read-out, pinch = zoom; desktop stays native). Price
+      Explorer's separate-curve panel was split into one single-grid
+      `MetricChart.vue` per curve. Forecast + Hodl charts adopted the gesture;
+      Hodl keeps its explicit two-chart zoom/slider bridge (the composable bridge
+      locked the slider when a group has 2+ charts — see `experience.md`). This
+      **resolves the crosshair-bridge copy-paste** flagged below.
 - [x] Interactive cycle-peak editor: move peak dates with sliders, add/remove a
       peak, clear all, and redistribute to the default tops.
 - [x] Envelope band on the Price tab: shaded cone between the value baseline
@@ -131,6 +142,12 @@ Single-source-of-truth pass — concrete duplication removed across components:
 
 ## Later / ideas
 
+- **Price Explorer multi-curve slider (latent).** With 2+ separate curves on, the
+  Price Explorer slider runs through `useChartSync`'s composable zoom bridge —
+  the same shape that locked the Hodl slider before it got the explicit two-chart
+  bridge. It hasn't been seen to misbehave (the per-group suppress guard helps),
+  but if it ever does, port Hodl's explicit-mirror approach (or have the bridge
+  dispatch to siblings via a group registry). See `experience.md`.
 - **Metric registry + persistence (prototyped, not merged).** A spec-driven
   metric system (`lib/metricRegistry.ts`: `MetricSpec`/`MetricState`, data-driven
   toggle rendering, localStorage + URL-encoded persistence for shareable views)
@@ -209,10 +226,11 @@ Workshop) that new apps can assemble from.
 - **Stat / indicator row + status badge** — `label · value · BUY/HODL pill`
   (`HodlExplorer` `.indicator`) and `label · value` (`StatsCompare`). The
   BUY/HODL/`.active` pill is a reusable **badge**.
-- **Charts** — ECharts wrappers: `PriceChart`, `MetricsPanel`, `ForecastChart`,
-  Hodl driver chart. Already share `lib/chartTheme.ts` tokens, an
-  `echarts.connect` group, and the self-drawn crosshair bridge — but the bridge
-  logic is copy-pasted between `PriceChart` and `MetricsPanel`.
+- **Charts** — ECharts wrappers: `PriceChart`, `MetricChart`, `ForecastChart`,
+  Hodl charts. Share `lib/chartTheme.ts` tokens, the `echarts.connect` group, and
+  now `lib/useChartSync.ts` (connect + zoom bridge + pan/crosshair gesture) — the
+  old copy-pasted crosshair bridge is **resolved**. A `useEChart()` init/dispose/
+  resize helper is still a reasonable next consolidation.
 - **Custom HTML legend** — the colour-key rows above the forecast/Hodl charts.
 - **Captions / notes** — `.fit-note`, `.calib-note`, `.cfg-note`, `.eq`,
   `.indicator-note`, disclaimers: a shared muted-text typography role.
@@ -263,9 +281,10 @@ means and no magic numbers sprinkled across scoped styles.
    toggle button (a Button variant) driving the same `Panel.visible` interface, so
    tabs and toggles share one clean buttons↔container contract.
 5. **`<Badge>` + `<StatRow>`** — the value/pill rows in the indicator and stats.
-6. **Chart concerns as composables, not one mega-component** — extract
-   `useCrosshairBridge()` and a small `useEChart()` setup helper; optionally a
-   `<ChartLegend>`. Keep each chart its own component.
+6. **Chart concerns as composables, not one mega-component** — **done** for the
+   crosshair/zoom/gesture concern (`lib/useChartSync.ts`). Still open: a small
+   `useEChart()` init/dispose/resize helper; optionally a `<ChartLegend>`. Keep
+   each chart its own component.
 7. **Template harvest (phase 3).** Once 1–6 land, document the kit (a gallery/
    Storybook-style page), and only then consider spec/registry-driven assembly
    — this is where the dormant `metricRegistry` prototype (see *Later / ideas*)
