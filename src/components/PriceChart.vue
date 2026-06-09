@@ -2,13 +2,13 @@
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent } from 'echarts/components'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
-import { useChartGestures } from '../lib/useChartGestures'
+import { useChartSync } from '../lib/useChartSync'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, GraphicComponent, CanvasRenderer])
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps<{
   dates: string[]
@@ -29,13 +29,10 @@ const props = defineProps<{
   showRuns?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
-  /** Externally-driven hovered day index (crosshair bridge); null = none. */
-  hoverIndex?: number | null
 }>()
 
 const emit = defineEmits<{
   'update:zoom': [value: [number, number]]
-  hover: [number | null]
 }>()
 
 const el = ref<HTMLDivElement>()
@@ -71,13 +68,9 @@ function buildOption(): echarts.EChartsCoreOption {
       textStyle: { color: '#e7eaf3' },
       inactiveColor: '#5a6480',
     },
-    // Crosshair line styling (the cross-chart sync is driven explicitly by the
-    // hover bridge below, not by echarts.connect, which didn't reliably mirror
-    // the pointer from the separate-curve panels back to here).
-    axisPointer: {
-      link: [{ xAxisIndex: 'all' }],
-      lineStyle: { color: '#8b94ac', type: 'dashed' },
-    },
+    // Native crosshair: the axisPointer line + tooltip are mirrored across every
+    // figure by the shared `echarts.connect` group (see useChartSync).
+    axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(20, 27, 42, 0.95)',
@@ -110,7 +103,7 @@ function buildOption(): echarts.EChartsCoreOption {
       splitLine: { lineStyle: { color: SPLIT } },
     },
     dataZoom: [
-      { type: 'inside', start: props.zoom[0], end: props.zoom[1], moveOnMouseMove: true, zoomOnMouseWheel: true },
+      { type: 'inside', start: props.zoom[0], end: props.zoom[1] },
       {
         type: 'slider',
         start: props.zoom[0],
@@ -203,19 +196,12 @@ function render() {
   chart.value?.setOption(buildOption(), { replaceMerge: ['series'] })
 }
 
-// Shared gesture + crosshair bridge (drag-pan, long-press crosshair, pinch-zoom;
-// hover-crosshair on desktop). The crosshair spans the single plot grid (top 48
-// → 72px from the chart bottom).
-const gestures = useChartGestures({
+// Join the shared connect group (native crosshair/tooltip + zoom sync) and keep
+// the parent's graphed-range model in step for the slider + preset buttons.
+const { attach } = useChartSync({
   chart,
-  el,
   getZoom: () => props.zoom,
-  getHoverIndex: () => props.hoverIndex,
-  getCount: () => props.dates.length,
-  getGridCount: () => 1,
-  getCrosshairY: () => [48, (chart.value?.getHeight() ?? 0) - 72],
   onZoom: (z) => emit('update:zoom', z),
-  onHover: (idx) => emit('hover', idx),
 })
 
 const resizeObserver = new ResizeObserver(() => chart.value?.resize())
@@ -224,7 +210,7 @@ onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value)
   render()
-  gestures.attach()
+  attach()
   resizeObserver.observe(el.value)
 })
 

@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import * as echarts from 'echarts/core'
-import { LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+// The separate-curve panel. Each active curve is rendered as its own single-grid
+// <MetricChart> instance (all in the `btc-explorer` connect group), so the native
+// crosshair/tooltip and zoom stay in sync across every figure — the same lean
+// structure as the Hodl Explorer. This component is now pure "what to draw": it
+// builds each curve's series and hands them down.
+import { computed } from 'vue'
 import type { ScaleDiag } from '../lib/runs'
-import { AXIS, SPLIT, UP, DOWN, UP_RUN, DOWN_RUN } from '../lib/chartTheme'
-import { useChartGestures } from '../lib/useChartGestures'
-
-echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, GraphicComponent, CanvasRenderer])
-
-// Per-panel layout (px).
-const TOP = 6
-const PITCH = 178
-const GRID_TOP_OFF = 38
-const GRID_H = 104
+import { UP, DOWN, UP_RUN, DOWN_RUN } from '../lib/chartTheme'
+import MetricChart from './MetricChart.vue'
 
 const props = defineProps<{
   dates: string[]
@@ -29,26 +22,10 @@ const props = defineProps<{
   bandLabel: string
   showRunSlope: boolean
   zoom: [number, number]
-  /** Externally-driven hovered day index (crosshair bridge); null = none. */
-  hoverIndex?: number | null
 }>()
-const emit = defineEmits<{
-  'update:zoom': [value: [number, number]]
-  hover: [number | null]
-}>()
-
-const el = ref<HTMLDivElement>()
-const chart = shallowRef<echarts.ECharts>()
+const emit = defineEmits<{ 'update:zoom': [value: [number, number]] }>()
 
 type Kind = 'ratio' | 'band' | 'slope'
-const panels = computed<Kind[]>(() => {
-  const out: Kind[] = []
-  if (props.showRatio) out.push('ratio')
-  if (props.showBand) out.push('band')
-  if (props.showRunSlope) out.push('slope')
-  return out
-})
-const chartHeight = computed(() => TOP + (panels.value.length - 1) * PITCH + GRID_TOP_OFF + GRID_H + 40)
 
 const priceMa = computed(() =>
   props.price.map((p, i) => {
@@ -78,140 +55,100 @@ const runSlope = computed(() => {
   return { out, dir }
 })
 
-function buildOption(): echarts.EChartsCoreOption {
+const dash = { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' as const } }
+
+interface BuiltPanel {
+  key: Kind
+  title: string
+  yType: 'value' | 'log'
+  legendData: string[]
+  series: any[]
+}
+
+const builtPanels = computed<BuiltPanel[]>(() => {
   const cats = props.dates
-  const d = props.diag
-  const list = panels.value
-  const last = list.length - 1
-  const runArea = {
-    silent: true,
-    data: d.runs.map((r) => [
-      { xAxis: cats[r.start], itemStyle: { color: r.dir > 0 ? UP_RUN : DOWN_RUN } },
-      { xAxis: cats[r.end] },
-    ]),
-  }
-  const { out: slope, dir } = runSlope.value
-  const slopeData = slope.map((v, i) => ({
-    value: v,
-    itemStyle: { color: dir[i] > 0 ? UP : dir[i] < 0 ? DOWN : 'transparent' },
-  }))
+  const out: BuiltPanel[] = []
 
-  const titleBase = { left: 52, textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' as const } }
-  const legendBase = { type: 'plain' as const, itemWidth: 13, itemHeight: 8, itemGap: 8, textStyle: { color: '#e7eaf3', fontSize: 9 }, inactiveColor: '#5a6480' }
-
-  const TITLE: Record<Kind, string> = {
-    ratio: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)`,
-    band: `Bollinger score  (0 = MA · ±1 = ±kσ bands · shaded by run: green up · red down · gaps = chop)   (${props.bandLabel})`,
-    slope: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})`,
-  }
-  const LEGEND: Record<Kind, string> = { ratio: 'price ÷ MA', band: 'Bollinger score', slope: 'run slope' }
-
-  const title: any[] = []
-  const legend: any[] = []
-  const grid: any[] = []
-  const xAxis: any[] = []
-  const yAxis: any[] = []
-  const series: any[] = []
-
-  list.forEach((kind, i) => {
-    const S = TOP + i * PITCH
-    title.push({ ...titleBase, top: S, text: TITLE[kind] })
-    legend.push({ ...legendBase, left: 52, top: S + 20, data: [LEGEND[kind]] })
-    grid.push({ left: 52, right: 12, top: S + GRID_TOP_OFF, height: GRID_H })
-    xAxis.push({
-      type: 'category', data: cats, gridIndex: i,
-      axisLabel: i === last ? { color: AXIS, fontSize: 9 } : { show: false },
-      axisLine: { lineStyle: { color: AXIS } },
+  if (props.showRatio) {
+    out.push({
+      key: 'ratio',
+      title: `Price ÷ MA  (${props.maLabel} MA, log)    > 1 = above · < 1 = below (oversold)`,
+      yType: 'log',
+      legendData: ['price ÷ MA'],
+      series: [
+        {
+          name: 'price ÷ MA', type: 'line', data: priceMa.value, symbol: 'none',
+          lineStyle: { color: '#f7931a', width: 1.4 }, markLine: { ...dash, data: [{ yAxis: 1 }] },
+        },
+      ],
     })
-    yAxis.push({
-      type: kind === 'ratio' ? 'log' : 'value', gridIndex: i,
-      axisLabel: { color: AXIS, fontSize: 9 }, splitLine: { lineStyle: { color: SPLIT } },
-    })
-    const dash = { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' as const } }
-    if (kind === 'ratio') {
-      series.push({
-        name: LEGEND.ratio, type: 'line', xAxisIndex: i, yAxisIndex: i, data: priceMa.value, symbol: 'none',
-        lineStyle: { color: '#f7931a', width: 1.4 }, markLine: { ...dash, data: [{ yAxis: 1 }] },
-      })
-    } else if (kind === 'band') {
-      series.push({
-        name: LEGEND.band, type: 'line', xAxisIndex: i, yAxisIndex: i, data: props.band, symbol: 'none',
-        lineStyle: { color: '#4f8ef7', width: 1.5 },
-        markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] }, markArea: runArea,
-      })
-    } else {
-      series.push({
-        name: LEGEND.slope, type: 'bar', xAxisIndex: i, yAxisIndex: i, data: slopeData, barCategoryGap: '0%',
-        markLine: { ...dash, data: [{ yAxis: 0 }] },
-      })
+  }
+
+  if (props.showBand) {
+    const runArea = {
+      silent: true,
+      data: props.diag.runs.map((r) => [
+        { xAxis: cats[r.start], itemStyle: { color: r.dir > 0 ? UP_RUN : DOWN_RUN } },
+        { xAxis: cats[r.end] },
+      ]),
     }
-  })
-
-  const allIdx = list.map((_, i) => i)
-  return {
-    animation: false,
-    backgroundColor: 'transparent',
-    textStyle: { color: '#e7eaf3' },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,27,42,0.95)', borderColor: '#36425f', textStyle: { color: '#e7eaf3' } },
-    axisPointer: { link: [{ xAxisIndex: 'all' }], lineStyle: { color: '#8b94ac', type: 'dashed' } },
-    title, legend, grid, xAxis, yAxis, series,
-    dataZoom: [
-      { type: 'inside', xAxisIndex: allIdx, start: props.zoom[0], end: props.zoom[1], moveOnMouseMove: true, zoomOnMouseWheel: true },
-      { type: 'slider', xAxisIndex: allIdx, start: props.zoom[0], end: props.zoom[1], bottom: 6, height: 12, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
-    ],
+    out.push({
+      key: 'band',
+      title: `Bollinger score  (0 = MA · ±1 = ±kσ bands · shaded by run: green up · red down · gaps = chop)   (${props.bandLabel})`,
+      yType: 'value',
+      legendData: ['Bollinger score'],
+      series: [
+        {
+          name: 'Bollinger score', type: 'line', data: props.band, symbol: 'none',
+          lineStyle: { color: '#4f8ef7', width: 1.5 },
+          markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] }, markArea: runArea,
+        },
+      ],
+    })
   }
-}
 
-async function render() {
-  if (!chart.value || !panels.value.length) return
-  chart.value.setOption(buildOption(), { notMerge: true })
-  await nextTick()
-  chart.value.resize()
-}
+  if (props.showRunSlope) {
+    const { out: slope, dir } = runSlope.value
+    const slopeData = slope.map((v, i) => ({
+      value: v,
+      itemStyle: { color: dir[i] > 0 ? UP : dir[i] < 0 ? DOWN : 'transparent' },
+    }))
+    out.push({
+      key: 'slope',
+      title: `Run slope  (avg % per day · green up-run · red down-run · flat 0 = chop)   (${props.scaleLabel})`,
+      yType: 'value',
+      legendData: ['run slope'],
+      series: [
+        {
+          name: 'run slope', type: 'bar', data: slopeData, barCategoryGap: '0%',
+          markLine: { ...dash, data: [{ yAxis: 0 }] },
+        },
+      ],
+    })
+  }
 
-// Shared gesture + crosshair bridge — identical behaviour to the price chart.
-// The crosshair line spans every stacked grid (top of the first grid → bottom
-// of the last).
-const gestures = useChartGestures({
-  chart,
-  el,
-  getZoom: () => props.zoom,
-  getHoverIndex: () => props.hoverIndex,
-  getCount: () => props.dates.length,
-  getGridCount: () => panels.value.length,
-  getCrosshairY: () => [
-    TOP + GRID_TOP_OFF,
-    TOP + (panels.value.length - 1) * PITCH + GRID_TOP_OFF + GRID_H,
-  ],
-  onZoom: (z) => emit('update:zoom', z),
-  onHover: (idx) => emit('hover', idx),
+  return out
 })
-
-onMounted(() => {
-  if (!el.value) return
-  chart.value = echarts.init(el.value)
-  render()
-  gestures.attach()
-  resizeObserver.observe(el.value)
-})
-const resizeObserver = new ResizeObserver(() => chart.value?.resize())
-onBeforeUnmount(() => {
-  resizeObserver.disconnect()
-  chart.value?.dispose()
-})
-watch(
-  () => [props.dates, props.price, props.ma, props.maLabel, props.diag, props.scaleLabel, props.band, props.bandLabel, panels.value, props.zoom],
-  render,
-)
 </script>
 
 <template>
-  <div ref="el" class="metrics-chart" :style="{ height: chartHeight + 'px' }"></div>
+  <div class="metrics">
+    <MetricChart
+      v-for="p in builtPanels"
+      :key="p.key"
+      :dates="dates"
+      :title="p.title"
+      :y-type="p.yType"
+      :series="p.series"
+      :legend-data="p.legendData"
+      :zoom="zoom"
+      @update:zoom="emit('update:zoom', $event)"
+    />
+  </div>
 </template>
 
 <style scoped>
-.metrics-chart {
-  width: 100%;
+.metrics {
   margin-top: 0.5rem;
 }
 </style>
