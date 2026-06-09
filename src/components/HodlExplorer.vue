@@ -349,9 +349,30 @@ function removeManualDate(d: string) {
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
-// Shared graphed-range, mirrored between the two charts (and their sliders) by
-// the useChartSync zoom bridge declared below, once both chart refs exist.
+// Shared graphed-range, kept in sync between the price chart and the driver-
+// metric chart by an explicit bridge: connect doesn't carry the slider range
+// across (the metric chart has no slider to match by index), so we mirror it by
+// hand on each chart's `datazoom`. This is the proven setup for these two
+// charts; the useChartSync composable below handles only the touch gesture.
 const zoom = ref<[number, number]>([0, 100])
+let suppressZoom = false
+const nearZ = (a: number, b: number) => Math.abs(a - b) < 0.05
+function currentRange(c?: echarts.ECharts): [number, number] {
+  const dz = (c?.getOption() as any)?.dataZoom?.[0]
+  return dz ? [dz.start ?? 0, dz.end ?? 100] : [0, 100]
+}
+function onZoom(src?: echarts.ECharts) {
+  if (suppressZoom || !src) return
+  const [s, e] = currentRange(src)
+  if (nearZ(s, zoom.value[0]) && nearZ(e, zoom.value[1])) return
+  zoom.value = [s, e]
+  const other = src === chart.value ? chartMetric.value : chart.value
+  if (other) {
+    suppressZoom = true
+    other.dispatchAction({ type: 'dataZoom', start: s, end: e })
+    suppressZoom = false
+  }
+}
 
 function buildPriceOption(): echarts.EChartsCoreOption {
   const cats = dates.value
@@ -457,10 +478,10 @@ function buildPriceOption(): echarts.EChartsCoreOption {
 const elMetric = ref<HTMLDivElement>()
 const chartMetric = shallowRef<echarts.ECharts>()
 
-// Both figures share the `btc-hodl` connect group (native crosshair + zoom sync)
-// and the pan/crosshair gesture, via the shared composable.
-const priceSync = useChartSync({ chart, el, group: GROUP, getZoom: () => zoom.value, onZoom: (z) => (zoom.value = z) })
-const metricSync = useChartSync({ chart: chartMetric, el: elMetric, group: GROUP, getZoom: () => zoom.value, onZoom: (z) => (zoom.value = z) })
+// The pan/crosshair touch gesture for each figure. Connect + the zoom/slider
+// mirror are handled explicitly in onMounted (above), not by the composable.
+const priceGesture = useChartSync({ chart, el })
+const metricGesture = useChartSync({ chart: chartMetric, el: elMetric })
 
 function buildMetricOption(): echarts.EChartsCoreOption {
   const cats = dates.value
@@ -553,11 +574,15 @@ function render() {
 }
 
 onMounted(async () => {
-  if (el.value) chart.value = echarts.init(el.value)
-  if (elMetric.value) chartMetric.value = echarts.init(elMetric.value)
+  if (el.value) { chart.value = echarts.init(el.value); chart.value.group = GROUP }
+  if (elMetric.value) { chartMetric.value = echarts.init(elMetric.value); chartMetric.value.group = GROUP }
   render()
-  priceSync.attach()
-  metricSync.attach()
+  echarts.connect(GROUP) // native crosshair/tooltip sync across both figures
+  // Mirror the graphed range (incl. the slider) between the two charts by hand.
+  chart.value?.on('datazoom', () => onZoom(chart.value))
+  chartMetric.value?.on('datazoom', () => onZoom(chartMetric.value))
+  priceGesture.attach()
+  metricGesture.attach()
   await nextTick()
   chart.value?.resize()
   chartMetric.value?.resize()
