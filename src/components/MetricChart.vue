@@ -59,6 +59,7 @@ function render() {
 
 const { attach } = useChartSync({
   chart,
+  el,
   getZoom: () => props.zoom,
   onZoom: (z) => emit('update:zoom', z),
 })

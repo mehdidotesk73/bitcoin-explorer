@@ -200,6 +200,7 @@ function render() {
 // the parent's graphed-range model in step for the slider + preset buttons.
 const { attach } = useChartSync({
   chart,
+  el,
   getZoom: () => props.zoom,
   onZoom: (z) => emit('update:zoom', z),
 })

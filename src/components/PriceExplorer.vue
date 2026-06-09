@@ -382,9 +382,10 @@ function setRange(days: number | 'all') {
     </section>
 
     <p class="hint">
-      Drag to pan · pinch (or wheel) to zoom · use the slider under the chart for
-      an exact range. The crosshair and read-out line up the same date across
-      every graph.
+      Drag to pan · pinch (or wheel) to zoom · slider for an exact range. On a
+      phone, <strong>press-and-hold then drag</strong> to read values with the
+      crosshair (it stays put until you pan or tap away); on desktop the crosshair
+      follows the mouse. It lines up the same date across every graph.
       Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
       market data (daily BTC/USDT closes from Aug 2017).
     </p>
