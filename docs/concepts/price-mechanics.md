@@ -64,6 +64,10 @@ controlling peak width).
 - Four chart tabs compare model vs actuals: **Price** (with a shaded
   baseline→ceiling band), **Baseline**, **Ratio** (price ÷ MA, log), and
   **Volatility** (the envelope).
+- Navigating the chart: **pan** by dragging, **zoom** by pinching / scroll-wheel
+  or the **slider** underneath; the y-axis auto-rescales to what's in view. For
+  the **read-out**, press-and-hold then drag on a phone (the crosshair stays put
+  until you pan or tap away), or hover on desktop.
 
 ## Assumptions & caveats
 
