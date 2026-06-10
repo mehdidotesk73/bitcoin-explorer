@@ -80,7 +80,7 @@ const RUN_SCALES = [
 ]
 const RUN_SCALE_MAX = 1500
 const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
-const runScaleT = ref(tForHd(31)) // default scale ≈ 31d
+const runScaleT = ref(tForHd(3)) // default scale ≈ 3d
 const runScaleDays = computed(() =>
   Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
 )
@@ -98,8 +98,8 @@ const runScaleLabel = computed(() => {
   return `${best.name} · ${hd}d`
 })
 // Sustainment gate a run must clear. Presented as sensitivity (higher = more /
-// longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.2 → gate 0.7.
-const sustThresh = ref(0.7)
+// longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.75 → gate 0.15.
+const sustThresh = ref(0.15)
 const runSensitivity = computed({
   get: () => +(0.9 - sustThresh.value).toFixed(2),
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
