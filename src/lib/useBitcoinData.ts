@@ -1,10 +1,5 @@
 import { ref, shallowRef } from 'vue'
-import {
-  fetchDailyPrices,
-  EARLIEST_MS,
-  type PricePoint,
-  type FetchProgress,
-} from '../api/bitcoin'
+import { fetchDailyPrices, EARLIEST_MS, type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { loadSupplemental } from '../api/supplemental'
 import { logDebug } from '../debug'
 

@@ -9,7 +9,7 @@ curves** in a collapsible panel below.
 
 ## Mental model
 
-Price is noisy. Each metric is a different *filter* that re-expresses the same
+Price is noisy. Each metric is a different _filter_ that re-expresses the same
 history so a particular behaviour stands out — a trend (moving average), a
 volatility envelope (Bollinger bands), a sustained directional move (a "run"),
 or how stretched price is from its long-term baseline (price ÷ MA).
@@ -23,10 +23,10 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   widens with volatility; price riding the upper/lower edge signals
   stretched conditions.
 - **Run detection.** Finds **runs** — maximal stretches where the trend is
-  *sustained* in one direction — and draws a piecewise-linear skeleton over the
+  _sustained_ in one direction — and draws a piecewise-linear skeleton over the
   price, each segment at that run's average pace. Choppy stretches break runs and
   are left blank. Knobs (shared with the run-derived curves):
-  - **Scale** — a continuous, *logarithmic* window from ~1 to ~1500 days; the
+  - **Scale** — a continuous, _logarithmic_ window from ~1 to ~1500 days; the
     label snaps to a named scale (daily / weekly / monthly / seasonal / yearly /
     multi-year). Default ≈ 31 days.
   - **Sensitivity** — higher = more / longer runs (default 0.2). Internally it
@@ -41,7 +41,7 @@ or how stretched price is from its long-term baseline (price ÷ MA).
 - **Bollinger score.** A clean band-position metric:
   `b = (EMAₛ(price) − MA_W) / (k · σ_W)` over a single window `W`, centered at 0
   (`0` = on the MA, `±1` = the ±kσ bands). Three honest, independent knobs:
-  - **Period** (days / weeks / months) — one lookback for the mean *and* σ
+  - **Period** (days / weeks / months) — one lookback for the mean _and_ σ
     (default 20 months).
   - **σ × (k)** — band width, independent of the period (default 2).
   - **Smoothing** (days, EMA on the price) — the main noise control, labelled by
@@ -50,6 +50,7 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   It subsumes both earlier curves: **smoothing 0 + short window = classic %B**
   (just read as `(b+1)/2`); the long, smoothed defaults give the clean wave. Run
   direction is shaded behind it. (`b = 2·%B − 1` for any k.)
+
 - **Run slope.** Each run's average daily % change, as bars coloured by
   direction (green up, red down, flat/0 = chop).
 
@@ -83,7 +84,7 @@ crosshair all line up on the same date across graphs.
 ## Assumptions & caveats
 
 - Indicators are **descriptive heuristics**, not signals or advice.
-- Everything is **causal**: day *i* uses only data ≤ *i*.
+- Everything is **causal**: day _i_ uses only data ≤ _i_.
 - The run parameters (band period, smoothing/trend/vote windows) are
   **heuristic defaults**, not statistically optimised — tune by eye.
 - Bollinger bands use the **population** σ (the technical-analysis convention).

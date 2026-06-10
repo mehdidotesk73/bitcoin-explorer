@@ -89,7 +89,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   halving: {
     term: 'Halving',
-    def: "About every 4 years the rate of new Bitcoin issuance halves. Historically these events line up with the ~4-year boom/bust cycle.",
+    def: 'About every 4 years the rate of new Bitcoin issuance halves. Historically these events line up with the ~4-year boom/bust cycle.',
   },
   dayZero: {
     term: 'Day zero',
@@ -105,7 +105,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   rSquared: {
     term: 'R²',
-    def: "A 0–1 score of how well a fitted curve matches past data (1 = perfect fit). A high R² does NOT mean the forecast is accurate.",
+    def: 'A 0–1 score of how well a fitted curve matches past data (1 = perfect fit). A high R² does NOT mean the forecast is accurate.',
   },
   envelopeDecay: {
     term: 'Volatility decay',

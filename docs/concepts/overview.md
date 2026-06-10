@@ -9,7 +9,7 @@ already-fetched price array, so every knob recomputes instantly with no refetch.
 - **Price Explorer** — the raw price plus toggleable technical metrics (moving
   average, Bollinger bands, run detection) and derived curves (price ÷ MA,
   Bollinger score, run slope). A descriptive lens on history.
-- **Price Mechanics** — a structured *what-if* forecast engine. It splits price
+- **Price Mechanics** — a structured _what-if_ forecast engine. It splits price
   into a slow "value" baseline (a long moving average) and a "volatility"
   multiplier, fits growth/volatility/peak models to history, and projects
   forward to a chosen horizon.
@@ -30,11 +30,11 @@ already-fetched price array, so every knob recomputes instantly with no refetch.
 
 ## Principles that hold across every tab
 
-- **Causality.** Every indicator and decision for day *i* uses only data at days
+- **Causality.** Every indicator and decision for day _i_ uses only data at days
   **≤ i** — trailing averages, trailing windows, past-only smoothing. Nothing
   peeks into the future.
 - **Heuristics, not advice.** Moving averages, bands, runs, the Bollinger score,
-  and the forecast curves are *descriptive tools*, not predictions or financial
+  and the forecast curves are _descriptive tools_, not predictions or financial
   advice. Bitcoin is **not guaranteed** to repeat its historical or current
   patterns.
 - **Pure functions.** The analytics live in `src/lib/` (`indicators.ts`,

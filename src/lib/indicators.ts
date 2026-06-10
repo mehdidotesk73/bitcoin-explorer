@@ -85,11 +85,7 @@ export interface BollingerBands {
  * Bollinger Bands: a `period`-SMA middle band with upper/lower bands at
  * `k` population standard deviations away.
  */
-export function bollinger(
-  values: number[],
-  period: number,
-  k: number,
-): BollingerBands {
+export function bollinger(values: number[], period: number, k: number): BollingerBands {
   const middle = sma(values, period)
   const upper: (number | null)[] = new Array(values.length).fill(null)
   const lower: (number | null)[] = new Array(values.length).fill(null)

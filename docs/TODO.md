@@ -62,7 +62,7 @@
 - [x] Conceptual help docs + in-app help button. Authored
       `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
       describing each page's purpose, controls, how it works, and assumptions —
-      readable by an AI agent *and* rendered in-app. Added a dependency-free
+      readable by an AI agent _and_ rendered in-app. Added a dependency-free
       Markdown renderer (`lib/markdown.ts`), a `HelpModal.vue` that imports the
       docs via `?raw` and renders them with a per-page nav, and a **? Help**
       button in the top-right of the header that opens the modal on the active
@@ -127,16 +127,16 @@ Single-source-of-truth pass — concrete duplication removed across components:
 - [x] **Phase 1 — published-version check (merged).** `emit-version-json` Vite
       plugin writes `version.json` (`{ commit, builtAt }`) outside the SW precache;
       `lib/useVersionCheck.ts` polls it cache-busted and compares the live origin's
-      *published* commit to the loaded `__BUILD_ID__`. Footer shows *Up to date* vs
-      *Update ready — Reload* instead of silently reloading. See `system-design.md` §7.
+      _published_ commit to the loaded `__BUILD_ID__`. Footer shows _Up to date_ vs
+      _Update ready — Reload_ instead of silently reloading. See `system-design.md` §7.
 - [ ] **Phase 2 — built-vs-published "publishing…" state.** Track the latest
-      *built* commit (which may not be live yet) and compare against *published* to
+      _built_ commit (which may not be live yet) and compare against _published_ to
       show a third state during the build→publish window. Decide the source: the
       deploy workflow writes the commit to a static file the app can read
       (`raw.githubusercontent.com/<repo>/main/version-built.json`, or a small
       `build-status` branch/artifact), **or** the GitHub commits API for `main`.
       Gotchas: unauthenticated GitHub API is 60 req/hr/IP, so a 60s poll must hit a
-      *static* file, not the API (or poll far less often); confirm the deployed
+      _static_ file, not the API (or poll far less often); confirm the deployed
       origin can reach `raw.githubusercontent.com` (public, fine — sandbox can't, so
       device-validated).
 
@@ -182,15 +182,15 @@ Workshop) that new apps can assemble from.
   `footer.debug`). This is the "one big page container" the rest nests under.
 - **Tabs** — a set of mutually-exclusive buttons, each **bound to one container**;
   selecting a tab shows its container and hides the siblings. So a tab strip is
-  really *a driver of container visibility* (see Container, below) with a clean
+  really _a driver of container visibility_ (see Container, below) with a clean
   buttons↔container interface, not a bespoke widget. Genuine tabs: main nav
   (`App.vue nav.tabs`, drives the three page containers), the forecast chart
   switcher (`ForecastView` `.chart-tabs`) and the Hodl driver-chart switcher
   (both pick which graph container shows). **Not a tab:** the Trailing/Range
-  `.toggle` (`HodlExplorer`) — that's a stateful toggle *button* flipping between
+  `.toggle` (`HodlExplorer`) — that's a stateful toggle _button_ flipping between
   two comparison-window containers; it belongs under Buttons + Container
   visibility, just driven by a 2-state toggle instead of a tab strip.
-- **Container / panel** *(highest-variation category)* — a bordered, optionally
+- **Container / panel** _(highest-variation category)_ — a bordered, optionally
   themed box with a header, and these orthogonal functionalities: **conditional
   visibility** (shown/hidden by an external driver — a tab, a toggle button, or a
   state flag), **collapsibility** (expand/collapse its own body), **theme**, and
@@ -265,19 +265,19 @@ means and no magic numbers sprinkled across scoped styles.
    wrapper. **Done:** `--accent-violet-tint` token; `size`/`theme` variants on
    `<Panel>`. **Remaining:** the button `emphasis` (ghost/regular/bold) variant
    classes + broader token extraction.
-2. [x] **`<Panel>`** *(done — `claude/ui-panel-foundation`)*. Props landed:
-   `title`, `subtitle`, `theme` (`default|violet`), `size` (`regular|compact`),
-   `collapsible` (`none|header|face|icon`), `v-model:collapsed`; `#header` /
-   `#summary` / `#actions` slots. Migrated the Metrics menu (face), the five
-   metric cards (icon), and the Calibration / growth / volatility panels (header)
-   — biggest dedupe, kills the collapse-pattern drift. **Remaining:** a `visible`
-   prop for external (tab/toggle) visibility control (lands with `<Tabs>`).
+2. [x] **`<Panel>`** _(done — `claude/ui-panel-foundation`)_. Props landed:
+       `title`, `subtitle`, `theme` (`default|violet`), `size` (`regular|compact`),
+       `collapsible` (`none|header|face|icon`), `v-model:collapsed`; `#header` /
+       `#summary` / `#actions` slots. Migrated the Metrics menu (face), the five
+       metric cards (icon), and the Calibration / growth / volatility panels (header)
+       — biggest dedupe, kills the collapse-pattern drift. **Remaining:** a `visible`
+       prop for external (tab/toggle) visibility control (lands with `<Tabs>`).
 3. **`<Field>` / `<LabeledControl>`** — label + optional `InfoTip` + control +
    unit adornment, in row or column layout. Folds the tooltip-wrap fix in
    structurally and removes the most boilerplate.
 4. **`<Tabs>` (visibility selector).** A `v-model`-driven tab strip whose only job
    is "which bound container is visible." Unify main nav + the two chart
-   switchers. The Trailing/Range case is *not* part of this — it's a stateful
+   switchers. The Trailing/Range case is _not_ part of this — it's a stateful
    toggle button (a Button variant) driving the same `Panel.visible` interface, so
    tabs and toggles share one clean buttons↔container contract.
 5. **`<Badge>` + `<StatRow>`** — the value/pill rows in the indicator and stats.
@@ -287,7 +287,7 @@ means and no magic numbers sprinkled across scoped styles.
    each chart its own component.
 7. **Template harvest (phase 3).** Once 1–6 land, document the kit (a gallery/
    Storybook-style page), and only then consider spec/registry-driven assembly
-   — this is where the dormant `metricRegistry` prototype (see *Later / ideas*)
+   — this is where the dormant `metricRegistry` prototype (see _Later / ideas_)
    could return as the data-driven layer.
 
 ### My take — valuable vs. over-engineering
@@ -303,17 +303,17 @@ means and no magic numbers sprinkled across scoped styles.
   - **No `<Button>` wrapper.** Native `<button>` + CSS variant classes give 90%
     of the value with none of the prop-plumbing; only componentise if a button
     grows real behaviour.
-  - **Charts stay separate components** sharing *composables* (`useCrosshairBridge`,
+  - **Charts stay separate components** sharing _composables_ (`useCrosshairBridge`,
     `useEChart`), not one generic `<Chart>` god-component — the charts genuinely
     differ (axes, overlays, stacked grids, crosshair math) and one abstraction
     would be lossy.
 - **Likely over-engineering (defer / avoid):**
   - A full theming engine / many container themes before there are consumers —
     ship 2–3 themes (default / violet / danger), not a configurable palette.
-  - Registry/slot-driven page assembly *now* — it's the end-state vision, but
+  - Registry/slot-driven page assembly _now_ — it's the end-state vision, but
     premature before the leaf components and their props have settled; it's how
     the earlier metric-registry attempt over-reached and went unmerged.
-- **Sequencing principle:** abstract only on the *third* occurrence and only
+- **Sequencing principle:** abstract only on the _third_ occurrence and only
   once the variation axes are known, so the props match reality instead of being
   guessed up front. Tokens → `Panel`/`Field` → the rest, migrating one tab at a
   time behind a green build.
@@ -338,10 +338,10 @@ so a broken build can (and once did) reach history. Prioritised backlog:
       `npm run test:run`, wired into CI. Tests excluded from the production
       type-check (`tsconfig.app.json`). Next: `forecast.ts` invariants.
 - [~] **Lint + format.** **Prettier config landed** (`.prettierrc.json` —
-      no-semi / single-quote / 100-col; `format` / `format:check` scripts).
-      **Remaining:** run the one-shot `npm run format` pass (≈26 files) on a clean
-      branch, then add `format:check` to CI; and add `eslint` (vue +
-      @typescript-eslint) with an `npm run lint` script wired into CI.
+  no-semi / single-quote / 100-col; `format` / `format:check` scripts).
+  **Remaining:** run the one-shot `npm run format` pass (≈26 files) on a clean
+  branch, then add `format:check` to CI; and add `eslint` (vue +
+  @typescript-eslint) with an `npm run lint` script wired into CI.
 - [ ] **Pin the Node version.** Add `.nvmrc` (22) and an `engines` field so local
       dev matches CI/deploy and avoids "works on my machine" drift.
 - [ ] **Automated dependency updates.** Add `.github/dependabot.yml` for `npm`
@@ -366,13 +366,13 @@ app) folded out of the README. Today only **web + PWA** ship; the native-like
 polish and the native shells are future work:
 
 - [~] **PWA / native-like install.** Live today: `vite-plugin-pwa` emits the
-      manifest + service worker, the app is installable ("Add to Home Screen")
-      and works offline, and icons generate from `public/logo.svg`
-      (`npm run generate-pwa-assets`). **Down the line:** harden the on-device
-      install/standalone experience — splash + maskable icons, iOS standalone
-      quirks (status-bar, safe-area, no-bounce), and an in-app "install" prompt.
-      (Freshness/reload — a related PWA concern — is tracked under *Version
-      freshness / reload*.)
+  manifest + service worker, the app is installable ("Add to Home Screen")
+  and works offline, and icons generate from `public/logo.svg`
+  (`npm run generate-pwa-assets`). **Down the line:** harden the on-device
+  install/standalone experience — splash + maskable icons, iOS standalone
+  quirks (status-bar, safe-area, no-bounce), and an in-app "install" prompt.
+  (Freshness/reload — a related PWA concern — is tracked under _Version
+  freshness / reload_.)
 - [ ] **Capacitor native apps (iOS / Android).** Pre-wired but **dormant**:
       `capacitor.config.ts` exists and `cap:add:ios` / `cap:add:android` /
       `cap:sync` scripts are present, but **no `ios/` or `android/` project is

@@ -2,13 +2,25 @@
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+} from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
 import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
+echarts.use([
+  LineChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  CanvasRenderer,
+])
 
 const props = defineProps<{
   dates: string[]
@@ -37,7 +49,6 @@ const emit = defineEmits<{
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
-
 
 function buildOption(): echarts.EChartsCoreOption {
   const maOn = !!props.showMa
@@ -222,7 +233,17 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.dates, props.price, props.ma, props.upper, props.lower, props.showMa, props.showBb, props.runOverlay, props.showRuns],
+  () => [
+    props.dates,
+    props.price,
+    props.ma,
+    props.upper,
+    props.lower,
+    props.showMa,
+    props.showBb,
+    props.runOverlay,
+    props.showRuns,
+  ],
   render,
 )
 </script>

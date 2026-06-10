@@ -94,6 +94,7 @@ recompute instantly with no refetch, and every signal is **causal** (a value for
 day `i` uses only data at days ≤ `i`).
 
 **`indicators.ts`** — the core technical indicators:
+
 - `sma(values, period)` — trailing simple moving average; the first `period − 1`
   entries are `null` so the output aligns 1:1 with the input.
 - `ema(values, span)` — causal exponential MA, seeded with the first value;
@@ -122,6 +123,7 @@ break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
 `ratioSeries`, `windowIndices`, `selectBandBuyDates`, `simulateStrategy`.
 
 **Helpers (single source of truth):**
+
 - `format.ts` — `fmtUSD` (cents under $10, whole dollars above), `fmtPct`,
   `fmtBtc`; all return an em-dash for `null`.
 - `chartTheme.ts` — shared ECharts colour tokens (`AXIS`, `SPLIT`, `ORANGE`,
@@ -172,7 +174,7 @@ and recompute over the shared arrays.
 ### 5.0 Shared UI components
 
 The first abstractions of the UI component-framework initiative (see `TODO.md` →
-*UI component framework*) live in `src/components/`:
+_UI component framework_) live in `src/components/`:
 
 - **`Panel.vue`** — the themed container behind the app's bordered "panel" boxes.
   Variation is prop-driven, not per-call CSS: `theme` (`default` | `violet`),
@@ -202,6 +204,7 @@ plain in-memory `ref`s (`showMa`, `showBb`, `showRunDetection`, `showRatio`,
 `showBand`; `cfg*`). They live in a single collapsible **Metrics** disclosure
 (`menuCollapsed`, **default collapsed**; the header lists the active metrics when
 folded and shows a tap-to-expand/collapse hint). Two kinds:
+
 - **Overlays** (drawn on the price chart, `PriceChart.vue`): Moving average
   (`sma`), Bollinger bands (`bollinger`), and the **run skeleton** — a
   piecewise-linear line anchoring price at each run's start/end (`runOverlay`)
@@ -217,7 +220,7 @@ folded and shows a tap-to-expand/collapse hint). Two kinds:
 
 **Run controls (shared).** Run detection, the run skeleton, and run slope share
 one engine call: `scaleDiag(prices, runScaleDays, { N, sustThresh })`. The
-**Scale** slider is *logarithmic* — slider 0–100 maps to `hd ∈ [1, 1500]` days
+**Scale** slider is _logarithmic_ — slider 0–100 maps to `hd ∈ [1, 1500]` days
 (`tForHd`/`runScaleDays`) and the label snaps to the nearest named scale.
 **Sensitivity** is presented inverted (`sensitivity = 0.9 − sustThresh`) so
 higher = more/longer runs.
@@ -269,12 +272,12 @@ enough to average out a full boom/bust, leaving the long-term value trend.
 
 Computed from historical daily closes:
 
-| Metric | Definition | Notes |
-|--------|------------|-------|
-| `close` | Daily closing price | exchange/API + static backfill |
-| `ma_close` | Trailing **1,460-day** mean of `close` | the value baseline |
-| `close_over_ma` | `close / ma_close` | observed volatility multiplier |
-| `log_ma_close` | `ln(ma_close)` | for log-space curve fitting |
+| Metric          | Definition                             | Notes                          |
+| --------------- | -------------------------------------- | ------------------------------ |
+| `close`         | Daily closing price                    | exchange/API + static backfill |
+| `ma_close`      | Trailing **1,460-day** mean of `close` | the value baseline             |
+| `close_over_ma` | `close / ma_close`                     | observed volatility multiplier |
+| `log_ma_close`  | `ln(ma_close)`                         | for log-space curve fitting    |
 
 A time-based (calendar-day) trailing window is used, so data gaps don't distort
 the average; early dates have a partial/undefined MA until 1,460 days accrue.
@@ -309,13 +312,13 @@ and how it **shrinks over time** as the market matures:
 - **Constant** — a fixed multiplier, no decay.
 
 The envelope is calibrated **only against historical peak days** (it traces the
-*tops* of `close_over_ma`, not the average). Premise: volatility monotonically
+_tops_ of `close_over_ma`, not the average). Premise: volatility monotonically
 decreases as Bitcoin matures (by time or value).
 
 #### Volatility distribution (when swings happen)
 
-The envelope sets *how big* a peak can be; the distribution places peaks *in
-time* as a sum of localized spikes:
+The envelope sets _how big_ a peak can be; the distribution places peaks _in
+time_ as a sum of localized spikes:
 
 $$
 \left(\tfrac{P}{\text{MA}}\right)_{\text{model}}(x)
@@ -341,6 +344,7 @@ Nth-percentile (range/window/percentile are tunable) as the per-day rate `r`.
 #### Calibration
 
 Parameters are **fit to history**, not hand-tuned:
+
 - **Optimizer:** `scipy.optimize.minimize` (L-BFGS-B, bounded).
 - **Objective:** weighted MSE $= \operatorname{mean}((y_{\text{actual}} - y_{\text{pred}})^2 w)$.
 - **MA growth fits** in log-space (`ln(MA) = ln C + α·x` or `+ β·ln(x+1)`), then
@@ -369,9 +373,9 @@ several, together representing uncertainty — there is **no** probabilistic ban
 #### Key assumptions
 
 1. **Value = 4-year MA.** 2. **Separability** of growth and volatility.
-3. **Volatility decays** as the asset matures. 4. **Cyclicality** — tops on a
-~4-year halving cadence at pre-specified dates. 5. **History is representative.**
-6. **Scenarios, not probabilities.**
+2. **Volatility decays** as the asset matures. 4. **Cyclicality** — tops on a
+   ~4-year halving cadence at pre-specified dates. 5. **History is representative.**
+3. **Scenarios, not probabilities.**
 
 #### Honest limitations
 
@@ -387,9 +391,10 @@ A buying-strategy sandbox: compose buy-day rules, then compare them against a
 buy-every-day baseline over a shared budget. Logic is `lib/hodl.ts` (pure,
 causal); `HodlExplorer.vue` is the UI + charts.
 
-**Seed-layer combinator.** A strategy is the **union** of frozen *seed layers*
+**Seed-layer combinator.** A strategy is the **union** of frozen _seed layers_
 (`SeedLayer { id, kind, label, dateIndices }`). Each layer resolves to a static
 set of day indices **once, when added**, and is frozen thereafter:
+
 - **`ratio`** / **`bscore`** — `selectBandBuyDates(metric, band, candidates)`
   keeps days whose driver metric (`ratioSeries` price÷MA, or the Bollinger score)
   falls in a `Band { lower, upper }`.
@@ -412,7 +417,7 @@ preview (the band you're dragging) vs baseline; a Buy/Hodl indicator card reads
 each pattern's verdict for today. Out-of-window manual dates are flagged and
 excluded. The price + driver-metric charts share the `btc-hodl` connect group
 (native crosshair) plus an **explicit** shared `zoom` bridge that mirrors the
-range *including the slider* between the two charts (the metric chart has no
+range _including the slider_ between the two charts (the metric chart has no
 slider to match by index, so `connect` can't carry it — §6). `useChartSync`
 supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
 
@@ -439,12 +444,12 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
 - **Zoom bridge.** `connect` syncs the inside action but **not** the slider
   range, and only matches dataZoom components **by index** — so a slider (index 1)
   doesn't reach a sibling that has only an inside zoom. Two shapes:
-  - *Explorer* (`PriceChart` + N `MetricChart`, separate components): the parent
+  - _Explorer_ (`PriceChart` + N `MetricChart`, separate components): the parent
     `zoom` `v-model` is the source of truth; each chart's `useChartSync` emits on
     `datazoom` and applies external changes (presets) via `dispatchAction`. A
     **per-group** suppress (shared across the connected charts) stops a
     programmatic dispatch and its `connect` echoes from feeding back.
-  - *Hodl* (two charts, one component): an **explicit** bridge in
+  - _Hodl_ (two charts, one component): an **explicit** bridge in
     `HodlExplorer.vue` mirrors the range — including the slider — directly to the
     other chart on each `datazoom`, guarded by a shared `suppressZoom`. This is
     the proven setup for the index-mismatched price (inside+slider) / metric
@@ -476,7 +481,7 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
   latest** button. The polite skip-waiting path (`registration.update()` → wait
   for the new worker → `updateServiceWorker(true)` → reload) proved unreliable on
   **iOS Safari PWAs**: when `update()` doesn't actually swap in a new worker, the
-  old SW keeps controlling the page and replays the *precached* `index.html` +
+  old SW keeps controlling the page and replays the _precached_ `index.html` +
   hashed bundle out of Cache Storage, so the reload lands on the same build. The
   button now **hard-resets** instead — since it only fires once `version.json` has
   confirmed a newer build is live: it unregisters every service worker, clears
@@ -488,9 +493,9 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
   `version.json` (`{ commit, builtAt }`) into the build root, deliberately
   **outside** the Workbox precache. `lib/useVersionCheck.ts` fetches it
   cache-busted (`cache: 'no-store'`) every 60 s and compares the live origin's
-  *published* commit to the loaded `__BUILD_ID__`, so the footer can honestly
+  _published_ commit to the loaded `__BUILD_ID__`, so the footer can honestly
   show **Up to date** vs **Update ready** instead of silently reloading into the
-  same build. (Phase 2 — a *built-vs-published* "publishing…" state — is queued
+  same build. (Phase 2 — a _built-vs-published_ "publishing…" state — is queued
   in `TODO.md`.) When the status is `update-ready`, `App.vue` also shows a top-bar
   **Update available** button (opposite Help) whose popover mirrors this footer
   info — build, new published commit, and the reload button — so the prompt is
@@ -510,7 +515,7 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
 ## 8. Build, deploy, CI & testing
 
 - **Build gate.** `npm run build` = `vue-tsc -b && vite build` — catches TS
-  errors *and* Vue template parse errors. This is the bar before every commit;
+  errors _and_ Vue template parse errors. This is the bar before every commit;
   since the price API is unreachable from the sandbox, it's also the main offline
   check.
 - **Scripts** (`package.json`): `dev`, `build`, `preview`, `test` (Vitest watch),
@@ -518,8 +523,8 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
   `cap:*` helpers.
 - **CI.** `.github/workflows/ci.yml` runs on PR → `main` and push → `main`:
   `npm ci` → `npm run test:run` → `npm run build`. Node 22 + npm cache (matches
-  `deploy.yml`); `concurrency` cancels superseded runs. *Still manual: mark the
-  `build` check **required** in branch protection so red PRs can't merge.*
+  `deploy.yml`); `concurrency` cancels superseded runs. _Still manual: mark the
+  `build` check **required** in branch protection so red PRs can't merge._
 - **Tests.** Vitest over `src/lib/*.test.ts` (`hodl.test.ts`,
   `indicators.test.ts`): hodl ROI / cost-basis + the band-date selectors, and
   `sma`/`ema`/`bollinger`/`bandPosition` including a **causality** assertion
@@ -551,19 +556,19 @@ Developer-facing terms (the beginner-facing definitions live in `lib/glossary.ts
 - **Band position vs %B.** `bandPosition` (the "Bollinger score") is centered:
   `0` = on the MA, `±1` = the ±kσ bands. Classic `%B` is `(b + 1)/2`; equivalently
   smoothing 0 + a short window reproduces %B.
-- **Run / scale (`hd`).** A *run* is a maximal stretch where the trend is
-  sustained one direction (`runs.ts`). *Scale* `hd` (days) is the single knob all
+- **Run / scale (`hd`).** A _run_ is a maximal stretch where the trend is
+  sustained one direction (`runs.ts`). _Scale_ `hd` (days) is the single knob all
   run windows derive from (band = N·hd, EMA = α·hd, etc.).
-- **Vote / sustainment.** The trend operator τ ∈ [−1,1] per day; the *vote* is the
+- **Vote / sustainment.** The trend operator τ ∈ [−1,1] per day; the _vote_ is the
   trailing share of up-days; a run forms where the vote clears `sustThresh`
   (surfaced inverted as **sensitivity**).
-- **Envelope vs distribution (forecast).** The *envelope* sets how big a peak can
-  be (decaying over time/value); the *distribution* places peaks in time as a sum
+- **Envelope vs distribution (forecast).** The _envelope_ sets how big a peak can
+  be (decaying over time/value); the _distribution_ places peaks in time as a sum
   of Laplacian spikes. See §5.2.
 - **Seed layer (Hodl).** A frozen set of buy-day indices resolved once from a
   driver/manual/uniform rule; strategies are the union of layers (§5.3).
-- **Published vs loaded build.** *Loaded* = the `__BUILD_ID__` baked into the
-  running bundle; *published* = the commit in the live origin's `version.json`
+- **Published vs loaded build.** _Loaded_ = the `__BUILD_ID__` baked into the
+  running bundle; _published_ = the commit in the live origin's `version.json`
   (§7).
 - **Project framing.** Indicators are **descriptive heuristics, not advice** —
   surface that in UI and be candid about in-sample / overfitting / scale caveats.

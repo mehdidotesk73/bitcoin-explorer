@@ -138,15 +138,7 @@ watch(
 // Calibration inputs re-fit the growth curve so changes apply immediately.
 // (The C/α/β boxes remain manual overrides until the next recalibration.)
 watch(
-  [
-    maWindow,
-    dayZero,
-    fitWindowDays,
-    powFitGamma,
-    slopeRangeDays,
-    slopeWindowDays,
-    slopePercentile,
-  ],
+  [maWindow, dayZero, fitWindowDays, powFitGamma, slopeRangeDays, slopeWindowDays, slopePercentile],
   () => {
     if (seeded) resetToFit()
   },
@@ -277,13 +269,31 @@ const chartSeries = computed(() => {
       ]
     case 'ratio':
       return [
-        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.4, bounds: true },
+        {
+          name: 'Actual price ÷ MA',
+          data: actualRatio.value,
+          color: C_ORANGE,
+          width: 1.4,
+          bounds: true,
+        },
         { name: 'Model price ÷ MA', data: f.priceOverMa, color: C_VIOLET, dashed: true },
       ]
     case 'envelope':
       return [
-        { name: 'Actual price ÷ MA', data: actualRatio.value, color: C_ORANGE, width: 1.2, bounds: true },
-        { name: 'Volatility projection (max)', data: f.envelope, color: C_TEAL, width: 1.8, bounds: true },
+        {
+          name: 'Actual price ÷ MA',
+          data: actualRatio.value,
+          color: C_ORANGE,
+          width: 1.2,
+          bounds: true,
+        },
+        {
+          name: 'Volatility projection (max)',
+          data: f.envelope,
+          color: C_TEAL,
+          width: 1.8,
+          bounds: true,
+        },
       ]
     default:
       return [
@@ -350,9 +360,8 @@ const fmtNum = (v: number) =>
     <section class="status" v-else-if="loading">Loading price history…</section>
 
     <p class="disclaimer">
-      A structured what-if engine, not a predictor. Parameters load from an
-      automatic log-space curve fit on the loaded history — adjust freely, or
-      reset to the fit.
+      A structured what-if engine, not a predictor. Parameters load from an automatic log-space
+      curve fit on the loaded history — adjust freely, or reset to the fit.
     </p>
 
     <!-- Model selection -->
@@ -433,8 +442,8 @@ const fmtNum = (v: number) =>
         <template v-if="growthType === 'power'">
           γ=0 weights every sample equally · γ=1 every log-time decade.
         </template>
-        Changing any calibration knob re-fits the model and overwrites the
-        parameter boxes below — hand-edits persist only until the next re-fit.
+        Changing any calibration knob re-fits the model and overwrites the parameter boxes below —
+        hand-edits persist only until the next re-fit.
       </p>
     </Panel>
 
@@ -445,7 +454,6 @@ const fmtNum = (v: number) =>
       subtitle="auto-filled · editable"
       v-model:collapsed="growthCollapsed"
     >
-
       <template v-if="growthType === 'exponential'">
         <h4>
           Exponential
@@ -491,13 +499,7 @@ const fmtNum = (v: number) =>
           </label>
           <label>
             Slope range (days, 0 = all)
-            <input
-              type="number"
-              v-model.number="slopeRangeDays"
-              min="0"
-              max="6000"
-              step="30"
-            />
+            <input type="number" v-model.number="slopeRangeDays" min="0" max="6000" step="30" />
           </label>
           <label>
             Slope window
@@ -509,19 +511,12 @@ const fmtNum = (v: number) =>
           </label>
           <label>
             Slope percentile
-            <input
-              type="number"
-              v-model.number="slopePercentile"
-              min="0"
-              max="100"
-              step="1"
-            />
+            <input type="number" v-model.number="slopePercentile" min="0" max="100" step="1" />
           </label>
         </div>
         <p class="fit-note" v-if="fitted">
-          Rate auto-fills from the {{ slopePercentile }}ᵗʰ-percentile
-          {{ slopeWindowLabel }} slope over {{ slopeRangeLabel }}
-          ({{ fmtNum(fitted.linRate) }} /day) — re-fits on change.
+          Rate auto-fills from the {{ slopePercentile }}ᵗʰ-percentile {{ slopeWindowLabel }} slope
+          over {{ slopeRangeLabel }} ({{ fmtNum(fitted.linRate) }} /day) — re-fits on change.
         </p>
         <p class="eq">MA = last_MA + rate · Δt</p>
       </template>
@@ -618,12 +613,7 @@ const fmtNum = (v: number) =>
               :value="peakMs(i)"
               @input="onPeakInput(i, $event)"
             />
-            <button
-              type="button"
-              class="peak-remove"
-              title="Remove peak"
-              @click="removePeak(i)"
-            >
+            <button type="button" class="peak-remove" title="Remove peak" @click="removePeak(i)">
               ×
             </button>
           </li>
@@ -846,5 +836,4 @@ h4 {
   color: var(--accent-blue);
   background: rgba(79, 142, 247, 0.12);
 }
-
 </style>

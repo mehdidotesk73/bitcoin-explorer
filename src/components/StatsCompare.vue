@@ -45,7 +45,9 @@ const edge = computed(() => {
       </div>
       <div class="stat-row">
         <span class="stat-label">ROI <InfoTip term="roi" /></span>
-        <span class="stat-val" :class="primary.roi >= 0 ? 'pos' : 'neg'">{{ fmtPct(primary.roi) }}</span>
+        <span class="stat-val" :class="primary.roi >= 0 ? 'pos' : 'neg'">{{
+          fmtPct(primary.roi)
+        }}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Cost basis <InfoTip term="costBasis" /></span>
@@ -66,7 +68,9 @@ const edge = computed(() => {
       </div>
       <div class="stat-row">
         <span class="stat-label">ROI</span>
-        <span class="stat-val" :class="baseline.roi >= 0 ? 'pos' : 'neg'">{{ fmtPct(baseline.roi) }}</span>
+        <span class="stat-val" :class="baseline.roi >= 0 ? 'pos' : 'neg'">{{
+          fmtPct(baseline.roi)
+        }}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Cost basis</span>
@@ -83,7 +87,9 @@ const edge = computed(() => {
       <p class="col-sub">{{ label }} vs baseline</p>
       <div class="stat-row">
         <span class="stat-label">Value edge</span>
-        <span class="stat-val" :class="edge.valuePos ? 'pos' : 'neg'">{{ fmtPct(edge.value) }}</span>
+        <span class="stat-val" :class="edge.valuePos ? 'pos' : 'neg'">{{
+          fmtPct(edge.value)
+        }}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">ROI edge</span>
@@ -91,7 +97,9 @@ const edge = computed(() => {
       </div>
       <div class="stat-row">
         <span class="stat-label">Cost basis edge</span>
-        <span class="stat-val" :class="edge.basisPos ? 'pos' : 'neg'">{{ fmtPct(edge.basis) }}</span>
+        <span class="stat-val" :class="edge.basisPos ? 'pos' : 'neg'">{{
+          fmtPct(edge.basis)
+        }}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">BTC edge</span>

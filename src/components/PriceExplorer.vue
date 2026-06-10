@@ -37,9 +37,7 @@ const cfgRun = ref(false)
 const cfgBand = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
-const anyCurve = computed(
-  () => showRatio.value || showBand.value || showRunDetection.value,
-)
+const anyCurve = computed(() => showRatio.value || showBand.value || showRunDetection.value)
 const curvesCollapsed = ref(false)
 
 // The metric-toggle menu folds into a single disclosure so it can get out of the
@@ -168,7 +166,6 @@ function setRange(days: number | 'all') {
   const start = Math.max(0, ((n - days) / n) * 100)
   zoom.value = [start, 100]
 }
-
 </script>
 
 <template>
@@ -199,139 +196,157 @@ function setRange(days: number | 'all') {
         {{ activeMetricLabels.length ? activeMetricLabels.join(' · ') : 'none selected' }}
       </template>
       <div class="controls metrics-menu">
-      <!-- Overlay: moving average -->
-      <Panel size="compact" collapsible="icon" :collapsed="!cfgMa" @update:collapsed="cfgMa = !$event">
-        <template #header>
-          <label class="checkbox"><input type="checkbox" v-model="showMa" /> Moving average</label>
-          <InfoTip term="ma" />
-        </template>
-        <div class="metric-cfg">
-          <label>
-            Period
-            <span class="period">
-              <input type="number" v-model.number="maPeriod" min="1" max="400" />
-              <select v-model="maUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
-            </span>
-          </label>
-        </div>
-      </Panel>
+        <!-- Overlay: moving average -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgMa"
+          @update:collapsed="cfgMa = !$event"
+        >
+          <template #header>
+            <label class="checkbox"
+              ><input type="checkbox" v-model="showMa" /> Moving average</label
+            >
+            <InfoTip term="ma" />
+          </template>
+          <div class="metric-cfg">
+            <label>
+              Period
+              <span class="period">
+                <input type="number" v-model.number="maPeriod" min="1" max="400" />
+                <select v-model="maUnit">
+                  <option value="day">days</option>
+                  <option value="week">weeks</option>
+                  <option value="month">months</option>
+                </select>
+              </span>
+            </label>
+          </div>
+        </Panel>
 
-      <!-- Overlay: Bollinger bands -->
-      <Panel size="compact" collapsible="icon" :collapsed="!cfgBb" @update:collapsed="cfgBb = !$event">
-        <template #header>
-          <label class="checkbox"><input type="checkbox" v-model="showBb" /> Bollinger bands</label>
-          <InfoTip term="bollinger" />
-        </template>
-        <div class="metric-cfg">
-          <label>
-            Period
-            <span class="period">
-              <input type="number" v-model.number="bbPeriod" min="1" max="400" />
-              <select v-model="bbUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
-            </span>
-          </label>
-          <label>
-            <span>σ × <InfoTip term="sigma" /></span>
-            <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
-          </label>
-        </div>
-      </Panel>
+        <!-- Overlay: Bollinger bands -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgBb"
+          @update:collapsed="cfgBb = !$event"
+        >
+          <template #header>
+            <label class="checkbox"
+              ><input type="checkbox" v-model="showBb" /> Bollinger bands</label
+            >
+            <InfoTip term="bollinger" />
+          </template>
+          <div class="metric-cfg">
+            <label>
+              Period
+              <span class="period">
+                <input type="number" v-model.number="bbPeriod" min="1" max="400" />
+                <select v-model="bbUnit">
+                  <option value="day">days</option>
+                  <option value="week">weeks</option>
+                  <option value="month">months</option>
+                </select>
+              </span>
+            </label>
+            <label>
+              <span>σ × <InfoTip term="sigma" /></span>
+              <input type="number" v-model.number="bbK" min="0.5" max="5" step="0.5" />
+            </label>
+          </div>
+        </Panel>
 
-      <!-- Run detection: runs overlay (price) + run-slope graph -->
-      <Panel
-        size="compact"
-        collapsible="icon"
-        :collapsed="!cfgRun"
-        @update:collapsed="cfgRun = !$event"
-      >
-        <template #header>
-          <label class="checkbox"><input type="checkbox" v-model="showRunDetection" /> Run detection</label>
-          <InfoTip term="run" />
-        </template>
-        <div class="metric-cfg">
-          <label class="slider">
-            Scale <InfoTip term="scale" />
-            <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-            <span class="val">{{ runScaleLabel }}</span>
-          </label>
-          <label class="slider">
-            Sensitivity <InfoTip term="sensitivity" />
-            <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-            <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-          </label>
-        </div>
-      </Panel>
+        <!-- Run detection: runs overlay (price) + run-slope graph -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgRun"
+          @update:collapsed="cfgRun = !$event"
+        >
+          <template #header>
+            <label class="checkbox"
+              ><input type="checkbox" v-model="showRunDetection" /> Run detection</label
+            >
+            <InfoTip term="run" />
+          </template>
+          <div class="metric-cfg">
+            <label class="slider">
+              Scale <InfoTip term="scale" />
+              <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+              <span class="val">{{ runScaleLabel }}</span>
+            </label>
+            <label class="slider">
+              Sensitivity <InfoTip term="sensitivity" />
+              <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+              <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+            </label>
+          </div>
+        </Panel>
 
-      <!-- Curve: price ÷ MA -->
-      <Panel
-        size="compact"
-        collapsible="icon"
-        :collapsed="!cfgRatio"
-        @update:collapsed="cfgRatio = !$event"
-      >
-        <template #header>
-          <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
-          <InfoTip term="ratio" />
-        </template>
-        <div class="metric-cfg">
-          <label>
-            MA window
-            <span class="period">
-              <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
-              <span class="unit">days</span>
-            </span>
-          </label>
-        </div>
-      </Panel>
+        <!-- Curve: price ÷ MA -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgRatio"
+          @update:collapsed="cfgRatio = !$event"
+        >
+          <template #header>
+            <label class="checkbox"><input type="checkbox" v-model="showRatio" /> Price ÷ MA</label>
+            <InfoTip term="ratio" />
+          </template>
+          <div class="metric-cfg">
+            <label>
+              MA window
+              <span class="period">
+                <input type="number" v-model.number="ratioMaDays" min="30" max="2000" step="10" />
+                <span class="unit">days</span>
+              </span>
+            </label>
+          </div>
+        </Panel>
 
-      <!-- Curve: band position (smoothed-%B / Bollinger-score family) -->
-      <Panel
-        size="compact"
-        collapsible="icon"
-        :collapsed="!cfgBand"
-        @update:collapsed="cfgBand = !$event"
-      >
-        <template #header>
-          <label class="checkbox"><input type="checkbox" v-model="showBand" /> Bollinger score</label>
-          <InfoTip term="bollingerScore" />
-        </template>
-        <div class="metric-cfg">
-          <p class="cfg-note">
-            (EMA·price − MA) ÷ k·σ over one window. 0 = MA, ±1 = ±kσ bands.
-            Smoothing 0 + short window = classic %B.
-          </p>
-          <label>
-            <span>Period <InfoTip term="period" /></span>
-            <span class="period">
-              <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
-              <select v-model="bandUnit">
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
-            </span>
-          </label>
-          <label>
-            <span>σ × <InfoTip term="sigma" /></span>
-            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
-          </label>
-          <label>
-            <span>Smoothing <InfoTip term="smoothing" /></span>
-            <span class="period">
-              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
-              <span class="unit">{{ bandSmoothLabel }}</span>
-            </span>
-          </label>
-        </div>
-      </Panel>
+        <!-- Curve: band position (smoothed-%B / Bollinger-score family) -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgBand"
+          @update:collapsed="cfgBand = !$event"
+        >
+          <template #header>
+            <label class="checkbox"
+              ><input type="checkbox" v-model="showBand" /> Bollinger score</label
+            >
+            <InfoTip term="bollingerScore" />
+          </template>
+          <div class="metric-cfg">
+            <p class="cfg-note">
+              (EMA·price − MA) ÷ k·σ over one window. 0 = MA, ±1 = ±kσ bands. Smoothing 0 + short
+              window = classic %B.
+            </p>
+            <label>
+              <span>Period <InfoTip term="period" /></span>
+              <span class="period">
+                <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
+                <select v-model="bandUnit">
+                  <option value="day">days</option>
+                  <option value="week">weeks</option>
+                  <option value="month">months</option>
+                </select>
+              </span>
+            </label>
+            <label>
+              <span>σ × <InfoTip term="sigma" /></span>
+              <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" />
+            </label>
+            <label>
+              <span>Smoothing <InfoTip term="smoothing" /></span>
+              <span class="period">
+                <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" />
+                <span class="unit">{{ bandSmoothLabel }}</span>
+              </span>
+            </label>
+          </div>
+        </Panel>
       </div>
     </Panel>
 
@@ -382,12 +397,11 @@ function setRange(days: number | 'all') {
     </section>
 
     <p class="hint">
-      Drag to pan · pinch (or wheel) to zoom · slider for an exact range. On a
-      phone, <strong>press-and-hold then drag</strong> to read values with the
-      crosshair (it stays put until you pan or tap away); on desktop the crosshair
-      follows the mouse. It lines up the same date across every graph.
-      Sources: CoinMarketCap (daily closes before Aug 2017) + Binance public
-      market data (daily BTC/USDT closes from Aug 2017).
+      Drag to pan · pinch (or wheel) to zoom · slider for an exact range. On a phone,
+      <strong>press-and-hold then drag</strong> to read values with the crosshair (it stays put
+      until you pan or tap away); on desktop the crosshair follows the mouse. It lines up the same
+      date across every graph. Sources: CoinMarketCap (daily closes before Aug 2017) + Binance
+      public market data (daily BTC/USDT closes from Aug 2017).
     </p>
   </div>
 </template>

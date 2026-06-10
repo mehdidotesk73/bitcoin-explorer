@@ -63,12 +63,10 @@ const fmtY = (v: number | null) => (props.valueFormat === 'ratio' ? fmtRatio(v) 
 const DAY_MS = 86_400_000
 
 /** Format an x value (days since start) as its calendar year. */
-const fmtXYear = (v: number) =>
-  new Date(props.originMs + (v - 1) * DAY_MS).getFullYear().toString()
+const fmtXYear = (v: number) => new Date(props.originMs + (v - 1) * DAY_MS).getFullYear().toString()
 
 /** Zip a y-series against the numeric x into [x, y] pairs for the chart. */
-const pair = (ys: (number | null)[]): [number, number | null][] =>
-  ys.map((y, i) => [props.x[i], y])
+const pair = (ys: (number | null)[]): [number, number | null][] => ys.map((y, i) => [props.x[i], y])
 
 /** Build a shaded band as a stacked area: an invisible `lower` base plus the
  *  filled `upper − lower` difference. Excluded from legend/tooltip/bounds. */
@@ -284,7 +282,10 @@ function pixelToIndex(px: number, py: number): number | null {
   let bestD = Infinity
   for (let i = 0; i < props.x.length; i++) {
     const d = Math.abs(props.x[i] - xv)
-    if (d < bestD) { bestD = d; best = i }
+    if (d < bestD) {
+      bestD = d
+      best = i
+    }
   }
   return best >= 0 ? best : null
 }

@@ -34,8 +34,16 @@ function span(name, arr) {
   const allBelow = arr.every(below)
   const allAbove = arr.every((x) => !below(x))
   const crosses = arr.some(below) && arr.some((x) => !below(x))
-  const where = allBelow ? 'ENTIRELY below MA' : allAbove ? 'ENTIRELY above MA' : crosses ? 'CROSSES MA' : '—'
-  console.log(`  ${name.padEnd(4)} [${arr[0].toFixed(2)} -> ${arr[arr.length - 1].toFixed(2)}]  ${where}`)
+  const where = allBelow
+    ? 'ENTIRELY below MA'
+    : allAbove
+      ? 'ENTIRELY above MA'
+      : crosses
+        ? 'CROSSES MA'
+        : '—'
+  console.log(
+    `  ${name.padEnd(4)} [${arr[0].toFixed(2)} -> ${arr[arr.length - 1].toFixed(2)}]  ${where}`,
+  )
 }
 
 // Leg boundaries (indices into b, excluding the seed at 0).
@@ -47,7 +55,9 @@ span('DR3', seg(57, 65))
 // Find interior local minima (troughs).
 const troughs = []
 for (let i = 1; i < b.length - 1; i++) if (b[i] <= b[i - 1] && b[i] < b[i + 1]) troughs.push(i)
-console.log(`\nTroughs at indices ${JSON.stringify(troughs)} -> b = ${troughs.map((i) => b[i].toFixed(2)).join(', ')}`)
+console.log(
+  `\nTroughs at indices ${JSON.stringify(troughs)} -> b = ${troughs.map((i) => b[i].toFixed(2)).join(', ')}`,
+)
 console.log(`Both troughs below MA? ${troughs.every((i) => below(b[i]))}`)
 
 // ASCII plot, MA line marked with ':'.
