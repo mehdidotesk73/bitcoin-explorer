@@ -337,16 +337,15 @@ so a broken build can (and once did) reach history. Prioritised backlog:
       assertion (mutating `price[>i]` doesn't change `b` at `i`). Run via
       `npm run test:run`, wired into CI. Tests excluded from the production
       type-check (`tsconfig.app.json`). Next: `forecast.ts` invariants.
-- [~] **Lint + format.** **Prettier config landed** (`.prettierrc.json` —
-  no-semi / single-quote / 100-col; `format` / `format:check` scripts).
-  **Remaining:** run the one-shot `npm run format` pass (≈26 files) on a clean
-  branch, then add `format:check` to CI; and add `eslint` (vue +
+- [~] **Lint + format.** **Prettier config + one-shot pass done** (`.prettierrc.json`
+  — no-semi / single-quote / 100-col; `npm run format` ran over the repo;
+  `format:check` wired into `ci.yml`). **Remaining:** add `eslint` (vue +
   @typescript-eslint) with an `npm run lint` script wired into CI.
-- [ ] **Pin the Node version.** Add `.nvmrc` (22) and an `engines` field so local
-      dev matches CI/deploy and avoids "works on my machine" drift.
-- [ ] **Automated dependency updates.** Add `.github/dependabot.yml` for `npm`
-      and `github-actions` (vite / echarts / capacitor / vite-plugin-pwa move
-      fast). The CI gate above makes these safe to review/merge.
+- [x] **Pin the Node version.** `.nvmrc` (22) + `engines.node >=22` so local dev
+      matches CI/deploy and avoids "works on my machine" drift.
+- [x] **Automated dependency updates.** `.github/dependabot.yml` for `npm`
+      (grouped minor/patch) + `github-actions`, weekly. The CI gate makes these
+      safe to review/merge.
 
 ### Lower priority / nice-to-have
 
