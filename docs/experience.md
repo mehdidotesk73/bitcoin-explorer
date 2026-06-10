@@ -170,6 +170,42 @@ for the single-source-of-truth tabs (Price Explorer, Price Mechanics). Lesson:
 (price has a slider, metric doesn't) the explicit per-sibling mirror is simpler
 and reliable.
 
+### Stochastic projection — epistemic "trend-line fan" (`claude/stochastic-projection-plan`, PR #32, abandoned)
+
+Wrapped the Price Mechanics deterministic projection in a re-fit **confidence
+band** around both the value-growth curve and the volatility envelope, with a
+90/95/99 **Band** picker. **What was built (sound, worth keeping as prior art —
+but the code lives only on the closed PR #32, not on `main`):**
+
+- `lib/fitCurve.ts` — a generic **closed-form weighted least-squares** fitter
+  (`fitCurve` / `CurveModel` = `features` / `rebuild` / `eval`). Power-law,
+  exponential and the decay envelopes are all linear-in-features after a
+  log/linear transform, so they reduce to closed-form OLS — instant in the
+  browser, **no optimizer**. (This corrected the old "scipy-style optimizer"
+  calibration story to the closed-form reality.)
+- **Point providers** decouple point _selection_ from fitting (value curve = all
+  MA points; envelope = the hand-picked cycle tops) — a behaviour-preserving
+  refactor of `forecast.ts`.
+- `fitEnsemble()` + `bandAt()` — per-use-case resampling: a **block residual
+  bootstrap** for the many autocorrelated value points, **leave-one-cycle-out
+  (jackknife)** for the ~3–4 envelope peaks (a residual bootstrap there would be
+  fake-tight). Seedable mulberry32 PRNG so bands reproduce. Covered by
+  `fitCurve.test.ts` / `forecast.test.ts`.
+
+**Why it didn't earn merge (known):** the band is purely **epistemic** — "how
+well is the _curve_ pinned by the history" — and for BTC it comes out **very
+narrow**, because the in-sample fit is well-determined. So it offers **partial
+support for some secondary assumptions** (the fitter is stable, the
+growth/envelope curves are well-identified, the closed-form LS is adequate) but
+carries **no information at the scale of interest**: the _future price
+dispersion_ a what-if actually needs. Worse, a tight band hugging the trend
+invites being misread as a price-range forecast. The useful, wide cone is the
+**aleatoric** (overshoot/variance) layer — `projection = trend fan ⊕ overshoot
+envelope` — which is **orthogonal** to this epistemic fan and is the real next
+step if the forecast tab is revisited. Decision: branch deleted, PR #32 closed;
+re-derive the fitter/ensemble from the closed PR if the aleatoric cone is ever
+built.
+
 ---
 
 ## Version history
