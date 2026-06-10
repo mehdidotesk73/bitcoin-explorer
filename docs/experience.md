@@ -1,10 +1,10 @@
 # Project experience log
 
-Running memory of what we've *tried*, what stuck, and what didn't — so we don't
+Running memory of what we've _tried_, what stuck, and what didn't — so we don't
 re-walk dead ends. Two parts:
 
 - **What didn't work** — abandoned approaches, each with the "didn't work"
-  treatment: what we tried, whether we know *why* it didn't work, and (if known)
+  treatment: what we tried, whether we know _why_ it didn't work, and (if known)
   the reason. "Direction feels unideal" is allowed, but say so explicitly rather
   than dressing it up as a technical reason.
 - **Version history** — one entry per merge to `main`, summarising the changes
@@ -18,15 +18,17 @@ and on every branch removal.
 ## What didn't work
 
 ### Buy/hold signal by thresholding the composite heat
+
 Shaded the price green/grey by a smoothed composite-heat score crossing a
 threshold (tried both sign conventions). **Why it didn't work (known):** the
-composite was a *trend-regime* gauge — negative through up-markups, positive
+composite was a _trend-regime_ gauge — negative through up-markups, positive
 through down-falls — not a buy-timer. Thresholding it either painted the entire
 rise green ("buy after it already went up") or painted crashes green. The
-owner's actual thesis (buy choppy accumulation *before* a rise, hold through
+owner's actual thesis (buy choppy accumulation _before_ a rise, hold through
 downfalls) needs a chop + stabilisation detector, not a heat threshold.
 
 ### The M/W composite-heat subsystem
+
 A multi-horizon W/M pattern matcher (soft-Viterbi phase machine) pooled across
 daily/weekly/monthly via atanh into one heat score, plus a Components
 diagnostic. **Why it didn't work (mostly direction, partly known):** heavy
@@ -36,6 +38,7 @@ runs, price ÷ MA) were clearer and more directly tunable, so the whole subsyste
 was removed in favour of `lib/runs.ts`.
 
 ### price ÷ MA against a short indicator MA
+
 First version divided price by the on-chart MA (20d default); the ratio hugged 1
 with high-frequency noise and couldn't separate regimes. **Why (known):** a
 short MA chases price, so the ratio has no slow baseline to swing against. Fix
@@ -43,35 +46,38 @@ that worked: a long, slow baseline (4yr / 1460d, tunable) on a **log** y-axis,
 matching the Price Mechanics tab.
 
 ### Run-slope coloured from raw-price endpoints
+
 The run-slope bars disagreed with the b-graph's run shading. **Why (known):**
 the slope was computed from raw price at each run's two endpoints, which is noisy
 and on short runs can flip sign vs the run's sustained direction. Fix: measure
-the slope on the *smoothed* price the runs are built from, and colour by run
+the slope on the _smoothed_ price the runs are built from, and colour by run
 direction — now the two graphs agree run-for-run.
 
 ### Linear run-scale slider
+
 A linear slider crammed daily/weekly/monthly into the bottom few percent. **Why
 (known):** run scales span orders of magnitude (1–1500 days). Fix: a log slider
 whose label snaps to the nearest named scale (daily…multi-year).
 
 ### Heat-band DCA prototype (`claude/dca-explorer`, stranded)
+
 An early buying-strategy exploration scoring a "heat-band buy method vs uniform"
 over a rolling horizon (`dcaScore`/`dcaSweep`/`dcaTimeline` in `indicators.ts`,
 plus sweep/timeline charts). **Why it didn't work (known):** built entirely on
 the M/W heat engine that was later removed, so the driver no longer exists; and
 the framing (growth-multiple vs uniform) doesn't match the owner's updated
 vision. Superseded by the freshly-designed **Hodl Explorer** (see
-`docs/TODO.md`) — **do not revive the code**, but the *mechanics below* are
+`docs/TODO.md`) — **do not revive the code**, but the _mechanics below_ are
 worth keeping as prior art.
 
-**Scoring idea (causal, scale-free).** Judge a buying *method* by how cheaply it
+**Scoring idea (causal, scale-free).** Judge a buying _method_ by how cheaply it
 bought, relative to buying every day, measured at a later vantage point — never
 peeking past the day a decision is made.
 
 - For each evaluation day `t`, look back `daysBack` (X) over the window
   `[t−X, t]`.
 - A **method** buys on the subset of days in that window that satisfy a rule;
-  the **uniform** benchmark buys on *every* day in the window.
+  the **uniform** benchmark buys on _every_ day in the window.
 - Value each set of buys at day `t`, scale-free (a growth multiple, so dollar
   size and absolute price level drop out):
   - `growth_method(t)  = mean over method-days j in [t−X, t] of price[t]/price[j]`
@@ -79,7 +85,7 @@ peeking past the day a decision is made.
 - The day's edge is `growth_method(t) / growth_uniform(t)`; **> 1** means the
   method's buy-days were cheaper (higher subsequent growth) than buying daily.
 - The method's overall **score** is that ratio averaged over all evaluation
-  days. Scoring over a *finite* X-day horizon (not all the way to "today") stops
+  days. Scoring over a _finite_ X-day horizon (not all the way to "today") stops
   a handful of ancient ultra-cheap days from dominating every window.
 
 **The specific rule that was tried: a heat band.** Buy on days whose M/W heat
@@ -88,32 +94,35 @@ oversold-ness"). Two knobs: band **center** and **window** (entered as numeric
 inputs in the end, after sliders proved fiddly).
 
 **Reported metrics (the `Dca*` interfaces):**
+
 - `dcaScore` → `{ score, beatRate, methodGrowth, uniformGrowth, coverage,
-  evalDays }`. `beatRate` = fraction of eval days where method ≥ uniform;
+evalDays }`. `beatRate` = fraction of eval days where method ≥ uniform;
   `coverage` = mean (band-days / window-days), i.e. how often the rule actually
-  bought. A day needs ≥1 method-day *and* ≥1 uniform-day to be scored.
+  bought. A day needs ≥1 method-day _and_ ≥1 uniform-day to be scored.
 - `dcaSweep` → sweep the band `center`, yielding `{ center, score, coverage }`
   points — an at-a-glance curve of "which oversold band paid best," rendered by
   `DcaSweepChart.vue`.
 - `dcaTimeline` → per-day `{ index, methodGrowth, uniformGrowth, ratio,
-  coverage }`, a "days like today" attractiveness trace rendered by
+coverage }`, a "days like today" attractiveness trace rendered by
   `DcaTimelineChart.vue`.
 
 **Design notes / lessons carried forward:**
-- *Average over all start days*, not a single lump entry — removes luck-of-the-
-  entry-date and makes the score about the *rule*, not the timing of one buy.
-- *Coverage matters as much as score*: a rule that scores 1.3 but only fires 2%
+
+- _Average over all start days_, not a single lump entry — removes luck-of-the-
+  entry-date and makes the score about the _rule_, not the timing of one buy.
+- _Coverage matters as much as score_: a rule that scores 1.3 but only fires 2%
   of the time (tiny coverage) is near-useless for steady accumulation — always
   show both.
-- *Growth-multiple framing has a blind spot*: it measures "did I buy cheaply"
+- _Growth-multiple framing has a blind spot_: it measures "did I buy cheaply"
   but **not** realised ROI, cost basis, drawdown, or "was the cash actually
   deployable." The fresh design should simulate an actual budget/position, not
   just average price ratios.
-- *Generalise the driver*: the band rule was hard-wired to heat. A future
+- _Generalise the driver_: the band rule was hard-wired to heat. A future
   explorer should take any causal metric (price ÷ MA, b, run state) → buy-days,
   reusing the rolling-horizon vs-uniform scoring as one of several lenses.
 
 ### Metric registry (data-driven toggles + persistence) — built, never merged
+
 On `claude/inspiring-bardeen-lHExI` (commit `cec9ac2`), a spec-driven metric
 system replaced the Price Explorer's individual toggle refs: `lib/metricRegistry.ts`
 with `MetricSpec` / `MetricState`, `defaultMetricState` / `load` / `save`, and
@@ -130,6 +139,7 @@ sharing. Reconciled: system-design §3/§7 now say so, and the TODO entry was mo
 out of Done into Later / ideas.
 
 ### Hand-drawn crosshair + a bespoke long-press gesture machine
+
 The Price Explorer first synced its crosshair by reporting a hovered index up to
 the parent and **re-drawing a `graphic` line via `setOption` on every pointer
 move**, and the first cut of the pan/crosshair split was a full custom gesture
@@ -144,6 +154,7 @@ triggerOn`) on a long-press. `lib/useChartGestures.ts` was deleted in favour of
 `lib/useChartSync.ts`.
 
 ### Composable zoom bridge for a 2-chart connect group (locked the slider)
+
 After unifying sync into `useChartSync`, the Hodl slider drew a window that
 **never applied to the chart**. **Why (known):** with two charts in a `connect`
 group, the composable's watch-based bridge dispatched a `dataZoom` to a sibling,
@@ -164,6 +175,7 @@ and reliable.
 ## Version history
 
 ### 2026-06-09 — All-native chart interaction (pan / crosshair / zoom) across all tabs
+
 - **Added:** `lib/useChartSync.ts` — shared chart wiring: optional `connect`
   group, an idempotent (per-group-suppressed) zoom bridge, and a touch
   **pan/crosshair gesture**. Pan vs. crosshair is two native flags flipped per
@@ -185,6 +197,7 @@ and reliable.
   follow-up queued; two "what didn't work" entries above.
 
 ### 2026-06-04 — UI: `<Panel>` container abstraction + Update-available button
+
 - **Added (component-framework step 2):** `components/Panel.vue` — the single
   themed container, prop-driven from the UI inventory: `theme` (`default|violet`),
   `size` (`regular|compact`), `collapsible` (`none|header|face|icon`),
@@ -199,11 +212,12 @@ and reliable.
 - **Added:** a top-bar **Update available** button (opposite Help, shown only when
   `useVersionCheck` reports `update-ready`) whose popover mirrors the footer's
   build / new-published-commit / reload info — reachable without scrolling.
-- **Docs:** README refocused on what the project *is* (the three tabs + PWA/Pages
+- **Docs:** README refocused on what the project _is_ (the three tabs + PWA/Pages
   delivery); the native-like (PWA) and dormant Capacitor native paths folded into
-  `TODO.md` → *Delivery & native targets*; system-design §5.0 documents `<Panel>`.
+  `TODO.md` → _Delivery & native targets_; system-design §5.0 documents `<Panel>`.
 
 ### 2026-06-04 — UI touch-ups: inline help dots, clamped tooltips, default-collapsed panels
+
 - **Fixed:** the `InfoTip` `?` dots dropped onto their own row beneath labels in
   column-flex labels; wrapping the label text + `InfoTip` in an inline `<span>`
   keeps the dot next to its label across Forecast / Hodl / Price Explorer.
@@ -216,7 +230,7 @@ and reliable.
   collapse hint; collapsed panels slimmed.
 - **Docs (TODO):** seeded the UI **component-framework / design-system** initiative
   (component inventory, variants, abstraction order, valuable-vs-overengineering).
-- **Fixed:** the footer button reloaded the *same* version even when it said
+- **Fixed:** the footer button reloaded the _same_ version even when it said
   "Update ready". `version.json` (network, no-store) sees a new build before the
   service worker has fetched it, so `updateServiceWorker(true)` had nothing
   waiting and `location.reload()` served the cached bundle. `reloadLatest` now
@@ -224,6 +238,7 @@ and reliable.
   then activates + reloads. Device-validated (no SW in the sandbox).
 
 ### 2026-06-04 — Price Explorer: collapsible metrics menu + crosshair-sync fix
+
 - **Added:** the metric toggles live in a **purple container** (matching the
   Mechanics-tab Calibration section); clicking the container face/header collapses
   it to a slim "Metrics" row (clicks inside the cards are stopped). Lists the
@@ -231,7 +246,7 @@ and reliable.
 - **Fixed (crosshair):** the goal was one shared crosshair across the price chart
   and all separate-curve panels. **What didn't work:** an explicit root
   `axisPointer.link` (synced price↔first-grid only); then a pixel-level `showTip`
-  — neither propagated a *programmatic* pointer to the stacked grids (only the
+  — neither propagated a _programmatic_ pointer to the stacked grids (only the
   first grid lit up), though native hover links them fine. **What worked:** drop
   ECharts pointer-linking for the crosshair and draw it ourselves — each chart
   reports its hovered index to `PriceExplorer` (shared `hoverIndex`), and every
@@ -240,6 +255,7 @@ and reliable.
   pointer-leave) so the panels stay in lockstep. Device-validated.
 
 ### 2026-06-04 — Prettier config (config-only)
+
 - **Added:** `prettier` (3.8.3), `.prettierrc.json` (no-semi / single-quote /
   100-col, matching the scaffold), `.prettierignore`, and `format` /
   `format:check` scripts.
@@ -248,19 +264,21 @@ and reliable.
   in-flight branches. Tracked as a follow-up in `TODO.md`.
 
 ### 2026-06-04 — Docs catch-up (system-design + experience)
+
 - **Added:** fleshed out `system-design.md` §3 (lib), §4 (composables), §7
   (state/persistence), §8 (build/CI/testing) from the source; backfilled five
   `experience.md` version-history entries.
 - **Corrected drift:** the metric registry was recorded as Done across TODO +
   system-design but was **never merged** (lives only on `claude/inspiring-bardeen-lHExI`,
   `cec9ac2`). Documented as "what didn't work" and moved out of TODO Done.
-  *(This branch later completed the remaining §2/§5.1/§5.3/§6/§9 stubs.)*
+  _(This branch later completed the remaining §2/§5.1/§5.3/§6/§9 stubs.)_
 
 ### 2026-06-04 — Honest "Reload latest" via published-version check (freshness Phase 1)
+
 - **Added:** an `emit-version-json` Vite plugin writes `version.json`
   (`{ commit, builtAt }`) into the build (outside the SW precache), and
   `lib/useVersionCheck.ts` polls it cache-busted to compare the live origin's
-  *published* commit against the loaded `__BUILD_ID__`.
+  _published_ commit against the loaded `__BUILD_ID__`.
 - **Changed:** the footer button now reports **Up to date** / **Update ready —
   Reload** instead of silently reloading into the same build.
 - **Why:** the old button relied on the SW noticing a new precache manifest, so it
@@ -268,6 +286,7 @@ and reliable.
   "publishing…" state) is queued in `TODO.md`.
 
 ### 2026-06-03 — Concept tooltips (InfoTip + glossary)
+
 - **Added:** `components/InfoTip.vue` — a tap/hover info bubble for beginners —
   and `lib/glossary.ts`, a `GLOSSARY` map (term → 1–3-sentence plain-English
   definition) referenced by key (`<InfoTip term="ma" />`), seeded with the
@@ -277,6 +296,7 @@ and reliable.
   concept, reused wherever the term appears.
 
 ### 2026-06-03 — Code consolidation (single source of truth)
+
 De-duplication pass after the feature run (Indicator setup, Hodl Explorer,
 Bollinger-score unification onto `bandPosition`, marked help renderer, bitcoin1460
 rebrand, CI gate + Vitest). Extracted shared modules: `lib/format.ts`
@@ -291,6 +311,7 @@ Also reconciled `docs/TODO.md` (merged work → Done) and started
 sections for the rest of the system (tracked in `TODO.md`).
 
 ### 2026-06-03 — CI gate + unit tests (Vitest)
+
 - **Added:** `.github/workflows/ci.yml` — on PR → `main` and push → `main`:
   `npm ci` → `npm run test:run` → `npm run build` (`vue-tsc -b && vite build`).
   Node 22 + npm cache (matches `deploy.yml`); `concurrency` cancels superseded
@@ -303,6 +324,7 @@ sections for the rest of the system (tracked in `TODO.md`).
   (manual GitHub setting; see `TODO.md`).
 
 ### 2026-06-03 — Bollinger score unified onto `bandPosition`; marked renderer
+
 - **Changed:** the Bollinger score became a single source of truth —
   `indicators.ts` `bandPosition = (EMAₛ(price) − SMA_W) / (k·σ_W)`, centered
   (±1 = ±kσ). Replaced the old run-scale score and the separate classic-%B curve
@@ -314,11 +336,13 @@ sections for the rest of the system (tracked in `TODO.md`).
 - **Defaults:** Bollinger score → 20 months · 2σ · 31-day smoothing (both tabs).
 
 ### 2026-06-02 — Rebrand to bitcoin1460
+
 - **Changed:** app name + icon to **bitcoin1460** (the 1,460-day = 4-year MA
   motif), with a centered Ubuntu/Orbitron title banner and PWA icons generated
   from a single source image.
 
 ### 2026-06-03 — Conceptual help docs + in-app help button
+
 - **Added:** `docs/concepts/{overview,price-explorer,price-mechanics,hodl-explorer}.md`
   — conceptual documentation of each page (purpose, controls, how it works,
   assumptions/caveats), written to be read by both an AI agent and an end user.
@@ -334,6 +358,7 @@ sections for the rest of the system (tracked in `TODO.md`).
   the app renders the same files rather than a duplicated copy.
 
 ### 2026-06-02 — Hodl Explorer tab
+
 - **Added:** a buying-strategy sandbox (`lib/hodl.ts`): a seed-layer combinator
   where drivers (price ÷ MA band, Bollinger-score band, uniform spacing, manual
   dates) resolve to frozen layers unioned into a strategy; a trailing-days **or**
@@ -346,7 +371,9 @@ sections for the rest of the system (tracked in `TODO.md`).
   work") — actual budget/position simulation rather than average price ratios.
 
 ### 2026-06-02 — Run/scale metric framework (replaces composite heat)
+
 Merge of the metric-framework work. Changes vs previous version:
+
 - **Added:** `lib/runs.ts` (`scaleDiag(price, hd)` → b, trend vote, runs at one
   continuously-tunable scale); a metric-toggle UI in the Price Explorer where
   each metric toggles independently and carries its own collapsible config.

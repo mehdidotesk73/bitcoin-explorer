@@ -19,7 +19,12 @@
   --danger-bg: #3a1d24;
   --radius: 0.55rem;
 
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
   color: var(--text);
   background-color: var(--bg);
   color-scheme: dark;
@@ -45,8 +50,7 @@ body {
   min-height: 100dvh;
   background:
     radial-gradient(1200px 600px at 15% -10%, rgba(79, 142, 247, 0.08), transparent 60%),
-    radial-gradient(1000px 500px at 110% 0%, rgba(155, 109, 255, 0.08), transparent 55%),
-    var(--bg);
+    radial-gradient(1000px 500px at 110% 0%, rgba(155, 109, 255, 0.08), transparent 55%), var(--bg);
 }
 
 h1,

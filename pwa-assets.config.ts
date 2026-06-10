@@ -1,7 +1,4 @@
-import {
-  defineConfig,
-  minimal2023Preset as preset,
-} from '@vite-pwa/assets-generator/config'
+import { defineConfig, minimal2023Preset as preset } from '@vite-pwa/assets-generator/config'
 
 // Generates app icons, apple-touch-icon, favicons, and maskable icons
 // from a single source SVG. Run `npm run generate-pwa-assets`, or let

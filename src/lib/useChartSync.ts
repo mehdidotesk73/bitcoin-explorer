@@ -110,7 +110,8 @@ export function useChartSync(opts: {
 
   // showTip/hideTip are synced across the connect group, so driving the touched
   // chart lights the crosshair on every figure.
-  const showAt = (idx: number) => opts.chart.value?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
+  const showAt = (idx: number) =>
+    opts.chart.value?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
   const clearTip = () => opts.chart.value?.dispatchAction({ type: 'hideTip' })
 
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -118,30 +119,43 @@ export function useChartSync(opts: {
   let crosshair = false // finger currently driving the crosshair
   let panning = false
   let persisted = false // a sticky crosshair is showing from a previous gesture
-  let sx = 0, sy = 0, lx = 0, ly = 0
+  let sx = 0,
+    sy = 0,
+    lx = 0,
+    ly = 0
   let lastIdx: number | null = null
 
   function clearTimer() {
-    if (timer) { clearTimeout(timer); timer = null }
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
   }
   function enterCrosshair() {
     if (panning) return
     crosshair = true
     setMode('crosshair') // freeze pan; let ECharts follow the finger natively
     const i = indexFromXY(lx, ly)
-    if (i != null) { lastIdx = i; showAt(i) }
+    if (i != null) {
+      lastIdx = i
+      showAt(i)
+    }
   }
 
   function onTouchStart(ev: TouchEvent) {
     active = false
-    if (ev.touches.length > 1) { clearTimer(); return } // two-finger → native pinch
+    if (ev.touches.length > 1) {
+      clearTimer()
+      return
+    } // two-finger → native pinch
     const [x, y] = localXY(ev.touches[0])
     // Ignore touches that begin outside the plot grid (zoom slider, axis, legend)
     // so those keep their native behaviour — notably the slider stays draggable.
     const c = opts.chart.value
     if (c && !c.containPixel({ gridIndex: 0 }, [x, y])) return
     active = true
-    sx = lx = x; sy = ly = y
+    sx = lx = x
+    sy = ly = y
     panning = false
     crosshair = false
     setMode('pan') // baseline; a held programmatic tip stays shown through this
@@ -150,9 +164,13 @@ export function useChartSync(opts: {
   }
   function onTouchMove(ev: TouchEvent) {
     if (!active) return
-    if (ev.touches.length > 1) { clearTimer(); return }
+    if (ev.touches.length > 1) {
+      clearTimer()
+      return
+    }
     const [x, y] = localXY(ev.touches[0])
-    lx = x; ly = y
+    lx = x
+    ly = y
     if (crosshair) {
       ev.preventDefault() // hold the page still; ECharts moves the crosshair
       const i = indexFromXY(x, y)
@@ -162,7 +180,10 @@ export function useChartSync(opts: {
     if (!panning && (Math.abs(x - sx) > MOVE_TOL || Math.abs(y - sy) > MOVE_TOL)) {
       panning = true
       clearTimer()
-      if (persisted) { clearTip(); persisted = false } // a new pan clears the sticky crosshair
+      if (persisted) {
+        clearTip()
+        persisted = false
+      } // a new pan clears the sticky crosshair
     }
   }
   function onTouchEnd() {
@@ -175,7 +196,10 @@ export function useChartSync(opts: {
       // 'none' until a pan or tap clears it.
       crosshair = false
       setMode('pan')
-      if (lastIdx != null) { showAt(lastIdx); persisted = true }
+      if (lastIdx != null) {
+        showAt(lastIdx)
+        persisted = true
+      }
     } else if (!panning && persisted) {
       // A plain tap dismisses the sticky crosshair.
       clearTip()

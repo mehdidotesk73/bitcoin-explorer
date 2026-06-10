@@ -29,6 +29,7 @@ baseline — growth**, and **Volatility projection** — **start collapsed** so 
 chart leads. Tap a panel's header to expand it (tap again to collapse).
 
 ### Model selection
+
 - **Growth projection:** time-based **power-law** (default), **exponential**, or
   **linear**.
 - **Volatility projection:** value/time **decay** variants (default: value-based
@@ -38,7 +39,9 @@ chart leads. Tap a panel's header to expand it (tap again to collapse).
 - **Log X / Log Y:** axis scaling for the charts.
 
 ### Calibration (drives the auto-fit)
+
 Changing anything here re-fits the model:
+
 - **Baseline MA window** (default 1460 d / 4 yr) — the "value" definition.
 - **Growth fit window** — how much trailing history the growth fit sees (0 = all).
 - **Day zero (t₀)** — the time origin for power/exponential models.
@@ -47,6 +50,7 @@ Changing anything here re-fits the model:
 - **Reset to fit** — pull the freshly fitted values into the editable params.
 
 ### Hand-tunable parameters
+
 After fitting you can override the growth constants, the volatility envelope
 constants, and the peak set (add / remove / move peak dates, and a **spread**
 controlling peak width).

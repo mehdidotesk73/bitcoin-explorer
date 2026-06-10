@@ -39,7 +39,12 @@ describe('windowIndices', () => {
 
 describe('unionIndices', () => {
   it('merges, dedupes and sorts', () => {
-    expect(unionIndices([[1, 3], [2, 3, 5]])).toEqual([1, 2, 3, 5])
+    expect(
+      unionIndices([
+        [1, 3],
+        [2, 3, 5],
+      ]),
+    ).toEqual([1, 2, 3, 5])
   })
 })
 

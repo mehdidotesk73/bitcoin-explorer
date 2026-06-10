@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A Vue + Vite web app, installable as a PWA and Capacitor-ready for native iOS/Android builds.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",

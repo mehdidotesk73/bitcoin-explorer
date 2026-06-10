@@ -162,7 +162,9 @@ const builderMetric = computed<(number | null)[]>(() =>
   driver.value === 'bscore' ? bScore.value : ratioSeries(prices.value, longMa.value),
 )
 const metricTitle = computed(() =>
-  driver.value === 'bscore' ? `Bollinger score (${bandLabel.value})` : `Price ÷ MA (${maLabel.value})`,
+  driver.value === 'bscore'
+    ? `Bollinger score (${bandLabel.value})`
+    : `Price ÷ MA (${maLabel.value})`,
 )
 // Only band-on-a-metric drivers get the shaded driver chart.
 const showMetricChart = computed(() => driver.value === 'ratio' || driver.value === 'bscore')
@@ -227,7 +229,12 @@ const manualPendingIndices = computed(() => {
 const previewIndices = computed(() => {
   if (driver.value === 'manual') return manualPendingIndices.value.filter(inWindow)
   if (driver.value === 'uniform')
-    return uniformSpacedDates(prices.value.length, uniformEveryX.value, uniformOffset.value, candidates.value)
+    return uniformSpacedDates(
+      prices.value.length,
+      uniformEveryX.value,
+      uniformOffset.value,
+      candidates.value,
+    )
   return selectBandBuyDates(builderMetric.value, builderBand.value, candidates.value)
 })
 
@@ -344,7 +351,6 @@ function removeManualDate(d: string) {
   manualDates.value = manualDates.value.filter((x) => x !== d)
 }
 
-
 // --- Price chart ------------------------------------------------------------
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -425,7 +431,16 @@ function buildPriceOption(): echarts.EChartsCoreOption {
     },
     dataZoom: [
       { type: 'inside', start: zoom.value[0], end: zoom.value[1] },
-      { type: 'slider', start: zoom.value[0], end: zoom.value[1], bottom: 8, height: 14, borderColor: '#36425f', fillerColor: 'rgba(79,142,247,0.18)', textStyle: { color: AXIS, fontSize: 9 } },
+      {
+        type: 'slider',
+        start: zoom.value[0],
+        end: zoom.value[1],
+        bottom: 8,
+        height: 14,
+        borderColor: '#36425f',
+        fillerColor: 'rgba(79,142,247,0.18)',
+        textStyle: { color: AXIS, fontSize: 9 },
+      },
     ],
     series: [
       {
@@ -574,8 +589,14 @@ function render() {
 }
 
 onMounted(async () => {
-  if (el.value) { chart.value = echarts.init(el.value); chart.value.group = GROUP }
-  if (elMetric.value) { chartMetric.value = echarts.init(elMetric.value); chartMetric.value.group = GROUP }
+  if (el.value) {
+    chart.value = echarts.init(el.value)
+    chart.value.group = GROUP
+  }
+  if (elMetric.value) {
+    chartMetric.value = echarts.init(elMetric.value)
+    chartMetric.value.group = GROUP
+  }
   render()
   echarts.connect(GROUP) // native crosshair/tooltip sync across both figures
   // Mirror the graphed range (incl. the slider) between the two charts by hand.
@@ -640,7 +661,10 @@ watch(
     <section class="indicator" v-if="latestPrice">
       <div class="indicator-head">
         <h3>Buy / Hodl indicator <InfoTip term="buyHodlIndicator" /></h3>
-        <span class="muted">today {{ todayDate }} · {{ buyVotes }} of {{ patternSignals.length }} patterns say buy</span>
+        <span class="muted"
+          >today {{ todayDate }} · {{ buyVotes }} of {{ patternSignals.length }} patterns say
+          buy</span
+        >
       </div>
       <div class="signal-row">
         <div class="signal" v-for="p in patternSignals" :key="p.id">
@@ -655,18 +679,18 @@ watch(
         </div>
       </div>
       <p class="indicator-note">
-        Reflects the patterns as currently tuned below. A “buy” means today's price sits in
-        that pattern's accumulation band; otherwise hodl. Heuristic only — not advice.
+        Reflects the patterns as currently tuned below. A “buy” means today's price sits in that
+        pattern's accumulation band; otherwise hodl. Heuristic only — not advice.
       </p>
     </section>
 
     <!-- Builder -->
     <section class="builder">
       <p class="driver-note">
-        Drivers are <strong>tunable, pattern-based price pickers</strong> — they flag
-        historical days matching a rule you set. Bitcoin is <strong>not guaranteed</strong>
-        to repeat its past or present patterns in the future; treat results as exploration,
-        not prediction.
+        Drivers are <strong>tunable, pattern-based price pickers</strong> — they flag historical
+        days matching a rule you set. Bitcoin is <strong>not guaranteed</strong>
+        to repeat its past or present patterns in the future; treat results as exploration, not
+        prediction.
       </p>
       <div class="controls">
         <label class="ctrl-label">
@@ -698,9 +722,23 @@ watch(
         <label class="ctrl-label" v-if="driver === 'ratio'">
           <span>Buy band (price ÷ MA) <InfoTip term="buyBand" /></span>
           <span class="ctrl-row">
-            <input type="number" v-model.number="ratioLower" min="0" max="3" step="0.01" class="num-input sm" />
+            <input
+              type="number"
+              v-model.number="ratioLower"
+              min="0"
+              max="3"
+              step="0.01"
+              class="num-input sm"
+            />
             <span class="unit">to</span>
-            <input type="number" v-model.number="ratioUpper" min="0" max="3" step="0.01" class="num-input sm" />
+            <input
+              type="number"
+              v-model.number="ratioUpper"
+              min="0"
+              max="3"
+              step="0.01"
+              class="num-input sm"
+            />
           </span>
         </label>
         <div class="ctrl-label" v-if="driver === 'bscore'">
@@ -708,7 +746,13 @@ watch(
           <label class="param">
             Period
             <span class="ctrl-row">
-              <input type="number" v-model.number="bandPeriod" min="2" max="3000" class="num-input" />
+              <input
+                type="number"
+                v-model.number="bandPeriod"
+                min="2"
+                max="3000"
+                class="num-input"
+              />
               <select v-model="bandUnit" class="param-sel">
                 <option value="day">days</option>
                 <option value="week">weeks</option>
@@ -718,12 +762,26 @@ watch(
           </label>
           <label class="param">
             σ ×
-            <input type="number" v-model.number="bandK" min="0.5" max="5" step="0.5" class="num-input" />
+            <input
+              type="number"
+              v-model.number="bandK"
+              min="0.5"
+              max="5"
+              step="0.5"
+              class="num-input"
+            />
           </label>
           <label class="param">
             Smoothing
             <span class="ctrl-row">
-              <input type="number" v-model.number="bandSmooth" min="0" max="365" step="1" class="num-input" />
+              <input
+                type="number"
+                v-model.number="bandSmooth"
+                min="0"
+                max="365"
+                step="1"
+                class="num-input"
+              />
               <span class="unit">{{ bandSmoothLabel }}</span>
             </span>
           </label>
@@ -731,21 +789,49 @@ watch(
         <label class="ctrl-label" v-if="driver === 'bscore'">
           <span>Buy band (b score) <InfoTip term="buyBand" /></span>
           <span class="ctrl-row">
-            <input type="number" v-model.number="bLower" min="-8" max="8" step="0.1" class="num-input sm" />
+            <input
+              type="number"
+              v-model.number="bLower"
+              min="-8"
+              max="8"
+              step="0.1"
+              class="num-input sm"
+            />
             <span class="unit">to</span>
-            <input type="number" v-model.number="bUpper" min="-8" max="8" step="0.1" class="num-input sm" />
+            <input
+              type="number"
+              v-model.number="bUpper"
+              min="-8"
+              max="8"
+              step="0.1"
+              class="num-input sm"
+            />
           </span>
         </label>
         <label class="ctrl-label" v-if="driver === 'uniform'">
           Every X days · {{ uniformEveryX === 7 ? 'weekday' : 'offset' }}
           <span class="ctrl-row">
-            <input type="number" v-model.number="uniformEveryX" min="1" max="365" step="1" class="num-input sm" />
+            <input
+              type="number"
+              v-model.number="uniformEveryX"
+              min="1"
+              max="365"
+              step="1"
+              class="num-input sm"
+            />
             <span class="unit">days</span>
             <select v-if="uniformEveryX === 7" v-model.number="uniformWeekday" class="select sm">
               <option v-for="(w, i) in WEEKDAYS" :key="i" :value="i">{{ w }}</option>
             </select>
             <template v-else>
-              <input type="number" v-model.number="uniformOffset" min="0" max="365" step="1" class="num-input sm" />
+              <input
+                type="number"
+                v-model.number="uniformOffset"
+                min="0"
+                max="365"
+                step="1"
+                class="num-input sm"
+              />
               <span class="unit">offset</span>
             </template>
           </span>
@@ -777,7 +863,10 @@ watch(
       <!-- Seed layers (the combinator) -->
       <div class="layers" v-if="layers.length">
         <div class="layers-head">
-          <span class="muted">Seed layers — combined into the strategy ({{ strategyIndices.length }} unique days):</span>
+          <span class="muted"
+            >Seed layers — combined into the strategy ({{ strategyIndices.length }} unique
+            days):</span
+          >
           <button class="mini ghost" @click="clearLayers">Clear all</button>
         </div>
         <ul class="layer-list">
@@ -785,7 +874,9 @@ watch(
             <span class="layer-kind" :class="l.kind">{{ l.kind }}</span>
             <span class="layer-label">{{ l.label }}</span>
             <span class="layer-count">
-              {{ layerActive(l) }}<template v-if="layerTotal(l) !== layerActive(l)"> of {{ layerTotal(l) }}</template> days
+              {{ layerActive(l)
+              }}<template v-if="layerTotal(l) !== layerActive(l)"> of {{ layerTotal(l) }}</template>
+              days
             </span>
             <button class="chip-x" @click="removeLayer(l.id)">×</button>
           </li>
@@ -797,9 +888,9 @@ watch(
          kept; these days are simply ignored in the totals until the window
          covers them. -->
     <section class="warn" v-if="outOfWindowDates.length">
-      ℹ️ {{ outOfWindowDates.length }} manual date(s) sit outside the comparison
-      window and are ignored in the totals (still stored):
-      <strong>{{ outOfWindowDates.join(', ') }}</strong>. Widen the window to include them.
+      ℹ️ {{ outOfWindowDates.length }} manual date(s) sit outside the comparison window and are
+      ignored in the totals (still stored): <strong>{{ outOfWindowDates.join(', ') }}</strong
+      >. Widen the window to include them.
     </section>
 
     <!-- Budget + window -->
@@ -825,13 +916,32 @@ watch(
           </button>
         </div>
         <span v-if="windowMode === 'trailing'" class="ctrl-row">
-          <input type="number" v-model.number="baselineDays" min="30" max="6000" step="30" class="num-input" />
+          <input
+            type="number"
+            v-model.number="baselineDays"
+            min="30"
+            max="6000"
+            step="30"
+            class="num-input"
+          />
           <span class="unit">days back from today</span>
         </span>
         <span v-else class="ctrl-row">
-          <input type="date" v-model="fromDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
+          <input
+            type="date"
+            v-model="fromDate"
+            :min="dates[0]"
+            :max="dates[dates.length - 1]"
+            class="num-input"
+          />
           <span class="unit">→</span>
-          <input type="date" v-model="toDate" :min="dates[0]" :max="dates[dates.length - 1]" class="num-input" />
+          <input
+            type="date"
+            v-model="toDate"
+            :min="dates[0]"
+            :max="dates[dates.length - 1]"
+            class="num-input"
+          />
         </span>
       </div>
     </section>
@@ -855,7 +965,10 @@ watch(
       />
     </template>
     <section class="no-buys" v-else-if="!loading && !error">
-      <p>Tune a driver and <strong>+ Add layer</strong> to build a strategy. Amber rings preview the current driver's buy days.</p>
+      <p>
+        Tune a driver and <strong>+ Add layer</strong> to build a strategy. Amber rings preview the
+        current driver's buy days.
+      </p>
     </section>
 
     <!-- Preview (live builder) vs baseline -->
@@ -872,11 +985,12 @@ watch(
     </template>
 
     <p class="hint">
-      Build a strategy from one or more seed layers (price ÷ MA, Bollinger score,
-      uniform spacing, or manual dates). Each buy day gets an equal share of the
-      total budget ({{ fmtUSD(totalBudget) }} ÷ {{ strategyIndices.length || '—' }} days).
-      The baseline spends the <em>same</em> total evenly across every day of the
-      comparison window.
+      Build a strategy from one or more seed layers (price ÷ MA, Bollinger score, uniform spacing,
+      or manual dates). Each buy day gets an equal share of the total budget ({{
+        fmtUSD(totalBudget)
+      }}
+      ÷ {{ strategyIndices.length || '—' }} days). The baseline spends the <em>same</em> total
+      evenly across every day of the comparison window.
     </p>
   </div>
 </template>

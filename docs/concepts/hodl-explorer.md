@@ -3,7 +3,7 @@
 A buying-strategy sandbox. You assemble a set of **buy days** from one or more
 tunable pattern pickers, then simulate the resulting Bitcoin position and compare
 it against a buy-every-day **baseline** — same total budget, same window — so the
-comparison is purely about *which* days, not how much.
+comparison is purely about _which_ days, not how much.
 
 ## Mental model
 
@@ -69,7 +69,7 @@ current value, ROI, cost basis, BTC held, and the **edge** vs baseline.
 - `simulateStrategy()` buys an equal cash slice on each day at that day's close,
   then values the accumulated BTC at the latest price → value, ROI, cost basis
   (average buy price), BTC, and coverage (buy-days ÷ window-days).
-- The buy days are causal: an indicator day *i* is decided from data ≤ *i*
+- The buy days are causal: an indicator day _i_ is decided from data ≤ _i_
   (trailing MA, monthly b).
 
 ## Navigating the charts
@@ -84,7 +84,7 @@ the value lines up on the same date in both charts.
 
 - **Backtest, not a trading model:** buys execute at the exact daily close with
   **no fees, slippage, or market impact**, no reinvestment or rebalancing.
-- **Equal weight per buy day** — the comparison isolates *timing*, not sizing.
+- **Equal weight per buy day** — the comparison isolates _timing_, not sizing.
 - **The baseline is buy-everything** — it is a yardstick, not a realistic plan;
   beating it is the bar.
 - **Pattern pickers are heuristics over history.** Bitcoin is **not guaranteed**

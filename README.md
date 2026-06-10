@@ -10,7 +10,7 @@ Three tabs:
 - **Price Explorer** — raw price plus toggleable technical metrics (moving
   average, Bollinger bands, run detection) and derived curves (price ÷ MA,
   Bollinger score, run slope). A descriptive lens on history.
-- **Price Mechanics** — a structured *what-if* forecast engine: it splits price
+- **Price Mechanics** — a structured _what-if_ forecast engine: it splits price
   into a slow "value" baseline and a "volatility" multiplier, fits
   growth/volatility/peak models to history, and projects forward to a horizon.
 - **Hodl Explorer** — a buying-strategy sandbox: build buy-day "seed layers" from

@@ -163,11 +163,7 @@ export function percentile(sorted: number[], p: number): number {
 }
 
 /** Rolling slope of `ma` over a trailing `windowDays` window, per sample. */
-function rollingSlopes(
-  times: number[],
-  ma: (number | null)[],
-  windowDays: number,
-): number[] {
+function rollingSlopes(times: number[], ma: (number | null)[], windowDays: number): number[] {
   const out: number[] = new Array(times.length).fill(NaN)
   const span = windowDays * DAY_MS
   for (let i = 0; i < times.length; i++) {
@@ -256,8 +252,7 @@ export function fitParams(
   // samples are gathered across the last `slopeRangeDays` of history (0 = all).
   // A short window relative to the very smooth 4yr MA gives the slope
   // distribution real spread, so the percentile meaningfully changes the rate.
-  const slopeCutoff =
-    slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
+  const slopeCutoff = slopeRangeDays > 0 ? lastTime - slopeRangeDays * DAY_MS : -Infinity
   const slopes = rollingSlopes(times, ma, Math.max(slopeWindowDays, 2))
     .filter((s, i) => Number.isFinite(s) && times[i] >= slopeCutoff)
     .sort((a, b) => a - b)
@@ -372,8 +367,7 @@ export function projectForecast(
     } else if (cfg.envelopeType === 'value-exponential-decay') {
       env =
         1 +
-        cfg.vedConstant *
-          Math.exp(-cfg.vedExponent * Math.pow(Math.max(mval, 1e-9), cfg.vedPower))
+        cfg.vedConstant * Math.exp(-cfg.vedExponent * Math.pow(Math.max(mval, 1e-9), cfg.vedPower))
     } else {
       env = cfg.constValue
     }

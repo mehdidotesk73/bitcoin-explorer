@@ -23,12 +23,14 @@ layouts and remember there's no dev console on device — see Debugging below.
 ## Development lifecycle (follow this every time)
 
 1. **Branch.** Start every feature on its own branch off the latest `main`:
+
    ```
    git checkout main && git pull --ff-only origin main
    git checkout -b claude/<short-feature-name>
    ```
+
    - Branches are named `claude/<feature>`. Pick a name that describes what the
-     branch *does* — e.g. `claude/hodl-explorer`, `claude/metric-registry`,
+     branch _does_ — e.g. `claude/hodl-explorer`, `claude/metric-registry`,
      `claude/run-scale-slider`. Avoid auto-generated names like
      `claude/inspiring-bardeen-lHExI`.
    - **Always verify the base after branching** (this has bitten us): confirm
@@ -68,7 +70,7 @@ layouts and remember there's no dev console on device — see Debugging below.
    - **`docs/experience.md`:** on every **merge**, add a Version-history entry
      summarising the changes vs the previous version (added / removed / defaults
      / docs). On every **branch removal / abandonment**, add a "What didn't
-     work" entry — what was tried, whether we know *why* it didn't work, and the
+     work" entry — what was tried, whether we know _why_ it didn't work, and the
      reason (or honestly "direction felt unideal"). This is how we avoid
      re-walking dead ends.
    - **`docs/system-design.md`** (developer/system docs): if the branch changed
@@ -79,7 +81,7 @@ layouts and remember there's no dev console on device — see Debugging below.
      the branch changed a page's UI or behaviour, update that page's doc.
 
    **Pre-merge doc gate — run this every time, do not skip.** When you judge a
-   branch **ready to merge**, *before* opening/finalising the PR you MUST pose an
+   branch **ready to merge**, _before_ opening/finalising the PR you MUST pose an
    `AskUserQuestion` with **`multiSelect: true`** listing the four doc surfaces
    above (Developer docs · Content/help docs · TODO · experience), asking which
    to **update now, before merge**. Selecting none = "keep working on the branch
@@ -98,7 +100,7 @@ layouts and remember there's no dev console on device — see Debugging below.
 ## Build & verify
 
 - **Type-check + build:** `npm run build` (runs `vue-tsc -b && vite build`).
-  This is the gate — it catches TS errors *and* Vue template parse errors.
+  This is the gate — it catches TS errors _and_ Vue template parse errors.
   **Run it before every commit.** A broken build has reached history before
   because nothing ran it; don't let that happen.
 - There is **no test suite and no CI build gate** on PRs yet (a known gap — see

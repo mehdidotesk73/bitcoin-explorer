@@ -121,9 +121,7 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
         <button :class="{ active: tab === 'forecast' }" @click="tab = 'forecast'">
           Price Mechanics
         </button>
-        <button :class="{ active: tab === 'hodl' }" @click="tab = 'hodl'">
-          Hodl Explorer
-        </button>
+        <button :class="{ active: tab === 'hodl' }" @click="tab = 'hodl'">Hodl Explorer</button>
       </nav>
     </header>
 

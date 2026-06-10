@@ -6,12 +6,31 @@
 import { ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent } from 'echarts/components'
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  MarkLineComponent,
+  MarkAreaComponent,
+  TitleComponent,
+} from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { AXIS, SPLIT } from '../lib/chartTheme'
 import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
 
-echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, TitleComponent, CanvasRenderer])
+echarts.use([
+  LineChart,
+  BarChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  MarkLineComponent,
+  MarkAreaComponent,
+  TitleComponent,
+  CanvasRenderer,
+])
 
 const props = defineProps<{
   dates: string[]
@@ -33,10 +52,30 @@ function buildOption(): echarts.EChartsCoreOption {
     backgroundColor: 'transparent',
     textStyle: { color: '#e7eaf3' },
     grid: { left: 52, right: 12, top: 40, bottom: 26 },
-    title: { left: 52, top: 6, text: props.title, textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' } },
-    legend: { type: 'plain', left: 52, top: 22, itemWidth: 13, itemHeight: 8, itemGap: 8, data: props.legendData, textStyle: { color: '#e7eaf3', fontSize: 9 }, inactiveColor: '#5a6480' },
+    title: {
+      left: 52,
+      top: 6,
+      text: props.title,
+      textStyle: { color: '#cdd3e4', fontSize: 11, fontWeight: 'normal' },
+    },
+    legend: {
+      type: 'plain',
+      left: 52,
+      top: 22,
+      itemWidth: 13,
+      itemHeight: 8,
+      itemGap: 8,
+      data: props.legendData,
+      textStyle: { color: '#e7eaf3', fontSize: 9 },
+      inactiveColor: '#5a6480',
+    },
     axisPointer: { lineStyle: { color: '#8b94ac', type: 'dashed' } },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,27,42,0.95)', borderColor: '#36425f', textStyle: { color: '#e7eaf3' } },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(20,27,42,0.95)',
+      borderColor: '#36425f',
+      textStyle: { color: '#e7eaf3' },
+    },
     xAxis: {
       type: 'category',
       data: props.dates,

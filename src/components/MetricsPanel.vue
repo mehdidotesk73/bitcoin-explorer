@@ -55,7 +55,12 @@ const runSlope = computed(() => {
   return { out, dir }
 })
 
-const dash = { symbol: 'none', silent: true, label: { show: false }, lineStyle: { color: '#5a6480', type: 'dashed' as const } }
+const dash = {
+  symbol: 'none',
+  silent: true,
+  label: { show: false },
+  lineStyle: { color: '#5a6480', type: 'dashed' as const },
+}
 
 interface BuiltPanel {
   key: Kind
@@ -77,8 +82,12 @@ const builtPanels = computed<BuiltPanel[]>(() => {
       legendData: ['price ÷ MA'],
       series: [
         {
-          name: 'price ÷ MA', type: 'line', data: priceMa.value, symbol: 'none',
-          lineStyle: { color: '#f7931a', width: 1.4 }, markLine: { ...dash, data: [{ yAxis: 1 }] },
+          name: 'price ÷ MA',
+          type: 'line',
+          data: priceMa.value,
+          symbol: 'none',
+          lineStyle: { color: '#f7931a', width: 1.4 },
+          markLine: { ...dash, data: [{ yAxis: 1 }] },
         },
       ],
     })
@@ -99,9 +108,13 @@ const builtPanels = computed<BuiltPanel[]>(() => {
       legendData: ['Bollinger score'],
       series: [
         {
-          name: 'Bollinger score', type: 'line', data: props.band, symbol: 'none',
+          name: 'Bollinger score',
+          type: 'line',
+          data: props.band,
+          symbol: 'none',
           lineStyle: { color: '#4f8ef7', width: 1.5 },
-          markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] }, markArea: runArea,
+          markLine: { ...dash, data: [{ yAxis: 0 }, { yAxis: 1 }, { yAxis: -1 }] },
+          markArea: runArea,
         },
       ],
     })
@@ -120,7 +133,10 @@ const builtPanels = computed<BuiltPanel[]>(() => {
       legendData: ['run slope'],
       series: [
         {
-          name: 'run slope', type: 'bar', data: slopeData, barCategoryGap: '0%',
+          name: 'run slope',
+          type: 'bar',
+          data: slopeData,
+          barCategoryGap: '0%',
           markLine: { ...dash, data: [{ yAxis: 0 }] },
         },
       ],
