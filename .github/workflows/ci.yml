@@ -24,6 +24,8 @@ jobs:
           node-version: 22 # matches deploy.yml
           cache: npm
       - run: npm ci
+      - name: Format check (Prettier)
+        run: npm run format:check
       - name: Unit tests
         run: npm run test:run
       - name: Type-check + build

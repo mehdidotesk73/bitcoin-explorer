@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # npm dependencies (vite / echarts / capacitor / vite-plugin-pwa move fast).
+  # The CI gate (build + tests) makes these safe to review and merge.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine minor/patch bumps; majors stay separate for review.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the GitHub Actions used by ci.yml / deploy.yml current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
