@@ -115,9 +115,16 @@ function applyRunPreset(scaleDays: number, sensitivity: number) {
   runSensitivity.value = sensitivity
 }
 
-// Curve-simplification knobs.
-const simplifySmooth = ref(5) // EMA pre-smooth span (days); 0 = none
-const simplifyTol = ref(0.02) // RDP tolerance in normalized log-price space
+// Curve-simplification knobs. Tolerance is the scale dial (≈ a % log-price move
+// threshold); smoothing pre-filters noise, but 0 keeps vertices on true extrema.
+const simplifySmooth = ref(0) // EMA pre-smooth span (days); 0 = none
+const simplifyTol = ref(0.01) // RDP tolerance in normalized log-price space
+
+// Apply a Curve-simplification preset: smoothing (days) + tolerance.
+function applySimplifyPreset(smooth: number, tolerance: number) {
+  simplifySmooth.value = smooth
+  simplifyTol.value = tolerance
+}
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
@@ -324,10 +331,15 @@ function setRange(days: number | 'all') {
 
             <!-- Curve simplification: Ramer–Douglas–Peucker in log-price -->
             <template v-else>
+              <div class="presets">
+                <span class="muted">Presets</span>
+                <button type="button" @click="applySimplifyPreset(0, 0.008)">Mid-term</button>
+                <button type="button" @click="applySimplifyPreset(0, 0.012)">Long-term</button>
+              </div>
               <p class="cfg-note">
                 Geometric simplification (Ramer–Douglas–Peucker, in log-price) — keeps the curve's
-                turning points. Smoothing pre-filters noise; Tolerance sets how aggressively to
-                simplify.
+                turning points. Tolerance ≈ a % price-move threshold (the scale dial); Smoothing
+                pre-filters noise (0 keeps vertices on true highs/lows).
               </p>
               <label class="slider">
                 Smoothing
@@ -339,9 +351,9 @@ function setRange(days: number | 'all') {
                 <input
                   type="range"
                   v-model.number="simplifyTol"
-                  min="0.004"
-                  max="0.08"
-                  step="0.004"
+                  min="0.002"
+                  max="0.04"
+                  step="0.001"
                 />
                 <span class="val">{{ simplifyTol.toFixed(3) }}</span>
               </label>
