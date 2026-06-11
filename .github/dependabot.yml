@@ -13,6 +13,13 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # PR #45: the 1.x major changed the generator's config API and broke the
+      # build. It's dev-only PWA-icon tooling, so skip its major bumps and stay
+      # on 0.2.x (patches still allowed) until we migrate pwa-assets.config.ts.
+      - dependency-name: '@vite-pwa/assets-generator'
+        update-types:
+          - version-update:semver-major
 
   # Keep the GitHub Actions used by ci.yml / deploy.yml current.
   - package-ecosystem: github-actions
