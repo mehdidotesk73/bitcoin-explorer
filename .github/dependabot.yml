@@ -8,16 +8,17 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR for routine minor/patch bumps; majors stay separate for review.
+      # One weekly PR for routine minor/patch bumps.
       minor-and-patch:
         update-types:
           - minor
           - patch
     ignore:
-      # PR #45: the 1.x major changed the generator's config API and broke the
-      # build. It's dev-only PWA-icon tooling, so skip its major bumps and stay
-      # on 0.2.x (patches still allowed) until we migrate pwa-assets.config.ts.
-      - dependency-name: '@vite-pwa/assets-generator'
+      # Skip ALL npm *major* bumps — they're the noisy, breakage-prone ones
+      # (vite 8, vite-plugin-pwa 1.x, @vite-pwa/assets-generator 1.x all broke the
+      # build; closed PRs #45/#49/#51). Majors are done deliberately as planned
+      # upgrades; minor/patch still flow automatically (grouped above).
+      - dependency-name: '*'
         update-types:
           - version-update:semver-major
 
