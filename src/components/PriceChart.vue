@@ -7,11 +7,13 @@ import {
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkAreaComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
 import { AXIS, SPLIT } from '../lib/chartTheme'
 import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
+import type { WMMatch } from '../lib/wm'
 
 echarts.use([
   LineChart,
@@ -19,6 +21,7 @@ echarts.use([
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkAreaComponent,
   CanvasRenderer,
 ])
 
@@ -39,6 +42,8 @@ const props = defineProps<{
   runOverlay?: (number | null)[]
   /** Draw the run skeleton over the price when true. */
   showRuns?: boolean
+  /** Detected W/M spans to shade over the price (green W · red M, by confidence). */
+  wmSpans?: WMMatch[]
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -49,6 +54,24 @@ const emit = defineEmits<{
 
 const el = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
+// W = green, M = red; opacity grows with confidence so textbook patterns read bolder.
+function wmFill(m: WMMatch): string {
+  const a = (0.08 + 0.32 * clamp01(m.confidence)).toFixed(3)
+  return m.type === 'W' ? `rgba(43, 212, 167, ${a})` : `rgba(255, 107, 107, ${a})`
+}
+function wmMarkArea() {
+  const spans = props.wmSpans ?? []
+  if (!spans.length) return undefined
+  return {
+    silent: true,
+    data: spans.map((m) => [
+      { xAxis: props.dates[m.start], itemStyle: { color: wmFill(m) } },
+      { xAxis: props.dates[m.end] },
+    ]),
+  }
+}
 
 function buildOption(): echarts.EChartsCoreOption {
   const maOn = !!props.showMa
@@ -177,13 +200,14 @@ function buildOption(): echarts.EChartsCoreOption {
             },
           ]
         : []),
-      // --- Price (always) ---
+      // --- Price (always) — carries the W/M shading as a markArea ---
       {
         name: 'Price',
         type: 'line',
         data: props.price,
         symbol: 'none',
         lineStyle: { color: '#f7931a', width: 1.5 },
+        markArea: wmMarkArea(),
       },
       // --- Run skeleton overlay: piecewise-linear line through run-boundary anchors ---
       ...(runsOn
@@ -243,6 +267,7 @@ watch(
     props.showBb,
     props.runOverlay,
     props.showRuns,
+    props.wmSpans,
   ],
   render,
 )

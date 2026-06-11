@@ -7,6 +7,8 @@ import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
+import { simplifyCurve } from '../lib/simplify'
+import { detectWM } from '../lib/wm'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
@@ -28,6 +30,7 @@ const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
 const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
+const showWM = ref(false) // W/M pattern shading on the price chart
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
@@ -35,6 +38,7 @@ const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
 const cfgBand = ref(false)
+const cfgWM = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
 const anyCurve = computed(() => showRatio.value || showBand.value || showRunDetection.value)
@@ -51,16 +55,17 @@ const activeMetricLabels = computed(() => {
   if (showRunDetection.value) out.push('Runs')
   if (showRatio.value) out.push('Price ÷ MA')
   if (showBand.value) out.push('Bollinger score')
+  if (showWM.value) out.push('W/M')
   return out
 })
 
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
 const maPeriod = ref(20)
-const maUnit = ref<PeriodUnit>('day')
+const maUnit = ref<PeriodUnit>('week')
 // Bollinger overlay.
 const bbPeriod = ref(20)
-const bbUnit = ref<PeriodUnit>('day')
+const bbUnit = ref<PeriodUnit>('week')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
@@ -103,6 +108,31 @@ const runSensitivity = computed({
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
 })
 
+// Run-detection method. 'trend' = the sustained-trend-vote engine (Scale +
+// Sensitivity, with presets); 'simplify' = geometric curve simplification (RDP
+// in log-price). Both render a piecewise-linear skeleton over the price.
+const runMode = ref<'trend' | 'simplify'>('trend')
+
+// Apply a Trend-runs preset: scale (days) + sensitivity (0–0.9).
+function applyRunPreset(scaleDays: number, sensitivity: number) {
+  runScaleT.value = tForHd(scaleDays)
+  runSensitivity.value = sensitivity
+}
+
+// Curve-simplification: a single "min move" dial (approx % price move a swing
+// must clear to be kept). No smoothing — vertices land on true highs/lows.
+const simplifyMovePct = ref(5) // default = mid-term preset
+
+// Apply a Curve-simplification preset (min-move %).
+function applySimplifyPreset(movePct: number) {
+  simplifyMovePct.value = movePct
+}
+
+// W/M pattern detection (over the Bollinger score b; see lib/wm.ts).
+const wmProminence = ref(0.5) // min b-swing for a turning point (b-units)
+const wmTol = ref(0.3) // encroachment tolerance (b-units)
+const wmThreshold = ref(0.5) // min confidence to highlight
+
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // The crosshair and tooltip are synced across every figure natively, via the
@@ -144,6 +174,9 @@ const runDiag = computed(() =>
 // leave the rest null. The chart joins anchors with straight segments, so each
 // run renders as a line at its average slope, continuous across choppy gaps.
 const runOverlay = computed<(number | null)[]>(() => {
+  if (runMode.value === 'simplify') {
+    return simplifyCurve(prices.value, { minMovePct: simplifyMovePct.value })
+  }
   const out = new Array(prices.value.length).fill(null)
   for (const r of runDiag.value.runs) {
     out[r.start] = prices.value[r.start]
@@ -151,6 +184,17 @@ const runOverlay = computed<(number | null)[]>(() => {
   }
   return out
 })
+
+// W/M matches over the Bollinger score (only when the overlay is on).
+const wmMatches = computed(() =>
+  showWM.value
+    ? detectWM(bandSeries.value, {
+        minProminence: wmProminence.value,
+        tol: wmTol.value,
+        threshold: wmThreshold.value,
+      })
+    : [],
+)
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -270,16 +314,54 @@ function setRange(days: number | 'all') {
             <InfoTip term="run" />
           </template>
           <div class="metric-cfg">
-            <label class="slider">
-              Scale <InfoTip term="scale" />
-              <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-              <span class="val">{{ runScaleLabel }}</span>
-            </label>
-            <label class="slider">
-              Sensitivity <InfoTip term="sensitivity" />
-              <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-              <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-            </label>
+            <div class="run-mode-head">
+              <span>Method</span>
+              <button
+                type="button"
+                class="toggle"
+                @click="runMode = runMode === 'trend' ? 'simplify' : 'trend'"
+              >
+                {{ runMode === 'trend' ? 'Trend runs' : 'Curve simplification' }}
+              </button>
+            </div>
+
+            <!-- Trend runs: the sustained-trend-vote engine -->
+            <template v-if="runMode === 'trend'">
+              <div class="presets">
+                <span class="muted">Presets</span>
+                <button type="button" @click="applyRunPreset(3, 0.75)">Mid-term</button>
+                <button type="button" @click="applyRunPreset(13, 0.3)">Long-term</button>
+              </div>
+              <label class="slider">
+                Scale <InfoTip term="scale" />
+                <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+                <span class="val">{{ runScaleLabel }}</span>
+              </label>
+              <label class="slider">
+                Sensitivity <InfoTip term="sensitivity" />
+                <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+                <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+              </label>
+            </template>
+
+            <!-- Curve simplification: Ramer–Douglas–Peucker in log-price -->
+            <template v-else>
+              <div class="presets">
+                <span class="muted">Presets</span>
+                <button type="button" @click="applySimplifyPreset(5)">Mid-term</button>
+                <button type="button" @click="applySimplifyPreset(15)">Long-term</button>
+              </div>
+              <p class="cfg-note">
+                Geometric simplification (Ramer–Douglas–Peucker, in log-price) — keeps the curve's
+                turning points on the true highs/lows. Min move ≈ the smallest price swing that
+                survives (approximate — the scale dial).
+              </p>
+              <label class="slider">
+                Min move
+                <input type="range" v-model.number="simplifyMovePct" min="3" max="40" step="1" />
+                <span class="val">≈ {{ simplifyMovePct }}%</span>
+              </label>
+            </template>
           </div>
         </Panel>
 
@@ -347,6 +429,40 @@ function setRange(days: number | 'all') {
             </label>
           </div>
         </Panel>
+
+        <!-- Overlay: W/M pattern detection (shaded on the price chart) -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgWM"
+          @update:collapsed="cfgWM = !$event"
+        >
+          <template #header>
+            <label class="checkbox"><input type="checkbox" v-model="showWM" /> W/M patterns</label>
+          </template>
+          <div class="metric-cfg">
+            <p class="cfg-note">
+              Shades detected <strong>W</strong> (green double-bottom) and <strong>M</strong> (red
+              double-top) spans on the price chart, read off the Bollinger score b — opacity ∝
+              confidence. Tune the Bollinger score above.
+            </p>
+            <label class="slider">
+              Swing size
+              <input type="range" v-model.number="wmProminence" min="0.2" max="1.5" step="0.05" />
+              <span class="val">{{ wmProminence.toFixed(2) }}</span>
+            </label>
+            <label class="slider">
+              Encroachment
+              <input type="range" v-model.number="wmTol" min="0.1" max="0.6" step="0.05" />
+              <span class="val">{{ wmTol.toFixed(2) }}</span>
+            </label>
+            <label class="slider">
+              Min confidence
+              <input type="range" v-model.number="wmThreshold" min="0" max="0.95" step="0.05" />
+              <span class="val">{{ wmThreshold.toFixed(2) }}</span>
+            </label>
+          </div>
+        </Panel>
       </div>
     </Panel>
 
@@ -372,6 +488,7 @@ function setRange(days: number | 'all') {
       :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
+      :wm-spans="wmMatches"
       v-model:zoom="zoom"
     />
 
@@ -391,7 +508,7 @@ function setRange(days: number | 'all') {
         :show-band="showBand"
         :band="bandSeries"
         :band-label="bandLabel"
-        :show-run-slope="showRunDetection"
+        :show-run-slope="showRunDetection && runMode === 'trend'"
         v-model:zoom="zoom"
       />
     </section>
@@ -511,6 +628,33 @@ function setRange(days: number | 'all') {
 }
 .period input {
   width: 4rem;
+}
+
+/* Run-detection method toggle (matches the Hodl Trailing/Range toggle) + presets. */
+.run-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.toggle {
+  font-size: 0.66rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--accent-blue, #4f8ef7);
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent-blue, #4f8ef7);
+  border-radius: 1rem;
+  cursor: pointer;
+}
+.presets {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.presets button {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
 }
 .hint {
   color: var(--text-muted);
