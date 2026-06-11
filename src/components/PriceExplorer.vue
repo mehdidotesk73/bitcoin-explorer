@@ -8,6 +8,7 @@ import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
 import { simplifyCurve } from '../lib/simplify'
+import { detectWM } from '../lib/wm'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
@@ -29,6 +30,7 @@ const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
 const showRatio = ref(false) // price ÷ MA curve
 const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
+const showWM = ref(false) // W/M pattern shading on the price chart
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
@@ -36,6 +38,7 @@ const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
 const cfgBand = ref(false)
+const cfgWM = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
 const anyCurve = computed(() => showRatio.value || showBand.value || showRunDetection.value)
@@ -52,6 +55,7 @@ const activeMetricLabels = computed(() => {
   if (showRunDetection.value) out.push('Runs')
   if (showRatio.value) out.push('Price ÷ MA')
   if (showBand.value) out.push('Bollinger score')
+  if (showWM.value) out.push('W/M')
   return out
 })
 
@@ -124,6 +128,11 @@ function applySimplifyPreset(movePct: number) {
   simplifyMovePct.value = movePct
 }
 
+// W/M pattern detection (over the Bollinger score b; see lib/wm.ts).
+const wmProminence = ref(0.5) // min b-swing for a turning point (b-units)
+const wmTol = ref(0.3) // encroachment tolerance (b-units)
+const wmThreshold = ref(0.5) // min confidence to highlight
+
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // The crosshair and tooltip are synced across every figure natively, via the
@@ -175,6 +184,17 @@ const runOverlay = computed<(number | null)[]>(() => {
   }
   return out
 })
+
+// W/M matches over the Bollinger score (only when the overlay is on).
+const wmMatches = computed(() =>
+  showWM.value
+    ? detectWM(bandSeries.value, {
+        minProminence: wmProminence.value,
+        tol: wmTol.value,
+        threshold: wmThreshold.value,
+      })
+    : [],
+)
 
 const latestPrice = computed(() =>
   prices.value.length ? prices.value[prices.value.length - 1] : null,
@@ -409,6 +429,40 @@ function setRange(days: number | 'all') {
             </label>
           </div>
         </Panel>
+
+        <!-- Overlay: W/M pattern detection (shaded on the price chart) -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgWM"
+          @update:collapsed="cfgWM = !$event"
+        >
+          <template #header>
+            <label class="checkbox"><input type="checkbox" v-model="showWM" /> W/M patterns</label>
+          </template>
+          <div class="metric-cfg">
+            <p class="cfg-note">
+              Shades detected <strong>W</strong> (green double-bottom) and <strong>M</strong> (red
+              double-top) spans on the price chart, read off the Bollinger score b — opacity ∝
+              confidence. Tune the Bollinger score above.
+            </p>
+            <label class="slider">
+              Swing size
+              <input type="range" v-model.number="wmProminence" min="0.2" max="1.5" step="0.05" />
+              <span class="val">{{ wmProminence.toFixed(2) }}</span>
+            </label>
+            <label class="slider">
+              Encroachment
+              <input type="range" v-model.number="wmTol" min="0.1" max="0.6" step="0.05" />
+              <span class="val">{{ wmTol.toFixed(2) }}</span>
+            </label>
+            <label class="slider">
+              Min confidence
+              <input type="range" v-model.number="wmThreshold" min="0" max="0.95" step="0.05" />
+              <span class="val">{{ wmThreshold.toFixed(2) }}</span>
+            </label>
+          </div>
+        </Panel>
       </div>
     </Panel>
 
@@ -434,6 +488,7 @@ function setRange(days: number | 'all') {
       :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
+      :wm-spans="wmMatches"
       v-model:zoom="zoom"
     />
 
