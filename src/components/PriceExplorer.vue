@@ -58,10 +58,10 @@ const activeMetricLabels = computed(() => {
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
 const maPeriod = ref(20)
-const maUnit = ref<PeriodUnit>('day')
+const maUnit = ref<PeriodUnit>('week')
 // Bollinger overlay.
 const bbPeriod = ref(20)
-const bbUnit = ref<PeriodUnit>('day')
+const bbUnit = ref<PeriodUnit>('week')
 const bbK = ref(2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
 const ratioMaDays = ref(1460)
@@ -117,7 +117,7 @@ function applyRunPreset(scaleDays: number, sensitivity: number) {
 
 // Curve-simplification: a single "min move" dial (approx % price move a swing
 // must clear to be kept). No smoothing — vertices land on true highs/lows.
-const simplifyMovePct = ref(12)
+const simplifyMovePct = ref(5) // default = mid-term preset
 
 // Apply a Curve-simplification preset (min-move %).
 function applySimplifyPreset(movePct: number) {
@@ -328,8 +328,8 @@ function setRange(days: number | 'all') {
             <template v-else>
               <div class="presets">
                 <span class="muted">Presets</span>
-                <button type="button" @click="applySimplifyPreset(12)">Mid-term</button>
-                <button type="button" @click="applySimplifyPreset(19)">Long-term</button>
+                <button type="button" @click="applySimplifyPreset(5)">Mid-term</button>
+                <button type="button" @click="applySimplifyPreset(15)">Long-term</button>
               </div>
               <p class="cfg-note">
                 Geometric simplification (Ramer–Douglas–Peucker, in log-price) — keeps the curve's
