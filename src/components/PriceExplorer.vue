@@ -7,6 +7,7 @@ import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
+import { simplifyCurve } from '../lib/simplify'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
@@ -103,6 +104,21 @@ const runSensitivity = computed({
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
 })
 
+// Run-detection method. 'trend' = the sustained-trend-vote engine (Scale +
+// Sensitivity, with presets); 'simplify' = geometric curve simplification (RDP
+// in log-price). Both render a piecewise-linear skeleton over the price.
+const runMode = ref<'trend' | 'simplify'>('trend')
+
+// Apply a Trend-runs preset: scale (days) + sensitivity (0–0.9).
+function applyRunPreset(scaleDays: number, sensitivity: number) {
+  runScaleT.value = tForHd(scaleDays)
+  runSensitivity.value = sensitivity
+}
+
+// Curve-simplification knobs.
+const simplifySmooth = ref(5) // EMA pre-smooth span (days); 0 = none
+const simplifyTol = ref(0.02) // RDP tolerance in normalized log-price space
+
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // The crosshair and tooltip are synced across every figure natively, via the
@@ -144,6 +160,12 @@ const runDiag = computed(() =>
 // leave the rest null. The chart joins anchors with straight segments, so each
 // run renders as a line at its average slope, continuous across choppy gaps.
 const runOverlay = computed<(number | null)[]>(() => {
+  if (runMode.value === 'simplify') {
+    return simplifyCurve(prices.value, {
+      smoothSpan: simplifySmooth.value,
+      tolerance: simplifyTol.value,
+    })
+  }
   const out = new Array(prices.value.length).fill(null)
   for (const r of runDiag.value.runs) {
     out[r.start] = prices.value[r.start]
@@ -270,16 +292,60 @@ function setRange(days: number | 'all') {
             <InfoTip term="run" />
           </template>
           <div class="metric-cfg">
-            <label class="slider">
-              Scale <InfoTip term="scale" />
-              <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
-              <span class="val">{{ runScaleLabel }}</span>
-            </label>
-            <label class="slider">
-              Sensitivity <InfoTip term="sensitivity" />
-              <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
-              <span class="val">{{ runSensitivity.toFixed(2) }}</span>
-            </label>
+            <div class="run-mode-head">
+              <span>Method</span>
+              <button
+                type="button"
+                class="toggle"
+                @click="runMode = runMode === 'trend' ? 'simplify' : 'trend'"
+              >
+                {{ runMode === 'trend' ? 'Trend runs' : 'Curve simplification' }}
+              </button>
+            </div>
+
+            <!-- Trend runs: the sustained-trend-vote engine -->
+            <template v-if="runMode === 'trend'">
+              <div class="presets">
+                <span class="muted">Presets</span>
+                <button type="button" @click="applyRunPreset(3, 0.75)">Mid-term</button>
+                <button type="button" @click="applyRunPreset(13, 0.3)">Long-term</button>
+              </div>
+              <label class="slider">
+                Scale <InfoTip term="scale" />
+                <input type="range" v-model.number="runScaleT" min="0" max="100" step="1" />
+                <span class="val">{{ runScaleLabel }}</span>
+              </label>
+              <label class="slider">
+                Sensitivity <InfoTip term="sensitivity" />
+                <input type="range" v-model.number="runSensitivity" min="0" max="0.9" step="0.05" />
+                <span class="val">{{ runSensitivity.toFixed(2) }}</span>
+              </label>
+            </template>
+
+            <!-- Curve simplification: Ramer–Douglas–Peucker in log-price -->
+            <template v-else>
+              <p class="cfg-note">
+                Geometric simplification (Ramer–Douglas–Peucker, in log-price) — keeps the curve's
+                turning points. Smoothing pre-filters noise; Tolerance sets how aggressively to
+                simplify.
+              </p>
+              <label class="slider">
+                Smoothing
+                <input type="range" v-model.number="simplifySmooth" min="0" max="60" step="1" />
+                <span class="val">{{ simplifySmooth }}d</span>
+              </label>
+              <label class="slider">
+                Tolerance
+                <input
+                  type="range"
+                  v-model.number="simplifyTol"
+                  min="0.004"
+                  max="0.08"
+                  step="0.004"
+                />
+                <span class="val">{{ simplifyTol.toFixed(3) }}</span>
+              </label>
+            </template>
           </div>
         </Panel>
 
@@ -391,7 +457,7 @@ function setRange(days: number | 'all') {
         :show-band="showBand"
         :band="bandSeries"
         :band-label="bandLabel"
-        :show-run-slope="showRunDetection"
+        :show-run-slope="showRunDetection && runMode === 'trend'"
         v-model:zoom="zoom"
       />
     </section>
@@ -511,6 +577,33 @@ function setRange(days: number | 'all') {
 }
 .period input {
   width: 4rem;
+}
+
+/* Run-detection method toggle (matches the Hodl Trailing/Range toggle) + presets. */
+.run-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.toggle {
+  font-size: 0.66rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--accent-blue, #4f8ef7);
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent-blue, #4f8ef7);
+  border-radius: 1rem;
+  cursor: pointer;
+}
+.presets {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.presets button {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
 }
 .hint {
   color: var(--text-muted);
