@@ -115,15 +115,13 @@ function applyRunPreset(scaleDays: number, sensitivity: number) {
   runSensitivity.value = sensitivity
 }
 
-// Curve-simplification knobs. Tolerance is the scale dial (≈ a % log-price move
-// threshold); smoothing pre-filters noise, but 0 keeps vertices on true extrema.
-const simplifySmooth = ref(0) // EMA pre-smooth span (days); 0 = none
-const simplifyTol = ref(0.01) // RDP tolerance in normalized log-price space
+// Curve-simplification: a single "min move" dial (approx % price move a swing
+// must clear to be kept). No smoothing — vertices land on true highs/lows.
+const simplifyMovePct = ref(12)
 
-// Apply a Curve-simplification preset: smoothing (days) + tolerance.
-function applySimplifyPreset(smooth: number, tolerance: number) {
-  simplifySmooth.value = smooth
-  simplifyTol.value = tolerance
+// Apply a Curve-simplification preset (min-move %).
+function applySimplifyPreset(movePct: number) {
+  simplifyMovePct.value = movePct
 }
 
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
@@ -168,10 +166,7 @@ const runDiag = computed(() =>
 // run renders as a line at its average slope, continuous across choppy gaps.
 const runOverlay = computed<(number | null)[]>(() => {
   if (runMode.value === 'simplify') {
-    return simplifyCurve(prices.value, {
-      smoothSpan: simplifySmooth.value,
-      tolerance: simplifyTol.value,
-    })
+    return simplifyCurve(prices.value, { minMovePct: simplifyMovePct.value })
   }
   const out = new Array(prices.value.length).fill(null)
   for (const r of runDiag.value.runs) {
@@ -333,29 +328,18 @@ function setRange(days: number | 'all') {
             <template v-else>
               <div class="presets">
                 <span class="muted">Presets</span>
-                <button type="button" @click="applySimplifyPreset(0, 0.008)">Mid-term</button>
-                <button type="button" @click="applySimplifyPreset(0, 0.012)">Long-term</button>
+                <button type="button" @click="applySimplifyPreset(12)">Mid-term</button>
+                <button type="button" @click="applySimplifyPreset(19)">Long-term</button>
               </div>
               <p class="cfg-note">
                 Geometric simplification (Ramer–Douglas–Peucker, in log-price) — keeps the curve's
-                turning points. Tolerance ≈ a % price-move threshold (the scale dial); Smoothing
-                pre-filters noise (0 keeps vertices on true highs/lows).
+                turning points on the true highs/lows. Min move ≈ the smallest price swing that
+                survives (approximate — the scale dial).
               </p>
               <label class="slider">
-                Smoothing
-                <input type="range" v-model.number="simplifySmooth" min="0" max="60" step="1" />
-                <span class="val">{{ simplifySmooth }}d</span>
-              </label>
-              <label class="slider">
-                Tolerance
-                <input
-                  type="range"
-                  v-model.number="simplifyTol"
-                  min="0.002"
-                  max="0.04"
-                  step="0.001"
-                />
-                <span class="val">{{ simplifyTol.toFixed(3) }}</span>
+                Min move
+                <input type="range" v-model.number="simplifyMovePct" min="3" max="40" step="1" />
+                <span class="val">≈ {{ simplifyMovePct }}%</span>
               </label>
             </template>
           </div>
