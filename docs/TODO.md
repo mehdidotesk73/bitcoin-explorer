@@ -325,11 +325,12 @@ is no PR gate, no lint/format config, no test suite, and no Node-version pin —
 so a broken build can (and once did) reach history. Prioritised backlog:
 
 - [x] **CI gate on PRs.** `.github/workflows/ci.yml` runs on pull_request → `main`
-      (and push to `main`): `npm ci`, `npm run test:run`, then `npm run build`
-      (`vue-tsc -b && vite build`, catching TS + Vue template errors). Node 22 +
-      `cache: npm` to match `deploy.yml`; `concurrency` cancels superseded runs.
-      **Remaining manual step:** mark the `build` check **required** in
-      Settings → Branches → branch protection so red PRs can't merge.
+      (and push to `main`): `npm ci`, `npm run format:check`, `npm run test:run`,
+      then `npm run build` (`vue-tsc -b && vite build`, catching TS + Vue template
+      errors). Node 22 + `cache: npm` to match `deploy.yml`; `concurrency` cancels
+      superseded runs. **Enforced:** a branch ruleset on `main` requires the
+      `build` status check (+ require-PR, block-force-push), so red PRs can't
+      merge.
 - [x] **Unit tests (Vitest).** Seeded `src/lib/*.test.ts` (13 tests): `hodl.ts`
       math (`simulateStrategy` ROI/cost-basis/BTC) + `selectBandBuyDates` /
       `windowIndices` / `unionIndices` / `snapDateToIndex` / `uniformSpacedDates`;
@@ -345,7 +346,10 @@ so a broken build can (and once did) reach history. Prioritised backlog:
       matches CI/deploy and avoids "works on my machine" drift.
 - [x] **Automated dependency updates.** `.github/dependabot.yml` for `npm`
       (grouped minor/patch) + `github-actions`, weekly. The CI gate makes these
-      safe to review/merge.
+      safe to review/merge. Major bumps of `@vite-pwa/assets-generator` are
+      **ignored** — its 1.x changed the config API and broke the build (closed
+      PR #45); revisit when the install/icon work is prioritised (migrate
+      `pwa-assets.config.ts` to the 1.x API).
 
 ### Lower priority / nice-to-have
 
