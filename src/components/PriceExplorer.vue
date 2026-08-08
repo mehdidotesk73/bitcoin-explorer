@@ -166,6 +166,57 @@ function setRange(days: number | 'all') {
   const start = Math.max(0, ((n - days) / n) * 100)
   zoom.value = [start, 100]
 }
+
+// --- CSV export of the displayed curves (over the visible range) ------------
+const csvNum = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '' : String(v))
+const csvCell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+
+function downloadCsv() {
+  const n = prices.value.length
+  if (!n) return
+  // Visible (zoomed) index window — what's actually displayed.
+  const lo = Math.max(0, Math.floor((zoom.value[0] / 100) * (n - 1)))
+  const hi = Math.min(n - 1, Math.ceil((zoom.value[1] / 100) * (n - 1)))
+
+  // One column per displayed curve (respecting the metric toggles).
+  const cols: { head: string; val: (i: number) => string }[] = [
+    { head: 'date', val: (i) => dates.value[i] },
+    { head: 'price', val: (i) => csvNum(prices.value[i]) },
+  ]
+  if (showMa.value) cols.push({ head: `ma_${maLabel.value}`, val: (i) => csvNum(ma.value[i]) })
+  if (showBb.value) {
+    cols.push({ head: `bb_upper_${bbLabel.value}`, val: (i) => csvNum(bands.value.upper[i]) })
+    cols.push({ head: `bb_lower_${bbLabel.value}`, val: (i) => csvNum(bands.value.lower[i]) })
+  }
+  if (showRunDetection.value)
+    cols.push({ head: 'run_skeleton', val: (i) => csvNum(runOverlay.value[i]) })
+  if (showRatio.value)
+    cols.push({
+      head: `price_div_ma_${ratioMaLabel.value}`,
+      val: (i) => {
+        const m = ratioMa.value[i]
+        return csvNum(m != null && m > 0 ? prices.value[i] / m : null)
+      },
+    })
+  if (showBand.value)
+    cols.push({
+      head: `bollinger_score_${bandLabel.value}`,
+      val: (i) => csvNum(bandSeries.value[i]),
+    })
+
+  const lines = [cols.map((c) => csvCell(c.head)).join(',')]
+  for (let i = lo; i <= hi; i++) lines.push(cols.map((c) => csvCell(c.val(i))).join(','))
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `price-explorer_${dates.value[lo]}_${dates.value[hi]}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
@@ -357,6 +408,14 @@ function setRange(days: number | 'all') {
       <button @click="setRange(365)">1Y</button>
       <button @click="setRange(365 * 3)">3Y</button>
       <button @click="setRange('all')">All</button>
+      <button
+        class="csv-btn"
+        :disabled="!dates.length"
+        title="Download the displayed curves over the visible range as CSV"
+        @click="downloadCsv"
+      >
+        ⬇ CSV
+      </button>
     </section>
 
     <PriceChart
@@ -434,6 +493,14 @@ function setRange(days: number | 'all') {
   gap: 0.6rem;
   align-items: center;
   margin-bottom: 0.75rem;
+}
+/* Push the CSV export to the right end of the range bar. */
+.csv-btn {
+  margin-left: auto;
+}
+.csv-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 /* The metric toggles live in a violet, face-collapsible <Panel>; this is just
    the inner flex list (left-aligned, no extra top margin — the Panel body owns
