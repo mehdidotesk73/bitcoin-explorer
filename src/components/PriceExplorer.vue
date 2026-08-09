@@ -414,7 +414,7 @@ function downloadCsv() {
         title="Download the displayed curves over the visible range as CSV"
         @click="downloadCsv"
       >
-        ⬇ CSV
+        ↓ Get CSV
       </button>
     </section>
 
@@ -494,9 +494,20 @@ function downloadCsv() {
   align-items: center;
   margin-bottom: 0.75rem;
 }
-/* Push the CSV export to the right end of the range bar. */
+/* Small, minimal ghost button, pushed to the right end of the range bar. */
 .csv-btn {
   margin-left: auto;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+.csv-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-blue, #4f8ef7);
 }
 .csv-btn:disabled {
   opacity: 0.4;
