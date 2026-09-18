@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectWmPatterns } from './wmPattern'
+import { detectWmPatterns, detectSwingPivots } from './wmPattern'
 
 describe('detectWmPatterns', () => {
   it('finds a W (double-bottom) pattern and its neckline breakout', () => {
@@ -69,5 +69,29 @@ describe('detectWmPatterns', () => {
   it('returns nothing on empty or too-short input', () => {
     expect(detectWmPatterns([])).toEqual([])
     expect(detectWmPatterns([1, 2, 3])).toEqual([])
+  })
+})
+
+describe('detectSwingPivots', () => {
+  it('exposes every pivot, including ones that never form a matched pattern', () => {
+    const price = [100, 120, 90, 70, 95, 110, 88, 72, 96, 130]
+    const pivots = detectSwingPivots(price, { timeframeDays: 1, lookbackBars: 1 })
+    expect(pivots.map((p) => [p.origIdx, p.type, p.price])).toEqual([
+      [1, 'peak', 120],
+      [3, 'trough', 70],
+      [5, 'peak', 110],
+      [7, 'trough', 72],
+    ])
+  })
+
+  it('agrees with the pivots detectWmPatterns builds its matches from', () => {
+    const price = [100, 80, 130, 95, 90, 128, 100, 60]
+    const pivots = detectSwingPivots(price, { timeframeDays: 1, lookbackBars: 1 })
+    const [pattern] = detectWmPatterns(price, {
+      timeframeDays: 1,
+      lookbackBars: 1,
+      tolerance: 0.04,
+    })
+    expect(pivots).toEqual(pattern.points)
   })
 })

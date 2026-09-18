@@ -10,9 +10,9 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
-import { AXIS, SPLIT, UP, DOWN } from '../lib/chartTheme'
+import { AXIS, SPLIT, UP, DOWN, AMBER } from '../lib/chartTheme'
 import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
-import type { WmPattern } from '../lib/wmPattern'
+import type { WmPattern, WmPoint } from '../lib/wmPattern'
 
 echarts.use([
   LineChart,
@@ -42,7 +42,10 @@ const props = defineProps<{
   showRuns?: boolean
   /** Established M/W chart patterns to mark over the price. */
   wmPatterns?: WmPattern[]
-  /** Draw the W/M pattern overlay when true. */
+  /** Every swing pivot the W/M detector found (diagnostic — not just the ones
+   *  that formed a matched pattern), connected zigzag-style. */
+  wmPivots?: WmPoint[]
+  /** Draw the W/M pattern + pivot overlay when true. */
   showWm?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
@@ -61,7 +64,9 @@ function buildOption(): echarts.EChartsCoreOption {
   const runsOn =
     !!props.showRuns && !!props.runOverlay && props.runOverlay.length === props.price.length
   const wmPatterns = props.wmPatterns ?? []
+  const wmPivots = props.wmPivots ?? []
   const wmOn = !!props.showWm && wmPatterns.length > 0
+  const pivotsOn = !!props.showWm && wmPivots.length > 0
   const hasM = wmOn && wmPatterns.some((p) => p.type === 'M')
   const hasW = wmOn && wmPatterns.some((p) => p.type === 'W')
 
@@ -73,7 +78,12 @@ function buildOption(): echarts.EChartsCoreOption {
   })
 
   // Per-day label for W/M pivots + breakout days, folded into the tooltip.
+  // Filled from ALL pivots first (generic), then established patterns
+  // overwrite with a more specific P1–P4 / breakout label.
   const wmDayLabel = new Map<number, string>()
+  if (pivotsOn) {
+    for (const pt of wmPivots) wmDayLabel.set(pt.origIdx, `Swing ${pt.type}`)
+  }
   if (wmOn) {
     const pointNames = ['P1', 'P2', 'P3', 'P4']
     for (const p of wmPatterns) {
@@ -96,6 +106,7 @@ function buildOption(): echarts.EChartsCoreOption {
         ...(maOn ? [`MA (${props.maLabel})`] : []),
         ...(bbOn ? [`Bollinger (${props.bbLabel})`] : []),
         ...(runsOn ? ['Runs'] : []),
+        ...(pivotsOn ? ['Swing pivots'] : []),
         ...(hasM ? ['M-Curve (Double Top)'] : []),
         ...(hasW ? ['W-Curve (Double Bottom)'] : []),
       ],
@@ -225,9 +236,32 @@ function buildOption(): echarts.EChartsCoreOption {
             },
           ]
         : []),
+      // --- Swing pivots (diagnostic): every peak/trough the detector found,
+      //     connected zigzag-style, colour-coded peak = DOWN / trough = UP ---
+      ...(pivotsOn ? [buildPivotSeries(wmPivots, props.price.length)] : []),
       // --- W/M pattern overlay: one skeleton (P1–P4) + breakout marker per pattern ---
       ...(wmOn ? wmPatterns.flatMap((p) => buildWmSeries(p, props.price.length)) : []),
     ],
+  }
+}
+
+/** A zigzag line through every swing pivot found, for diagnosing bar-size / window choices. */
+function buildPivotSeries(pivots: WmPoint[], n: number) {
+  const data: (number | { value: number; itemStyle: { color: string } } | null)[] = new Array(
+    n,
+  ).fill(null)
+  for (const pt of pivots) {
+    data[pt.origIdx] = { value: pt.price, itemStyle: { color: pt.type === 'peak' ? DOWN : UP } }
+  }
+  return {
+    name: 'Swing pivots',
+    type: 'line' as const,
+    data,
+    symbol: 'circle',
+    symbolSize: 5,
+    connectNulls: true,
+    z: 3,
+    lineStyle: { color: AMBER, width: 1, type: 'dotted' as const },
   }
 }
 
@@ -308,6 +342,7 @@ watch(
     props.runOverlay,
     props.showRuns,
     props.wmPatterns,
+    props.wmPivots,
     props.showWm,
   ],
   render,

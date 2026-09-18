@@ -130,20 +130,41 @@ function findEstablishedPatterns(
   return out
 }
 
-/** Detect established M/W patterns in a daily `price` series. */
-export function detectWmPatterns(price: number[], params: Partial<WmParams> = {}): WmPattern[] {
-  const P: WmParams = { ...DEFAULT_WM_PARAMS, ...params }
+/** Bar-group the series and find its swing pivots (shared by both exports below). */
+function computePivots(price: number[], timeframeDays: number, lookbackBars: number): WmPoint[] {
   const n = price.length
   if (n === 0) return []
-  const days = Math.max(1, Math.round(P.timeframeDays))
-  const lookback = Math.max(1, Math.round(P.lookbackBars))
-  const tolerance = Math.max(0, P.tolerance)
+  const days = Math.max(1, Math.round(timeframeDays))
+  const lookback = Math.max(1, Math.round(lookbackBars))
 
   const origIdx = resampleLast(n, days)
   const resampled = origIdx.map((i) => price[i])
   if (resampled.length < 2 * lookback + 1) return []
 
-  const pivots = findSwingPivots(resampled, origIdx, lookback)
+  return findSwingPivots(resampled, origIdx, lookback)
+}
+
+/**
+ * The raw swing pivots (all peaks/troughs, not just ones that form a matched
+ * M/W quadruple) — a diagnostic view of what `detectWmPatterns` is working
+ * from, useful for seeing why a bar-size/window choice finds few or no
+ * patterns.
+ */
+export function detectSwingPivots(
+  price: number[],
+  params: Partial<Pick<WmParams, 'timeframeDays' | 'lookbackBars'>> = {},
+): WmPoint[] {
+  const timeframeDays = params.timeframeDays ?? DEFAULT_WM_PARAMS.timeframeDays
+  const lookbackBars = params.lookbackBars ?? DEFAULT_WM_PARAMS.lookbackBars
+  return computePivots(price, timeframeDays, lookbackBars)
+}
+
+/** Detect established M/W patterns in a daily `price` series. */
+export function detectWmPatterns(price: number[], params: Partial<WmParams> = {}): WmPattern[] {
+  const P: WmParams = { ...DEFAULT_WM_PARAMS, ...params }
+  const tolerance = Math.max(0, P.tolerance)
+
+  const pivots = computePivots(price, P.timeframeDays, P.lookbackBars)
   if (pivots.length < 4) return []
 
   return findEstablishedPatterns(pivots, price, tolerance)

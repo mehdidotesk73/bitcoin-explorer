@@ -7,7 +7,7 @@ import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
-import { detectWmPatterns } from '../lib/wmPattern'
+import { detectWmPatterns, detectSwingPivots } from '../lib/wmPattern'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
@@ -152,6 +152,16 @@ const runDiag = computed(() =>
   }),
 )
 
+// Every swing pivot the detector finds at the configured bar size/window —
+// a diagnostic view (see lib/wmPattern.ts) shown whenever the metric is on,
+// so a bar-size choice that finds too few pivots to match is visible directly.
+const wmPivots = computed(() =>
+  detectSwingPivots(prices.value, {
+    timeframeDays: wmTimeframeDays.value,
+    lookbackBars: wmLookbackBars.value,
+  }),
+)
+
 // Established W/M patterns over the full history at the configured bar size.
 const wmPatterns = computed(() =>
   detectWmPatterns(prices.value, {
@@ -213,6 +223,7 @@ function downloadCsv() {
     cols.push({ head: 'run_skeleton', val: (i) => csvNum(runOverlay.value[i]) })
   if (showWm.value) {
     const wmLabel = new Map<number, string>()
+    for (const pt of wmPivots.value) wmLabel.set(pt.origIdx, pt.type)
     const pointNames = ['P1', 'P2', 'P3', 'P4']
     for (const p of wmPatterns.value) {
       p.points.forEach((pt, idx) => wmLabel.set(pt.origIdx, `${p.type}_${pointNames[idx]}`))
@@ -403,6 +414,10 @@ function downloadCsv() {
                 <span class="unit">%</span>
               </span>
             </label>
+            <p class="cfg-note">
+              {{ wmPivots.length }} swing pivot(s) found (amber, dotted — shown on the chart
+              whenever this metric is on) · {{ wmPatterns.length }} pattern(s) established.
+            </p>
           </div>
         </Panel>
 
@@ -504,6 +519,7 @@ function downloadCsv() {
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
       :wm-patterns="wmPatterns"
+      :wm-pivots="wmPivots"
       :show-wm="showWm"
       v-model:zoom="zoom"
     />
