@@ -65,6 +65,14 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     term: 'Log scale (axis)',
     def: 'An axis where each step multiplies (×10) instead of adds. It makes huge ranges and percentage moves readable on one chart.',
   },
+  wmPattern: {
+    term: 'W/M pattern',
+    def: 'A double-bottom ("W") or double-top ("M") chart pattern: two similar-height troughs (or peaks) separated by a swing in between. Marked "established" on the day price breaks through the neckline (the middle swing\'s level) — a classic reversal signal.',
+  },
+  swingWindow: {
+    term: 'Swing window',
+    def: 'How many bars on each side must be lower (or higher) for a bar to count as a swing high/low. A bigger window finds fewer, more significant swings.',
+  },
 
   // --- Price Mechanics (forecast) ---
   valueBaseline: {

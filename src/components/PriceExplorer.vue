@@ -7,6 +7,7 @@ import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
 import { scaleDiag } from '../lib/runs'
+import { detectWmPatterns } from '../lib/wmPattern'
 import PriceChart from './PriceChart.vue'
 import MetricsPanel from './MetricsPanel.vue'
 import InfoTip from './InfoTip.vue'
@@ -26,6 +27,7 @@ const emit = defineEmits<{ refresh: [] }>()
 const showMa = ref(false) // MA overlay
 const showBb = ref(false) // Bollinger overlay
 const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
+const showWm = ref(false) // W/M double-bottom / double-top overlay
 const showRatio = ref(false) // price ÷ MA curve
 const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
 
@@ -34,6 +36,7 @@ const cfgMa = ref(false)
 const cfgBb = ref(false)
 const cfgRatio = ref(false)
 const cfgRun = ref(false)
+const cfgWm = ref(false)
 const cfgBand = ref(false)
 
 // Whether any separate-curve metric is on, and whether that panel is collapsed.
@@ -49,6 +52,7 @@ const activeMetricLabels = computed(() => {
   if (showMa.value) out.push('MA')
   if (showBb.value) out.push('Bollinger')
   if (showRunDetection.value) out.push('Runs')
+  if (showWm.value) out.push('W/M pattern')
   if (showRatio.value) out.push('Price ÷ MA')
   if (showBand.value) out.push('Bollinger score')
   return out
@@ -103,6 +107,14 @@ const runSensitivity = computed({
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
 })
 
+// W/M pattern params (see lib/wmPattern.ts) — bar size to group price into,
+// how many bars on each side confirm a swing pivot, and how closely the two
+// tops/bottoms of a pattern must agree (shown as a %, stored as a fraction).
+const wmTimeframeDays = ref(30)
+const wmLookbackBars = ref(2)
+const wmTolerancePct = ref(4)
+const wmTolerance = computed(() => wmTolerancePct.value / 100)
+
 const zoom = ref<[number, number]>([0, 100]) // graphed range, percent
 
 // The crosshair and tooltip are synced across every figure natively, via the
@@ -137,6 +149,15 @@ const runDiag = computed(() =>
   scaleDiag(prices.value, runScaleDays.value, {
     N: Math.max(5, bbPeriod.value),
     sustThresh: sustThresh.value,
+  }),
+)
+
+// Established W/M patterns over the full history at the configured bar size.
+const wmPatterns = computed(() =>
+  detectWmPatterns(prices.value, {
+    timeframeDays: wmTimeframeDays.value,
+    lookbackBars: wmLookbackBars.value,
+    tolerance: wmTolerance.value,
   }),
 )
 
@@ -190,6 +211,15 @@ function downloadCsv() {
   }
   if (showRunDetection.value)
     cols.push({ head: 'run_skeleton', val: (i) => csvNum(runOverlay.value[i]) })
+  if (showWm.value) {
+    const wmLabel = new Map<number, string>()
+    const pointNames = ['P1', 'P2', 'P3', 'P4']
+    for (const p of wmPatterns.value) {
+      p.points.forEach((pt, idx) => wmLabel.set(pt.origIdx, `${p.type}_${pointNames[idx]}`))
+      wmLabel.set(p.establishedIdx, `${p.type}_established`)
+    }
+    cols.push({ head: 'wm_pattern', val: (i) => wmLabel.get(i) ?? '' })
+  }
   if (showRatio.value)
     cols.push({
       head: `price_div_ma_${ratioMaLabel.value}`,
@@ -334,6 +364,48 @@ function downloadCsv() {
           </div>
         </Panel>
 
+        <!-- Overlay: W/M pattern -->
+        <Panel
+          size="compact"
+          collapsible="icon"
+          :collapsed="!cfgWm"
+          @update:collapsed="cfgWm = !$event"
+        >
+          <template #header>
+            <label class="checkbox"><input type="checkbox" v-model="showWm" /> W/M pattern</label>
+            <InfoTip term="wmPattern" />
+          </template>
+          <div class="metric-cfg">
+            <p class="cfg-note">
+              Double-top (M) / double-bottom (W) detector: groups price into fixed-size bars, finds
+              swing highs/lows, matches trough-peak-trough-peak (W) or peak-trough-peak-trough (M)
+              quadruples within a symmetry tolerance, then marks the day price breaks the neckline
+              as "established".
+            </p>
+            <label>
+              Bar size
+              <span class="period">
+                <input type="number" v-model.number="wmTimeframeDays" min="1" max="365" />
+                <span class="unit">days</span>
+              </span>
+            </label>
+            <label>
+              Swing window <InfoTip term="swingWindow" />
+              <span class="period">
+                <input type="number" v-model.number="wmLookbackBars" min="1" max="20" />
+                <span class="unit">bars/side</span>
+              </span>
+            </label>
+            <label>
+              Symmetry tolerance
+              <span class="period">
+                <input type="number" v-model.number="wmTolerancePct" min="0" max="50" step="0.5" />
+                <span class="unit">%</span>
+              </span>
+            </label>
+          </div>
+        </Panel>
+
         <!-- Curve: price ÷ MA -->
         <Panel
           size="compact"
@@ -431,6 +503,8 @@ function downloadCsv() {
       :show-bb="showBb"
       :run-overlay="runOverlay"
       :show-runs="showRunDetection"
+      :wm-patterns="wmPatterns"
+      :show-wm="showWm"
       v-model:zoom="zoom"
     />
 

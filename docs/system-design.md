@@ -115,6 +115,20 @@ up-days (τ > 0) over γ·hd, mapped to [−1, 1] → `segmentRuns` cuts maximal
 stretches that clear `sustThresh` in one direction; sub-threshold (choppy) days
 break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
 
+**`wmPattern.ts`** — the W/M (double-bottom / double-top) chart-pattern
+detector. `detectWmPatterns(price, params?)` → `WmPattern[]`. Pipeline: group
+the daily series into fixed-size bars (`timeframeDays`, equivalent to the
+reference script's pandas `resample().last()` since daily data has no gaps) →
+find **swing pivots** — local highs/lows within a `±lookbackBars` window → match
+consecutive trough-peak-trough-peak (W) or peak-trough-peak-trough (M)
+quadruples whose two tops/bottoms agree within `tolerance` → scan the raw daily
+series from the fourth pivot onward for the day price crosses the neckline
+(the middle pivot's level), which is when the pattern **establishes**.
+**Not fully causal** like this file's other metrics: a swing pivot needs
+`lookbackBars` bars of hindsight to confirm, so a pivot near the live edge of
+the data can still vanish as new bars arrive — only the establishment day
+itself is causal at the moment it fires.
+
 **`forecast.ts`** — the Price Mechanics fit/projection engine (`fitParams` /
 `projectForecast`). Full spec in **§5.2**.
 
@@ -200,15 +214,23 @@ info, reachable without scrolling. See §7.
 Default view is **price only**; each metric toggles independently.
 
 **Metric framework.** Metric on/off flags and their per-metric ⚙ configs are
-plain in-memory `ref`s (`showMa`, `showBb`, `showRunDetection`, `showRatio`,
-`showBand`; `cfg*`). They live in a single collapsible **Metrics** disclosure
-(`menuCollapsed`, **default collapsed**; the header lists the active metrics when
-folded and shows a tap-to-expand/collapse hint). Two kinds:
+plain in-memory `ref`s (`showMa`, `showBb`, `showRunDetection`, `showWm`,
+`showRatio`, `showBand`; `cfg*`). They live in a single collapsible **Metrics**
+disclosure (`menuCollapsed`, **default collapsed**; the header lists the active
+metrics when folded and shows a tap-to-expand/collapse hint). Two kinds:
 
 - **Overlays** (drawn on the price chart, `PriceChart.vue`): Moving average
-  (`sma`), Bollinger bands (`bollinger`), and the **run skeleton** — a
+  (`sma`), Bollinger bands (`bollinger`), the **run skeleton** — a
   piecewise-linear line anchoring price at each run's start/end (`runOverlay`)
-  with `connectNulls`, so each run renders at its average slope.
+  with `connectNulls`, so each run renders at its average slope — and the
+  **W/M pattern** overlay (`detectWmPatterns`, §3): each established pattern
+  draws as its own dashed 4-point skeleton (P1–P4, colour-coded M = `DOWN` /
+  W = `UP`) plus a diamond marker at the neckline-breakout day; all M-series and
+  all W-series share one legend entry each (same `name`), and hovering any of
+  the five marked days folds a label (pivot/established + neckline) into the
+  shared tooltip. Knobs: **bar size** (`wmTimeframeDays`, default 30 days),
+  **swing window** (`wmLookbackBars`, default 2 bars/side), and **symmetry
+  tolerance** (`wmTolerancePct`, default 4%, stored as a fraction).
 - **Separate curves** (`MetricsPanel.vue`, in a collapsible "Additional graphs"
   panel): **Price ÷ MA** on a log axis against an independent long baseline
   (`ratioMaDays`, default 1460), **Bollinger score** (`useBandScore`), and **Run

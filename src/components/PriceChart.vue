@@ -10,8 +10,9 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtUSD } from '../lib/format'
-import { AXIS, SPLIT } from '../lib/chartTheme'
+import { AXIS, SPLIT, UP, DOWN } from '../lib/chartTheme'
 import { useChartSync, EXPLORER_GROUP } from '../lib/useChartSync'
+import type { WmPattern } from '../lib/wmPattern'
 
 echarts.use([
   LineChart,
@@ -39,6 +40,10 @@ const props = defineProps<{
   runOverlay?: (number | null)[]
   /** Draw the run skeleton over the price when true. */
   showRuns?: boolean
+  /** Established M/W chart patterns to mark over the price. */
+  wmPatterns?: WmPattern[]
+  /** Draw the W/M pattern overlay when true. */
+  showWm?: boolean
   /** Graphed-range window as [startPercent, endPercent], 0–100. */
   zoom: [number, number]
 }>()
@@ -55,6 +60,10 @@ function buildOption(): echarts.EChartsCoreOption {
   const bbOn = !!props.showBb
   const runsOn =
     !!props.showRuns && !!props.runOverlay && props.runOverlay.length === props.price.length
+  const wmPatterns = props.wmPatterns ?? []
+  const wmOn = !!props.showWm && wmPatterns.length > 0
+  const hasM = wmOn && wmPatterns.some((p) => p.type === 'M')
+  const hasW = wmOn && wmPatterns.some((p) => p.type === 'W')
 
   // Bollinger fill: an invisible baseline at the lower band plus the band
   // thickness (upper − lower) rendered as an area.
@@ -62,6 +71,19 @@ function buildOption(): echarts.EChartsCoreOption {
     const l = props.lower[i]
     return u == null || l == null ? null : u - l
   })
+
+  // Per-day label for W/M pivots + breakout days, folded into the tooltip.
+  const wmDayLabel = new Map<number, string>()
+  if (wmOn) {
+    const pointNames = ['P1', 'P2', 'P3', 'P4']
+    for (const p of wmPatterns) {
+      const tag = p.type === 'M' ? 'M-Curve' : 'W-Curve'
+      p.points.forEach((pt, i) =>
+        wmDayLabel.set(pt.origIdx, `${tag} ${pointNames[i]} (${pt.type})`),
+      )
+      wmDayLabel.set(p.establishedIdx, `${tag} established (neckline ${fmtUSD(p.necklineLevel)})`)
+    }
+  }
 
   return {
     animation: false,
@@ -74,6 +96,8 @@ function buildOption(): echarts.EChartsCoreOption {
         ...(maOn ? [`MA (${props.maLabel})`] : []),
         ...(bbOn ? [`Bollinger (${props.bbLabel})`] : []),
         ...(runsOn ? ['Runs'] : []),
+        ...(hasM ? ['M-Curve (Double Top)'] : []),
+        ...(hasW ? ['W-Curve (Double Bottom)'] : []),
       ],
       top: 8,
       textStyle: { color: '#e7eaf3' },
@@ -95,6 +119,8 @@ function buildOption(): echarts.EChartsCoreOption {
           rows.push(`Upper: ${fmtUSD(props.upper[i])}`)
           rows.push(`Lower: ${fmtUSD(props.lower[i])}`)
         }
+        const wmLabel = wmDayLabel.get(i)
+        if (wmLabel) rows.push(wmLabel)
         return rows.join('<br/>')
       },
     },
@@ -199,8 +225,46 @@ function buildOption(): echarts.EChartsCoreOption {
             },
           ]
         : []),
+      // --- W/M pattern overlay: one skeleton (P1–P4) + breakout marker per pattern ---
+      ...(wmOn ? wmPatterns.flatMap((p) => buildWmSeries(p, props.price.length)) : []),
     ],
   }
+}
+
+/** The dashed P1–P4 skeleton + a diamond breakout marker for one established pattern. */
+function buildWmSeries(p: WmPattern, n: number) {
+  const color = p.type === 'M' ? DOWN : UP
+  const name = p.type === 'M' ? 'M-Curve (Double Top)' : 'W-Curve (Double Bottom)'
+
+  const skeleton: (number | null)[] = new Array(n).fill(null)
+  for (const pt of p.points) skeleton[pt.origIdx] = pt.price
+
+  const breakout: (number | null)[] = new Array(n).fill(null)
+  breakout[p.establishedIdx] = p.establishedPrice
+
+  return [
+    {
+      name,
+      type: 'line' as const,
+      data: skeleton,
+      symbol: 'circle',
+      symbolSize: 6,
+      connectNulls: true,
+      z: 5,
+      lineStyle: { color, width: 1.5, type: 'dashed' as const },
+      itemStyle: { color },
+    },
+    {
+      name,
+      type: 'line' as const,
+      data: breakout,
+      symbol: 'diamond',
+      symbolSize: 11,
+      z: 6,
+      lineStyle: { opacity: 0 },
+      itemStyle: { color, borderColor: '#e7eaf3', borderWidth: 1 },
+    },
+  ]
 }
 
 function render() {
@@ -243,6 +307,8 @@ watch(
     props.showBb,
     props.runOverlay,
     props.showRuns,
+    props.wmPatterns,
+    props.showWm,
   ],
   render,
 )

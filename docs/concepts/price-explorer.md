@@ -31,6 +31,19 @@ or how stretched price is from its long-term baseline (price ÷ MA).
     multi-year). Default ≈ 31 days.
   - **Sensitivity** — higher = more / longer runs (default 0.2). Internally it
     lowers the "sustainment" gate a stretch must clear to count as a run.
+- **W/M pattern.** Flags double-bottom ("W") and double-top ("M") reversal
+  patterns: two similar-height troughs (or peaks) with a swing in between. A
+  pattern is marked **established** — a diamond marker — on the day price
+  breaks through the **neckline** (the middle swing's level); the four swing
+  points (P1–P4) are joined by a dashed skeleton, green for a bullish W, red
+  for a bearish M. Knobs:
+  - **Bar size** — groups price into fixed blocks before looking for swings
+    (default 30 days). Bigger bars find fewer, more major patterns.
+  - **Swing window** — how many bars on each side must be lower/higher for a
+    bar to count as a swing high/low (default 2). Bigger = fewer, more
+    significant swings.
+  - **Symmetry tolerance** — how closely the two tops (or two bottoms) must
+    match, as a % of the higher one (default 4%).
 
 ## Separate curves (collapsible panel below)
 
@@ -64,6 +77,11 @@ or how stretched price is from its long-term baseline (price ÷ MA).
   "vote", then segments the vote into runs where it clears the sensitivity gate.
 - The run slope is measured on the **smoothed** price the runs are built from
   (not raw endpoints), so the slope bars and the b-shading agree run-for-run.
+- `detectWmPatterns()` (`lib/wmPattern.ts`) groups price into bars, finds swing
+  highs/lows, matches trough-peak-trough-peak / peak-trough-peak-trough
+  quadruples within the symmetry tolerance, then scans forward from the fourth
+  swing for the first daily close that crosses the neckline — that day is the
+  pattern's "established" marker.
 - All panels share one x-zoom + crosshair group, so panning/zooming the price
   chart moves the curves in lockstep.
 
@@ -84,7 +102,11 @@ crosshair all line up on the same date across graphs.
 ## Assumptions & caveats
 
 - Indicators are **descriptive heuristics**, not signals or advice.
-- Everything is **causal**: day _i_ uses only data ≤ _i_.
+- Everything is **causal**: day _i_ uses only data ≤ _i_ — **except** the W/M
+  pattern's swing points, which need bars on both sides to confirm; a swing
+  near the right edge of the visible range can still change as new data
+  arrives. The **established** breakout marker, once it appears, is causal —
+  it only ever looked at data up to that day.
 - The run parameters (band period, smoothing/trend/vote windows) are
   **heuristic defaults**, not statistically optimised — tune by eye.
 - Bollinger bands use the **population** σ (the technical-analysis convention).
