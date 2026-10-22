@@ -108,7 +108,8 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
           </div>
         </div>
         <h1 class="app-title">
-          <span class="t-bitcoin">bitcoin</span><span class="t-1460">1460</span>
+          <span class="t-bitcoin">bitcoin</span><span class="t-1460">1460</span
+          ><span class="t-tm">™</span>
         </h1>
         <button class="help-btn" @click="showHelp = true" aria-label="Help" title="Help">
           ? Help
@@ -222,6 +223,15 @@ const helpDoc = computed<'overview' | 'explorer' | 'mechanics' | 'hodl'>(() =>
   margin-left: 0.3em;
   letter-spacing: 0.02em;
   text-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
+}
+/* Small superscript trademark next to the 1460 wordmark. */
+.t-tm {
+  font-family: 'Orbitron', ui-monospace, monospace;
+  font-size: 0.42em;
+  vertical-align: super;
+  color: #f7931a;
+  margin-left: 0.1em;
+  opacity: 0.85;
 }
 /* Top-left update affordance, mirroring the Help button on the right. */
 .update-slot {
