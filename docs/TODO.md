@@ -167,6 +167,12 @@ Single-source-of-truth pass — concrete duplication removed across components:
 - [x] **Confirm the first `Refresh BTC data` run** — 2026-10-22: runners reach
       Binance, the push to `data` works, the chained Pages deploy published
       `32cfd47` with the snapshot.
+- [ ] **Watch for the 60-day schedule pause.** GitHub disables scheduled
+      workflows in public repos after 60 days without repository activity
+      (emailing the owner first); unclear whether the bot's nightly `data`
+      commits count. If **Refresh BTC data** stops (no new `data` commits), re-enable
+      it with **Enable workflow** on its Actions page. Optional hardening: a
+      keep-alive (e.g. `gautamkrishnar/keepalive-workflow`) or a monthly reminder.
 - [ ] **Drop the CSV from the service-worker precache** (`vite.config.ts`
       `globPatterns` includes `csv`, ~620 KB on every update) once the snapshot
       is live — it's only a fallback now.
