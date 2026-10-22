@@ -647,7 +647,11 @@ const fmtNum = (v: number) =>
 
         <div class="peak-group">
           <div class="peak-group-head">
-            <span>Past peaks</span>
+            <span
+              >Past cycle peaks<span v-if="peaks.pastGaps.length" class="peak-avg">
+                (avg. every {{ meanGap(peaks.pastGaps, 0) }} days)</span
+              ></span
+            >
             <button type="button" @click="addPast">+ Add</button>
           </div>
           <ul class="peak-list">
@@ -679,17 +683,26 @@ const fmtNum = (v: number) =>
                 <span class="peak-arrow">→</span>
                 <span class="peak-date">{{ toISODate(t) }}</span>
               </template>
-              <button type="button" class="peak-remove" title="Remove peak" @click="removePast(i)">
+              <button
+                type="button"
+                class="peak-remove"
+                title="Remove cycle peak"
+                @click="removePast(i)"
+              >
                 ×
               </button>
             </li>
-            <li v-if="!peakSchedule.past.length" class="fit-note">No past peaks.</li>
+            <li v-if="!peakSchedule.past.length" class="fit-note">No past cycle peaks.</li>
           </ul>
         </div>
 
         <div class="peak-group">
           <div class="peak-group-head">
-            <span>Projected peaks</span>
+            <span
+              >Projected cycle peaks<span v-if="peaks.projGaps.length" class="peak-avg">
+                (avg. every {{ meanGap(peaks.projGaps, 0) }} days)</span
+              ></span
+            >
             <button type="button" @click="addProjected">+ Add</button>
           </div>
           <div class="peak-uniform">
@@ -716,16 +729,18 @@ const fmtNum = (v: number) =>
               <button
                 type="button"
                 class="peak-remove"
-                title="Remove peak"
+                title="Remove cycle peak"
                 @click="removeProjected(i)"
               >
                 ×
               </button>
             </li>
-            <li v-if="!peakSchedule.projected.length" class="fit-note">No projected peaks.</li>
+            <li v-if="!peakSchedule.projected.length" class="fit-note">
+              No projected cycle peaks.
+            </li>
           </ul>
           <p class="fit-note">
-            Each peak is its spacing (days) after the one before; dates update as you type.
+            Each cycle peak is its spacing (days) after the one before; dates update as you type.
             <template v-if="peakSchedule.projected.some((t) => t > horizonMs)">
               Dimmed dates fall past the {{ horizonYear }} horizon.
             </template>
@@ -910,6 +925,10 @@ h4 {
   color: var(--text);
   width: 5.8rem;
   flex: none;
+}
+.peak-avg {
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 .peak-arrow {
   color: var(--text-muted);
