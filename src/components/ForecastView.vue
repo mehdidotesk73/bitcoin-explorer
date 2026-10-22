@@ -202,7 +202,6 @@ const toISODate = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 // set by its gap (days) from the previous one.
 const firstMin = computed(() => times.value[0] ?? dayZeroMs.value)
 const firstMax = computed(() => dataEndMs.value)
-const GAP_MIN = 90
 const GAP_MAX = 3650
 const fmtYears = (days: number) => `${(days / 365.25).toFixed(2)} yr`
 
@@ -212,7 +211,7 @@ function onFirstInput(ev: Event) {
 }
 
 function setGap(list: number[], i: number, v: number) {
-  if (!Number.isFinite(v)) return
+  if (!Number.isFinite(v) || v < 1) return // mid-edit (empty box): keep the last value
   list[i] = Math.round(Math.min(Math.max(v, 1), GAP_MAX * 2))
 }
 
@@ -653,8 +652,8 @@ const fmtNum = (v: number) =>
           </div>
           <ul class="peak-list">
             <li v-for="(t, i) in peakSchedule.past" :key="'past' + i" class="peak-row">
-              <span class="peak-date">{{ toISODate(t) }}</span>
               <template v-if="i === 0">
+                <span class="peak-date">{{ toISODate(t) }}</span>
                 <input
                   class="peak-slider"
                   type="range"
@@ -664,28 +663,21 @@ const fmtNum = (v: number) =>
                   :value="t"
                   @input="onFirstInput"
                 />
-                <span class="peak-gap first">first</span>
               </template>
               <template v-else>
-                <input
-                  class="peak-slider"
-                  type="range"
-                  :min="GAP_MIN"
-                  :max="GAP_MAX"
-                  step="1"
-                  :value="peaks.pastGaps[i - 1]"
-                  @input="setGap(peaks.pastGaps, i - 1, +($event.target as HTMLInputElement).value)"
-                />
                 <label class="peak-gap" :title="fmtYears(peaks.pastGaps[i - 1])">
                   +<input
                     type="number"
                     :value="peaks.pastGaps[i - 1]"
                     min="1"
-                    @change="
+                    @input="
                       setGap(peaks.pastGaps, i - 1, +($event.target as HTMLInputElement).value)
                     "
-                  />d
+                  />
+                  days
                 </label>
+                <span class="peak-arrow">→</span>
+                <span class="peak-date">{{ toISODate(t) }}</span>
               </template>
               <button type="button" class="peak-remove" title="Remove peak" @click="removePast(i)">
                 ×
@@ -701,34 +693,26 @@ const fmtNum = (v: number) =>
             <button type="button" @click="addProjected">+ Add</button>
           </div>
           <div class="peak-uniform">
-            <label>
-              Spacing
-              <span class="peak-gap">
-                <input type="number" v-model.number="spacing" min="1" step="1" />d
-              </span>
+            <label class="peak-gap">
+              Spaced
+              <input type="number" v-model.number="spacing" min="1" step="1" />
+              days
             </label>
             <button type="button" @click="distributeUniformly">Distribute uniformly</button>
           </div>
           <ul class="peak-list">
             <li v-for="(t, i) in peakSchedule.projected" :key="'proj' + i" class="peak-row">
-              <span class="peak-date" :class="{ beyond: t > horizonMs }">{{ toISODate(t) }}</span>
-              <input
-                class="peak-slider"
-                type="range"
-                :min="GAP_MIN"
-                :max="GAP_MAX"
-                step="1"
-                :value="peaks.projGaps[i]"
-                @input="setGap(peaks.projGaps, i, +($event.target as HTMLInputElement).value)"
-              />
               <label class="peak-gap" :title="fmtYears(peaks.projGaps[i])">
                 +<input
                   type="number"
                   :value="peaks.projGaps[i]"
                   min="1"
-                  @change="setGap(peaks.projGaps, i, +($event.target as HTMLInputElement).value)"
-                />d
+                  @input="setGap(peaks.projGaps, i, +($event.target as HTMLInputElement).value)"
+                />
+                days
               </label>
+              <span class="peak-arrow">→</span>
+              <span class="peak-date" :class="{ beyond: t > horizonMs }">{{ toISODate(t) }}</span>
               <button
                 type="button"
                 class="peak-remove"
@@ -741,7 +725,7 @@ const fmtNum = (v: number) =>
             <li v-if="!peakSchedule.projected.length" class="fit-note">No projected peaks.</li>
           </ul>
           <p class="fit-note">
-            Each peak is set by its gap (days) from the one before; dates are shown for reference.
+            Each peak is its spacing (days) after the one before; dates update as you type.
             <template v-if="peakSchedule.projected.some((t) => t > horizonMs)">
               Dimmed dates fall past the {{ horizonYear }} horizon.
             </template>
@@ -927,6 +911,14 @@ h4 {
   width: 5.8rem;
   flex: none;
 }
+.peak-arrow {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+/* Gap rows: spacing input, arrow, derived date, then × pushed right. */
+.peak-row .peak-remove {
+  margin-left: auto;
+}
 .peak-slider {
   flex: 1;
   min-width: 4rem;
@@ -954,34 +946,23 @@ h4 {
 }
 .peak-uniform {
   display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.45rem;
-}
-.peak-uniform label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
 }
 .peak-gap {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.72rem;
+  gap: 0.3rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 .peak-gap input {
   width: 3.6rem;
   font-size: 0.75rem;
   padding: 0.2rem 0.3rem;
-}
-.peak-gap.first {
-  width: 4.6rem;
-  justify-content: center;
 }
 .peak-remove {
   flex: none;
