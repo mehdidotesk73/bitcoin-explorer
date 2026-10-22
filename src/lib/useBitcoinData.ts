@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { fetchDailyPrices, EARLIEST_MS, type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { loadSupplemental } from '../api/supplemental'
 import { loadSnapshot } from '../api/snapshot'
-import { mergeDaily, DAY_MS } from './btcSnapshot'
+import { mergeDaily, topUpStart } from './btcSnapshot'
 import { logDebug } from '../debug'
 
 const CACHE_KEY = 'btc-daily-v1'
@@ -47,7 +47,7 @@ export function useBitcoinData() {
       const base = snapshot.length ? snapshot : await loadSupplemental()
       // Show the snapshot right away; the top-up below only adds recent days.
       if (snapshot.length) raw.value = mergeDaily(raw.value, snapshot)
-      const start = snapshot.length ? snapshot[snapshot.length - 1].time + DAY_MS : EARLIEST_MS
+      const start = topUpStart(snapshot, EARLIEST_MS)
       const binance = await fetchDailyPrices(start, (p) => (progress.value = p))
       const points = mergeDaily(base, binance)
       raw.value = points

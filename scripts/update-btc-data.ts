@@ -12,11 +12,10 @@ import { readFile, writeFile, appendFile } from 'node:fs/promises'
 import { fetchDailyPrices, EARLIEST_MS } from '../src/api/bitcoin.ts'
 import { parseCsv } from '../src/api/supplemental.ts'
 import {
-  mergeDaily,
-  completeDays,
+  nextSnapshot,
+  topUpStart,
   serializeSnapshot,
   parseSnapshot,
-  DAY_MS,
 } from '../src/lib/btcSnapshot.ts'
 
 const CSV_SEED = 'public/data/btc-pre-binance.csv'
@@ -42,15 +41,11 @@ if (!existing.length) {
   console.log(`seeding: ${base.length} CSV days (${day(base[0].time)}..${day(base.at(-1)!.time)})`)
 }
 
-const start = existing.length ? existing.at(-1)!.time + DAY_MS : EARLIEST_MS
+const start = topUpStart(existing, EARLIEST_MS)
 console.log(`fetching Binance from ${day(start)}`)
 const fresh = await fetchDailyPrices(start, (p) => console.log(`  page ${p.pages}: ${p.bars} bars`))
 
-const merged = completeDays(mergeDaily(base, fresh), Date.now())
-if (merged.length < existing.length) {
-  console.error(`refusing to shrink snapshot: ${existing.length} -> ${merged.length} days`)
-  process.exit(1)
-}
+const merged = nextSnapshot(existing, base, fresh, Date.now()) // throws → non-zero exit
 
 const after = serializeSnapshot(merged)
 const changed = after !== before

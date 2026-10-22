@@ -37,6 +37,28 @@ export function mergeDaily(...lists: PricePoint[][]): PricePoint[] {
 export const completeDays = (points: PricePoint[], nowMs: number): PricePoint[] =>
   points.filter((p) => p.time < utcDayStart(nowMs))
 
+/** First day to fetch: the day after the snapshot ends, or `earliestMs` with none. */
+export const topUpStart = (snapshot: PricePoint[], earliestMs: number): number =>
+  snapshot.length ? snapshot[snapshot.length - 1].time + DAY_MS : earliestMs
+
+/**
+ * The next stored snapshot: `base` (the existing snapshot, or the seed history
+ * when there is none) with `fresh` days on top, complete days only. Throws if
+ * it would hold fewer days than `existing` — a bad fetch must never erase
+ * stored history.
+ */
+export function nextSnapshot(
+  existing: PricePoint[],
+  base: PricePoint[],
+  fresh: PricePoint[],
+  nowMs: number,
+): PricePoint[] {
+  const next = completeDays(mergeDaily(base, fresh), nowMs)
+  if (next.length < existing.length)
+    throw new Error(`refusing to shrink snapshot: ${existing.length} -> ${next.length} days`)
+  return next
+}
+
 export function serializeSnapshot(points: PricePoint[]): string {
   const rows = points.map((p) => JSON.stringify({ t: dayKey(p.time), c: p.price }))
   return `[\n${rows.join(',\n')}\n]\n`
