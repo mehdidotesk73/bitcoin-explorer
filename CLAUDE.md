@@ -34,7 +34,7 @@ https://github.com/mehdidotesk73/claude-nocode-netlify-webapp-workflow. In short
    is finished. The PR is what makes Netlify build the Deploy Preview, and the preview is the only
    way the user (on their phone) sees the change.
 4. **Give the user the preview link after every push**:
-   `https://deploy-preview-<PR number>--bitcoin-analysis.netlify.app`, in a normal message (never
+   `https://deploy-preview-<PR number>--bitcoin-1460.netlify.app`, in a normal message (never
    inside an `AskUserQuestion` question — links arrive dead there), with what to check. Poll the
    PR's checks in-turn until the Netlify deploy resolves rather than scheduling a check-in.
 5. **Pre-merge doc gate** when the branch is ready — see below.
@@ -106,8 +106,8 @@ vite build` — catches TS errors _and_ Vue template parse errors). In a fresh c
 - **Production = GitHub Pages** (`https://mehdidotesk73.github.io/bitcoin-explorer/`), built by
   `.github/workflows/deploy.yml` on push to `main`. It bakes the repo name into the asset base
   path, so a repo rename needs a fresh deploy.
-- **Netlify = preview only** (`netlify.toml`, site `bitcoin-analysis`) — every PR gets a Deploy
-  Preview at `https://deploy-preview-<n>--bitcoin-analysis.netlify.app`. No PR, no preview.
+- **Netlify = preview only** (`netlify.toml`, site `bitcoin-1460`) — every PR gets a Deploy
+  Preview at `https://deploy-preview-<n>--bitcoin-1460.netlify.app`. No PR, no preview.
 
 ## Repo structure
 

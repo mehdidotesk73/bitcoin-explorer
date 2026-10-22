@@ -17,7 +17,7 @@ shape every step below.
 Fixed values for this repo:
 
 - **Repo:** `mehdidotesk73/bitcoin-explorer`
-- **Preview:** `https://deploy-preview-<PR number>--bitcoin-analysis.netlify.app`
+- **Preview:** `https://deploy-preview-<PR number>--bitcoin-1460.netlify.app`
 - **Production (live):** `https://mehdidotesk73.github.io/bitcoin-explorer/`
 - **PR page:** `https://github.com/mehdidotesk73/bitcoin-explorer/pull/<PR number>`
 
@@ -80,10 +80,14 @@ Keep PR comments frugal. **Do not merge** — the user merges.
 Every turn that pushes ends with the preview link in a normal message (never inside an
 `AskUserQuestion` question — that field renders plain text, so links arrive dead):
 
-> **Preview:** https://deploy-preview-64--bitcoin-analysis.netlify.app
+> **Preview:** https://deploy-preview-64--bitcoin-1460.netlify.app
 > — open on your phone and try <the specific thing to check>.
 
 Tell them **what to check**, concretely — what to tap and what should happen.
+
+**Take the URL from the `netlify[bot]` comment on the PR** (`pull_request_read` → `get_comments`),
+which also names the commit it built — don't hand-construct it from memory; the site name has been
+wrong in these docs before.
 
 **Wait for it in-turn when you can.** The Netlify deploy takes a minute or two; poll the PR's check
 runs (`pull_request_read` → `get_check_runs`) a few times until the Netlify deploy check resolves,
@@ -133,7 +137,7 @@ branch merge-ready without running this gate.**
 They can't merge what they can't find. Always include the live site next to the preview — seeing
 both makes it concrete that production is untouched until they merge:
 
-> **Preview (the change):** https://deploy-preview-64--bitcoin-analysis.netlify.app
+> **Preview (the change):** https://deploy-preview-64--bitcoin-1460.netlify.app
 > — check <the thing>.
 >
 > **Live site (unchanged):** https://mehdidotesk73.github.io/bitcoin-explorer/
