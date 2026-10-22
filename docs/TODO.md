@@ -2,6 +2,11 @@
 
 ## Done
 
+- [x] Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`).
+      `loadSnapshot()` (`api/snapshot.ts`) tries
+      `raw.githubusercontent.com/…/data/btc-daily.json`, then the bundled copy,
+      then CSV + full Binance — so Netlify production and previews stay current
+      without rebuilding.
 - [x] App-owned price snapshot (`claude/data-snapshot`). Full daily history in
       `btc-daily.json` on the `data` branch, refreshed nightly by
       `data-refresh.yml` → `scripts/update-btc-data.ts`, bundled into every build;
@@ -159,9 +164,9 @@ Single-source-of-truth pass — concrete duplication removed across components:
 
 ## Data snapshot follow-ups
 
-- [ ] **Confirm the first `Refresh BTC data` run** (after merge): GitHub runners
-      reach Binance, the push to `data` is allowed, and the chained Pages deploy
-      bundles the snapshot.
+- [x] **Confirm the first `Refresh BTC data` run** — 2026-10-22: runners reach
+      Binance, the push to `data` works, the chained Pages deploy published
+      `32cfd47` with the snapshot.
 - [ ] **Drop the CSV from the service-worker precache** (`vite.config.ts`
       `globPatterns` includes `csv`, ~620 KB on every update) once the snapshot
       is live — it's only a fallback now.
