@@ -210,6 +210,19 @@ built.
 
 ## Version history
 
+### 2026-10-22 — Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`)
+
+- **Changed:** `api/snapshot.ts` fetches `btc-daily.json` from
+  `raw.githubusercontent.com/…/data/` first, then the build-bundled copy, then
+  falls back to CSV + full Binance. The debug log names the source.
+- **Why:** Netlify production built `main` a minute before the first nightly run
+  created `data`, so it had no snapshot ("no snapshot: 2731 supplemental + 3354
+  Binance"), and it would go stale between merges anyway. A Netlify **build
+  hook** called from the nightly job was the alternative; rejected because the
+  runtime fetch needs no secret, no extra build per night, and covers previews
+  too. First nightly run (manual) confirmed: runners reach Binance, the push to
+  `data` works, and the chained Pages deploy publishes (build `32cfd47`).
+
 ### 2026-10-22 — App-owned price snapshot, refreshed nightly (`claude/data-snapshot`)
 
 - **Added:** `btc-daily.json` on an orphan **`data` branch** — the full daily

@@ -12,8 +12,9 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
  * Shared price-data loader. Shows cached data instantly (also works offline),
  * then refreshes in the background. Used by every tab.
  *
- * Refresh prefers the app-owned snapshot (btc-daily.json, bundled per deploy)
- * and fetches only the Binance days after it ends — usually one request.
+ * Refresh prefers the app-owned snapshot (btc-daily.json — live from the `data`
+ * branch, else the copy bundled in this build) and fetches only the Binance days
+ * after it ends — usually one request.
  * Without a snapshot it falls back to the CSV + full Binance history.
  */
 export function useBitcoinData() {
@@ -42,7 +43,7 @@ export function useBitcoinData() {
     error.value = ''
     progress.value = { bars: 0, pages: 0 }
     try {
-      const snapshot = await loadSnapshot()
+      const { points: snapshot, source } = await loadSnapshot()
       // Base history: the snapshot, else the committed CSV.
       const base = snapshot.length ? snapshot : await loadSupplemental()
       // Show the snapshot right away; the top-up below only adds recent days.
@@ -53,7 +54,7 @@ export function useBitcoinData() {
       raw.value = points
       logDebug(
         snapshot.length
-          ? `loaded snapshot ${snapshot.length} days (to ${day(snapshot[snapshot.length - 1].time)}) + ${binance.length} live = ${points.length} points`
+          ? `loaded ${source} snapshot ${snapshot.length} days (to ${day(snapshot[snapshot.length - 1].time)}) + ${binance.length} live = ${points.length} points`
           : `no snapshot: ${base.length} supplemental + ${binance.length} Binance = ${points.length} points`,
       )
       lastUpdated.value = Date.now()

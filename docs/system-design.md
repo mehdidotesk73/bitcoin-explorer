@@ -91,8 +91,13 @@ script: `mergeDaily(...lists)` (one point per UTC day, normalised to midnight;
 stored), `topUpStart` (day after the snapshot ends), `nextSnapshot` (merge + throw
 rather than **shrink** stored history), and `serializeSnapshot` / `parseSnapshot`
 (malformed input → `[]`, e.g. an SPA `index.html` fallback). `loadSnapshot()`
-fetches it with `cache: 'no-cache'`; it's deliberately **not** precached by the
-service worker.
+tries the **live** file first — `raw.githubusercontent.com/<repo>/data/btc-daily.json`
+(public repo, CORS `*`, ~5 min CDN cache) — then the copy **bundled** in the
+build, then gives up (`source: 'live' | 'bundled' | 'none'`, named in the debug
+log). Fetching at runtime is what keeps _every_ deployment current — GitHub
+Pages, Netlify production (which only rebuilds when `main` changes) and PR
+previews — with no rebuild or build hook. Both use `cache: 'no-cache'`; neither
+is precached by the service worker.
 
 **The nightly pipeline.** `.github/workflows/data-refresh.yml` runs at 01:17 UTC
 (after the 00:00 UTC daily close) and on **Run workflow**:
