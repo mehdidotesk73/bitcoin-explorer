@@ -19,6 +19,7 @@ import {
   type ForecastConfig,
 } from '../lib/forecast'
 import { fmtUSD } from '../lib/format'
+import { scheduleFromDates, scheduleDates, uniformGaps, removeGap, meanGap } from '../lib/peaks'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import InfoTip from './InfoTip.vue'
 import Panel from './Panel.vue'
@@ -50,8 +51,19 @@ const fitWindowDays = ref(2920)
 // cycles. Tune to reproduce a preferred fit.
 const powFitGamma = ref(1)
 
-const peakDates = ref<string[]>([...DEFAULT_PEAK_DATES])
-const peakDatesMs = computed(() => peakDates.value.map((d) => Date.parse(d)))
+// Cycle peaks are a spacing schedule (lib/peaks.ts): a first-peak date, then
+// gaps in days. Peaks up to today are "past", later ones "projected". Dates are
+// derived; the forecast only ever sees the resulting list.
+const defaultSchedule = () =>
+  scheduleFromDates(
+    DEFAULT_PEAK_DATES.map((d) => Date.parse(d)),
+    Date.now(),
+  )
+const peaks = reactive(defaultSchedule())
+// Data edge: projected peaks count from here when there are no past peaks.
+const dataEndMs = computed(() => times.value[times.value.length - 1] ?? Date.now())
+const peakSchedule = computed(() => scheduleDates(peaks, dataEndMs.value))
+const peakDatesMs = computed(() => [...peakSchedule.value.past, ...peakSchedule.value.projected])
 
 // --- Automatic curve fit (recomputed when data / window / day-zero change) ---
 const fitted = computed(() =>
@@ -186,36 +198,70 @@ const DAY_MS = 86_400_000
 const horizonMs = computed(() => Date.parse(`${horizonYear.value}-12-31`))
 const toISODate = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
-// Sliders span from the first data point to the projection horizon.
-const peakMin = computed(() => times.value[0] ?? dayZeroMs.value)
-const peakMax = computed(() => horizonMs.value)
+// The first peak's date slider spans the loaded history; every later peak is
+// set by its gap (days) from the previous one.
+const firstMin = computed(() => times.value[0] ?? dayZeroMs.value)
+const firstMax = computed(() => dataEndMs.value)
+const GAP_MIN = 90
+const GAP_MAX = 3650
+const fmtYears = (days: number) => `${(days / 365.25).toFixed(2)} yr`
 
-const peakMs = (i: number) => Date.parse(peakDates.value[i])
-
-function onPeakInput(i: number, ev: Event) {
+function onFirstInput(ev: Event) {
   const ms = Number((ev.target as HTMLInputElement).value)
-  const clamped = Math.min(Math.max(ms, peakMin.value), peakMax.value)
-  peakDates.value[i] = toISODate(clamped)
+  peaks.firstMs = Math.min(Math.max(ms, firstMin.value), firstMax.value)
 }
 
-function addPeak() {
-  // Place the new top ~one halving cycle (≈3.84 yr) past the last one.
-  const last = peakDatesMs.value[peakDatesMs.value.length - 1]
-  const base = last != null ? last + 1402 * DAY_MS : Date.parse(nowDate)
-  const ms = Math.min(Math.max(base, peakMin.value), peakMax.value)
-  peakDates.value = [...peakDates.value, toISODate(ms)].sort()
+function setGap(list: number[], i: number, v: number) {
+  if (!Number.isFinite(v)) return
+  list[i] = Math.round(Math.min(Math.max(v, 1), GAP_MAX * 2))
 }
 
-function removePeak(i: number) {
-  peakDates.value = peakDates.value.filter((_, j) => j !== i)
+// Projected spacing: "Distribute uniformly" sets every projected gap to this,
+// i.e. peak k sits k × spacing after the last past peak. Defaults to the mean
+// of the past gaps (≈ the historical rhythm).
+const spacing = ref(meanGap(peaks.pastGaps, 1460))
+
+function distributeUniformly() {
+  peaks.projGaps = uniformGaps(peaks.projGaps.length || 1, spacing.value)
+}
+
+function addPast() {
+  if (peaks.firstMs == null) {
+    peaks.firstMs = firstMin.value
+    return
+  }
+  peaks.pastGaps.push(meanGap(peaks.pastGaps, 1460))
+}
+
+function removePast(i: number) {
+  // i = 0 is the first peak: the second becomes first (later dates unchanged).
+  if (i === 0) {
+    if (!peaks.pastGaps.length) peaks.firstMs = null
+    else peaks.firstMs = (peaks.firstMs ?? 0) + peaks.pastGaps.shift()! * DAY_MS
+  } else {
+    peaks.pastGaps = removeGap(peaks.pastGaps, i - 1)
+  }
+}
+
+function addProjected() {
+  peaks.projGaps.push(
+    peaks.projGaps.length ? peaks.projGaps[peaks.projGaps.length - 1] : spacing.value,
+  )
+}
+
+function removeProjected(i: number) {
+  peaks.projGaps = removeGap(peaks.projGaps, i)
 }
 
 function clearPeaks() {
-  peakDates.value = []
+  peaks.firstMs = null
+  peaks.pastGaps = []
+  peaks.projGaps = []
 }
 
 function resetPeaks() {
-  peakDates.value = [...DEFAULT_PEAK_DATES]
+  Object.assign(peaks, defaultSchedule())
+  spacing.value = meanGap(peaks.pastGaps, 1460)
 }
 
 // Numeric x basis for the chart: days since the first plotted sample (≥ 1, so a
@@ -585,7 +631,7 @@ const fmtNum = (v: number) =>
       <template v-if="distributionType === 'peaks'">
         <h3>
           Cycle peaks
-          <span class="fit">{{ peakDates.length }} tops</span>
+          <span class="fit">{{ peakDatesMs.length }} tops</span>
         </h3>
         <div class="param-grid">
           <label>
@@ -593,34 +639,114 @@ const fmtNum = (v: number) =>
             <input type="number" v-model.number="peakSpread" step="any" min="0.0001" />
           </label>
           <div class="peak-actions">
-            <button type="button" @click="addPeak">+ Add</button>
             <button type="button" @click="resetPeaks">↺ Default</button>
-            <button type="button" @click="clearPeaks" :disabled="!peakDates.length">
+            <button type="button" @click="clearPeaks" :disabled="!peakDatesMs.length">
               Clear all
             </button>
           </div>
         </div>
 
-        <ul class="peak-list">
-          <li v-for="(d, i) in peakDates" :key="i" class="peak-row">
-            <span class="peak-date">{{ d }}</span>
-            <input
-              class="peak-slider"
-              type="range"
-              :min="peakMin"
-              :max="peakMax"
-              :step="DAY_MS"
-              :value="peakMs(i)"
-              @input="onPeakInput(i, $event)"
-            />
-            <button type="button" class="peak-remove" title="Remove peak" @click="removePeak(i)">
-              ×
-            </button>
-          </li>
-          <li v-if="!peakDates.length" class="fit-note">
-            No peaks — projection follows the baseline volatility only.
-          </li>
-        </ul>
+        <div class="peak-group">
+          <div class="peak-group-head">
+            <span>Past peaks</span>
+            <button type="button" @click="addPast">+ Add</button>
+          </div>
+          <ul class="peak-list">
+            <li v-for="(t, i) in peakSchedule.past" :key="'past' + i" class="peak-row">
+              <span class="peak-date">{{ toISODate(t) }}</span>
+              <template v-if="i === 0">
+                <input
+                  class="peak-slider"
+                  type="range"
+                  :min="firstMin"
+                  :max="firstMax"
+                  :step="DAY_MS"
+                  :value="t"
+                  @input="onFirstInput"
+                />
+                <span class="peak-gap first">first</span>
+              </template>
+              <template v-else>
+                <input
+                  class="peak-slider"
+                  type="range"
+                  :min="GAP_MIN"
+                  :max="GAP_MAX"
+                  step="1"
+                  :value="peaks.pastGaps[i - 1]"
+                  @input="setGap(peaks.pastGaps, i - 1, +($event.target as HTMLInputElement).value)"
+                />
+                <label class="peak-gap" :title="fmtYears(peaks.pastGaps[i - 1])">
+                  +<input
+                    type="number"
+                    :value="peaks.pastGaps[i - 1]"
+                    min="1"
+                    @change="
+                      setGap(peaks.pastGaps, i - 1, +($event.target as HTMLInputElement).value)
+                    "
+                  />d
+                </label>
+              </template>
+              <button type="button" class="peak-remove" title="Remove peak" @click="removePast(i)">
+                ×
+              </button>
+            </li>
+            <li v-if="!peakSchedule.past.length" class="fit-note">No past peaks.</li>
+          </ul>
+        </div>
+
+        <div class="peak-group">
+          <div class="peak-group-head">
+            <span>Projected peaks</span>
+            <button type="button" @click="addProjected">+ Add</button>
+          </div>
+          <div class="peak-uniform">
+            <label>
+              Spacing
+              <span class="peak-gap">
+                <input type="number" v-model.number="spacing" min="1" step="1" />d
+              </span>
+            </label>
+            <button type="button" @click="distributeUniformly">Distribute uniformly</button>
+          </div>
+          <ul class="peak-list">
+            <li v-for="(t, i) in peakSchedule.projected" :key="'proj' + i" class="peak-row">
+              <span class="peak-date" :class="{ beyond: t > horizonMs }">{{ toISODate(t) }}</span>
+              <input
+                class="peak-slider"
+                type="range"
+                :min="GAP_MIN"
+                :max="GAP_MAX"
+                step="1"
+                :value="peaks.projGaps[i]"
+                @input="setGap(peaks.projGaps, i, +($event.target as HTMLInputElement).value)"
+              />
+              <label class="peak-gap" :title="fmtYears(peaks.projGaps[i])">
+                +<input
+                  type="number"
+                  :value="peaks.projGaps[i]"
+                  min="1"
+                  @change="setGap(peaks.projGaps, i, +($event.target as HTMLInputElement).value)"
+                />d
+              </label>
+              <button
+                type="button"
+                class="peak-remove"
+                title="Remove peak"
+                @click="removeProjected(i)"
+              >
+                ×
+              </button>
+            </li>
+            <li v-if="!peakSchedule.projected.length" class="fit-note">No projected peaks.</li>
+          </ul>
+          <p class="fit-note">
+            Each peak is set by its gap (days) from the one before; dates are shown for reference.
+            <template v-if="peakSchedule.projected.some((t) => t > horizonMs)">
+              Dimmed dates fall past the {{ horizonYear }} horizon.
+            </template>
+          </p>
+        </div>
         <p class="eq">p/MA = 1 + (envelope − 1) · Σ e^(−spread · |x − dᵢ|)</p>
       </template>
     </Panel>
@@ -792,19 +918,70 @@ h4 {
 .peak-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.4rem;
 }
 .peak-date {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
   color: var(--text);
-  width: 6.2rem;
+  width: 5.8rem;
   flex: none;
 }
 .peak-slider {
   flex: 1;
-  min-width: 8rem;
+  min-width: 4rem;
   accent-color: var(--accent-violet);
+}
+.peak-date.beyond {
+  color: var(--text-muted);
+}
+.peak-group {
+  margin-top: 0.7rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.peak-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+.peak-group-head button,
+.peak-uniform button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+}
+.peak-uniform {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+}
+.peak-uniform label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.peak-gap {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.peak-gap input {
+  width: 3.6rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.3rem;
+}
+.peak-gap.first {
+  width: 4.6rem;
+  justify-content: center;
 }
 .peak-remove {
   flex: none;
