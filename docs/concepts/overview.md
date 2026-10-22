@@ -23,7 +23,11 @@ already-fetched price array, so every knob recomputes instantly with no refetch.
 - **Source:** Binance public daily BTC/USDT closes (Aug 2017 →), prepended with
   CoinMarketCap-sourced daily closes for the pre-2017 history. Merged into one
   continuous daily series; Binance wins on any overlap.
-- **Caching:** the merged series is cached in `localStorage`, so the app opens
+- **Stored with the app:** the full daily history is saved with the app and
+  refreshed every night, so on open it only fetches the last day or so from
+  Binance. It still works if Binance is unreachable (showing data up to the last
+  nightly update).
+- **Caching:** the series is also cached on your device, so the app opens
   instantly (and offline) on the last-known data, then refreshes in the
   background.
 - **Shape:** each point is `{ time (epoch ms, UTC), price (USD close) }`.

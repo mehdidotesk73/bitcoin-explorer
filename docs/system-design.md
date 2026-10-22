@@ -23,8 +23,10 @@ arrays; components stay thin.** Everything is **causal** — a value for day `i`
 uses only data at days ≤ `i`.
 
 ```
-api/ (bitcoin.ts, supplemental.ts)
-   └─► lib/useBitcoinData.ts   fetch + merge + localStorage cache
+`data` branch: btc-daily.json ◄── nightly data-refresh.yml (scripts/update-btc-data.ts)
+   │ bundled into each build (deploy.yml / netlify.toml)
+api/ (snapshot.ts, bitcoin.ts, supplemental.ts)
+   └─► lib/useBitcoinData.ts   snapshot + live top-up + localStorage cache
             │  raw: PricePoint[] { time, price }
             ▼
         App.vue  (tabs shell, shared header/help/PWA)
@@ -36,7 +38,8 @@ PriceExplorer   ForecastView           HodlExplorer
   MetricsPanel)
             │
    pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
-   shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts
+   shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts ·
+                     peaks.ts (cycle-peak schedule) · btcSnapshot.ts (data snapshot)
    composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
    shared UI:        Panel.vue (container) · InfoTip.vue (glossary tooltip) ·
                      WheelPicker.vue (unit wheel)
@@ -77,14 +80,44 @@ the date/close columns by header name (`timeClose`/`timestamp`/`timeOpen`/`date`
 and `close`/`price`), with a quote-aware field splitter. If the file is absent or
 unparseable it returns `[]` and the app **silently** runs Binance-only.
 
-**`lib/useBitcoinData.ts` — merge, cache, serve.** `merge(supp, binance)` keys
-both by UTC day into a Map (so **Binance wins** any overlapping day — it's the
-exchange source) and returns a time-sorted array. `init()` shows the
+**`api/snapshot.ts` + `lib/btcSnapshot.ts` — the app-owned snapshot.** The full
+daily history is data the app owns: `btc-daily.json`, a JSON array with **one day
+per line** (`{"t":"YYYY-MM-DD","c":close}`) so each update is a few added lines.
+It lives on a dedicated **`data` branch** (orphan — no `main` history, written
+only by CI, never via PR), and every build copies it to `public/data/` (gitignored
+on `main`). `btcSnapshot.ts` holds the pure rules shared by the app and the update
+script: `mergeDaily(...lists)` (one point per UTC day, normalised to midnight;
+**later lists win** overlaps), `completeDays` (today's still-moving close is never
+stored), `topUpStart` (day after the snapshot ends), `nextSnapshot` (merge + throw
+rather than **shrink** stored history), and `serializeSnapshot` / `parseSnapshot`
+(malformed input → `[]`, e.g. an SPA `index.html` fallback). `loadSnapshot()`
+fetches it with `cache: 'no-cache'`; it's deliberately **not** precached by the
+service worker.
+
+**The nightly pipeline.** `.github/workflows/data-refresh.yml` runs at 01:17 UTC
+(after the 00:00 UTC daily close) and on **Run workflow**:
+`scripts/update-btc-data.ts` (Node `--experimental-strip-types`, no deps — reuses
+`api/bitcoin.ts` and `parseCsv`) reads the snapshot, fetches only the Binance days
+after it, and rewrites it; on the first run it seeds from the CSV + full Binance
+history. If anything changed it commits to `data` and **calls `deploy.yml`**
+(`workflow_call` — a push made with the workflow token doesn't trigger other
+workflows), so production picks up the new snapshot nightly with nobody merging.
+`deploy.yml` fetches `data` to bundle the file; Netlify previews download it from
+the raw `data` URL (`netlify.toml`, non-fatal) and never build the `data` branch
+itself (`ignore`, plus branch deploys off in the Netlify UI). `deploy.yml` takes
+`BASE_PATH` from `GITHUB_REPOSITORY`, because a scheduled run's event has no
+`repository` payload.
+
+**`lib/useBitcoinData.ts` — load, top up, cache.** `init()` shows the
 `localStorage["btc-daily-v1"]` cache **instantly** (works offline), then
-`refresh()` fetches both sources in parallel, re-merges, updates `raw` +
-`lastUpdated`, and rewrites the cache. Errors surface in `error` and the on-screen
-debug log; a corrupt cache is ignored. The sandbox **can't reach** Binance (host
-allowlist), so data-dependent behaviour is device-validated.
+`refresh()` loads the snapshot, shows it at once, and fetches only the Binance
+days from `topUpStart` (usually one request), merging with `mergeDaily`. **Without
+a snapshot** (local dev, or before the first nightly run) it falls back to the CSV
+
+- full Binance history. The result updates `raw` + `lastUpdated` and rewrites the
+  cache. Errors surface in `error` and the on-screen debug log; a corrupt cache is
+  ignored. The sandbox **can't reach** Binance (host allowlist), so data-dependent
+  behaviour is device-validated.
 
 ---
 
@@ -134,6 +167,15 @@ break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
   `UNIT_OPTIONS` (the choices for the unit wheel pickers), and
   `namedScaleLabel(days)` (snaps a day-count to the nearest named horizon —
   daily…multi-year — by log-distance).
+- `peaks.ts` — the cycle-peak **spacing schedule** behind the Price Mechanics
+  peak editor (§5.2): `PeakSchedule { firstMs, pastGaps, projGaps }` (gaps in
+  days; the first projected gap counts from the last past peak),
+  `scheduleFromDates` / `scheduleDates` (dates ↔ schedule), `removeGap` (folds a
+  removed peak's gap into the next so later peaks keep their dates),
+  `uniformGaps` / `uniformGapsUntil`, `meanGap`, and the defaults
+  `DEFAULT_PROJ_SPACING` (1460 d) / `DEFAULT_PROJ_UNTIL_MS` (end of 2040).
+- `btcSnapshot.ts` — the app-owned daily-close snapshot format and merge rules
+  (§2).
 - `glossary.ts` — the `GLOSSARY` map (term → 1–3-sentence plain-English `def`)
   powering the beginner `InfoTip` tooltips. The `InfoTip` popover is a tap-to-
   toggle disclosure that clamps itself horizontally to the viewport on open
@@ -339,8 +381,16 @@ $$
 $$
 
 - `d_i` = peak dates; `s_i` = spread/width (≈ `0.008` calibrated).
-- Historical tops: **2013-11, 2017-12, 2021-03**. Projected: **2025-07, 2029-07,
-  2033-01, 2039-09** (~4-year spacing).
+- Defaults: past tops **2013-11-28, 2017-12-17, 2021-03-17, 2025-07-13**
+  (`DEFAULT_PEAK_DATES`); projected tops every **1460 days** after the last past
+  one through 2040 (2029-07-12, 2033-07-11, 2037-07-10).
+- **Editor (`ForecastView` + `lib/peaks.ts`):** peaks are a spacing schedule, not
+  absolute dates. **Past** and **projected** lists, each headed with its live
+  average spacing. The first past peak is a date slider; every other peak is a
+  typed `+ N days` gap with its derived date beside it. Projected peaks have a
+  _Spaced N days_ + **Distribute uniformly** control (peak k = last past peak +
+  k·N). Dates past the horizon are dimmed. The forecast only sees the derived
+  date list.
 - **Naming note:** the params call these "Gaussian peaks," but the kernel is an
   **exponential/Laplacian** `exp(-s·|x − d|)` (a sharp tent), not a true Gaussian.
 - `"none"` skips peaks and uses the bare envelope.
@@ -535,18 +585,21 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
   `test:run` (one-shot, used by CI), plus `generate-pwa-assets` and the Capacitor
   `cap:*` helpers.
 - **CI.** `.github/workflows/ci.yml` runs on PR → `main` and push → `main`:
-  `npm ci` → `npm run test:run` → `npm run build`. Node 22 + npm cache (matches
+  `npm ci` → `npm run format:check` → `npm run test:run` → `npm run build`. Node 22 + npm cache (matches
   `deploy.yml`); `concurrency` cancels superseded runs. _Still manual: mark the
   `build` check **required** in branch protection so red PRs can't merge._
-- **Tests.** Vitest over `src/lib/*.test.ts` (`hodl.test.ts`,
-  `indicators.test.ts`): hodl ROI / cost-basis + the band-date selectors, and
-  `sma`/`ema`/`bollinger`/`bandPosition` including a **causality** assertion
-  (mutating `price[>i]` mustn't change `b` at `i`). Tests are excluded from the
-  production type-check (`tsconfig.app.json`).
+- **Tests.** Vitest over `src/lib/*.test.ts`: `hodl.test.ts` (ROI / cost-basis
+  - band-date selectors), `indicators.test.ts` (`sma`/`ema`/`bollinger`/
+    `bandPosition`, incl. a **causality** assertion — mutating `price[>i]` mustn't
+    change `b` at `i`), `btcSnapshot.test.ts` (merge precedence, today excluded,
+    format round-trip, top-up start, no-shrink guard) and `peaks.test.ts`
+    (schedule ↔ dates, `removeGap` keeps later dates, uniform spacing). Tests are excluded from the
+    production type-check (`tsconfig.app.json`).
 - **Deploy.** Production is **GitHub Pages** (`.github/workflows/deploy.yml`, on
-  push → `main`), which bakes `BASE_PATH=/<repo>/` into the asset paths (a repo
-  rename needs a fresh deploy). **Netlify** builds per-PR/branch **preview**
-  deploys (`netlify.toml`).
+  push → `main`, and nightly via `data-refresh.yml`), which bakes
+  `BASE_PATH=/<repo>/` into the asset paths (a repo rename needs a fresh deploy)
+  and bundles the `data`-branch snapshot (§2). **Netlify** builds per-PR
+  **preview** deploys only (`netlify.toml`; branch deploys off).
 - **Formatting.** Prettier config + scripts are committed (`.prettierrc.json` —
   no-semi / single-quote / 100-col; `format` / `format:check`), but the
   repo-wide format pass and the CI `format:check` gate are **not** done yet.

@@ -2,6 +2,17 @@
 
 ## Done
 
+- [x] App-owned price snapshot (`claude/data-snapshot`). Full daily history in
+      `btc-daily.json` on the `data` branch, refreshed nightly by
+      `data-refresh.yml` → `scripts/update-btc-data.ts`, bundled into every build;
+      the app tops up only the days after it (`useBitcoinData`, `api/snapshot.ts`,
+      `lib/btcSnapshot.ts`: `mergeDaily`, `completeDays`, `topUpStart`,
+      `nextSnapshot`). Tests in `btcSnapshot.test.ts`.
+- [x] Cycle peaks as a spacing schedule (PR #66). Past / projected lists with live
+      average spacing, first peak by date slider, typed `+ N days` gaps with
+      derived dates, _Spaced N days_ + Distribute uniformly; projected default
+      every 1460 d through 2040 (`lib/peaks.ts`: `scheduleFromDates`,
+      `scheduleDates`, `removeGap`, `uniformGapsUntil`). Tests in `peaks.test.ts`.
 - [x] Wheel picker for period units (`claude/unit-wheel-picker`). The days /
       weeks / months dropdowns on Moving average, Bollinger bands and Bollinger
       score are now `WheelPicker.vue`: one row at rest (matches the input
@@ -145,6 +156,19 @@ Single-source-of-truth pass — concrete duplication removed across components:
       _static_ file, not the API (or poll far less often); confirm the deployed
       origin can reach `raw.githubusercontent.com` (public, fine — sandbox can't, so
       device-validated).
+
+## Data snapshot follow-ups
+
+- [ ] **Confirm the first `Refresh BTC data` run** (after merge): GitHub runners
+      reach Binance, the push to `data` is allowed, and the chained Pages deploy
+      bundles the snapshot.
+- [ ] **Drop the CSV from the service-worker precache** (`vite.config.ts`
+      `globPatterns` includes `csv`, ~620 KB on every update) once the snapshot
+      is live — it's only a fallback now.
+- [ ] **Data freshness indicator** — show "data through <date>" (snapshot end vs
+      live top-up) somewhere unobtrusive.
+- [ ] **IndexedDB instead of `localStorage`** for the on-device cache (optional
+      at ~250 KB).
 
 ## Later / ideas
 
