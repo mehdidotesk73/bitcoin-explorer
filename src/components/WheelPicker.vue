@@ -6,7 +6,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 // on mobile Safari); we just read which row settled in the centre and emit it.
 //
 // At rest it's one row tall, like the input beside it. While held or scrolled
-// it opens into a taller drum drawn as an overlay (it doesn't push layout),
+// it bulges into a slightly taller drum drawn as an overlay (it doesn't push layout),
 // then closes again once scrolling settles. The drum is always full height;
 // only its clip animates, so scroll geometry never changes mid-gesture.
 const props = defineProps<{
@@ -15,8 +15,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
 
-const ITEM_H = 32 // px; keep in sync with --item-h below
-const SIDE_ROWS = 2 // rows shown above/below the selection when open
+// Rows are packed tighter than the one-row slot (PITCH < slot height), so the
+// neighbours sit right against the selection and opening is a small bubble,
+// not a panel. Keep in sync with --pitch below.
+const ITEM_H = 22 // px between row centres (= one scroll/snap step)
 const scroller = ref<HTMLElement>()
 const scrollTop = ref(0)
 const open = ref(false)
@@ -95,10 +97,12 @@ function step(delta: number) {
 // on a 3D context surviving the scroll container (flaky on Safari).
 function itemStyle(i: number) {
   const d = i - scrollTop.value / ITEM_H
-  const a = Math.min(Math.abs(d), SIDE_ROWS + 0.5)
+  const a = Math.min(Math.abs(d), 2)
+  // Closed, only the centred row shows: neighbours overlap the slot's edges.
+  const fade = open.value ? Math.max(0, 1 - a * 0.4) : a < 0.5 ? 1 : 0
   return {
     transform: `perspective(110px) rotateX(${-d * 50}deg) scale(${1 - a * 0.12}, ${1 - a * 0.06})`,
-    opacity: String(Math.max(0, 1 - a * 0.32)),
+    opacity: String(fade),
   }
 }
 
@@ -162,10 +166,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .wheel {
-  --item-h: 32px;
-  --side: calc(var(--item-h) * 2); /* SIDE_ROWS rows */
+  --slot: 32px; /* closed height; matches the number input */
+  --pitch: 22px; /* ITEM_H */
+  --side: 22px; /* how far the drum bulges past the slot when open */
   position: relative;
-  height: var(--item-h);
+  height: var(--slot);
   width: 5.2rem;
   flex: none;
   outline: none;
@@ -180,7 +185,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   top: calc(var(--side) * -1);
-  height: calc(var(--item-h) + var(--side) * 2);
+  height: calc(var(--slot) + var(--side) * 2);
   z-index: 1;
   clip-path: inset(var(--side) 0 var(--side) 0 round 0.4rem);
   transition: clip-path 0.18s ease;
@@ -222,7 +227,7 @@ onBeforeUnmount(() => {
   left: 0.3rem;
   right: 0.3rem;
   top: var(--side);
-  height: var(--item-h);
+  height: var(--slot);
   border-top: 1px solid var(--border-strong);
   border-bottom: 1px solid var(--border-strong);
   pointer-events: none;
@@ -236,7 +241,8 @@ onBeforeUnmount(() => {
   position: relative;
   list-style: none;
   margin: 0;
-  padding: var(--side) 0;
+  /* Centres row i in the slot when scrollTop = i * pitch. */
+  padding: calc(var(--side) + (var(--slot) - var(--pitch)) / 2) 0;
   height: 100%;
   box-sizing: border-box;
   /* Vertical only: no sideways drag, and nothing wide enough to scroll to. */
@@ -252,8 +258,8 @@ onBeforeUnmount(() => {
   display: none;
 }
 li {
-  height: var(--item-h);
-  line-height: var(--item-h);
+  height: var(--pitch);
+  line-height: var(--pitch);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -261,6 +267,7 @@ li {
   color: var(--text-muted);
   cursor: pointer;
   backface-visibility: hidden;
+  transition: opacity 0.15s ease;
 }
 li.sel {
   color: var(--text);
