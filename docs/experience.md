@@ -210,6 +210,46 @@ built.
 
 ## Version history
 
+### 2026-10-22 — App-owned price snapshot, refreshed nightly (`claude/data-snapshot`)
+
+- **Added:** `btc-daily.json` on an orphan **`data` branch** — the full daily
+  history (2010 → yesterday), one day per line. `.github/workflows/data-refresh.yml`
+  (nightly 01:17 UTC + Run workflow) runs `scripts/update-btc-data.ts` to fetch
+  only the missing Binance days, commits to `data` (never `main`, no PR), then
+  calls the Pages deploy. `lib/btcSnapshot.ts` (format + `mergeDaily` /
+  `completeDays` / `topUpStart` / `nextSnapshot`), `api/snapshot.ts`.
+- **Changed:** `useBitcoinData` loads the snapshot and tops up only the days
+  after it (≈1 request instead of re-downloading all Binance history on every
+  load); falls back to CSV + full fetch without a snapshot. `deploy.yml` is
+  callable, bundles the snapshot, and takes `BASE_PATH` from `GITHUB_REPOSITORY`
+  (a scheduled event has no `repository`, which would have produced `//`).
+  `netlify.toml` downloads the snapshot for previews and ignores the `data`
+  branch; Netlify **branch deploys turned off** in the UI (were "All").
+- **Removed:** nothing (the CSV stays as the seed + fallback).
+- **Tests:** 17 new (`btcSnapshot.test.ts`, `peaks.test.ts`).
+- **Design notes:** rejected alternatives — a data commit on every new feature
+  branch (data only updates when someone ships; races with pushes; conflicts
+  between concurrent branches; data noise in feature diffs) and a nightly data
+  PR (30 PRs after 30 idle days, each burning a Netlify preview build).
+
+### 2026-10-22 — Price Mechanics: cycle peaks as a spacing schedule (PR #66)
+
+- **Added:** `lib/peaks.ts` — `PeakSchedule` (first-peak date + past gaps +
+  projected gaps), `scheduleFromDates` / `scheduleDates`, `removeGap`,
+  `uniformGaps` / `uniformGapsUntil`, `meanGap`.
+- **Changed:** the peak editor splits **Past** and **Projected** cycle peaks,
+  each headed "(avg. every N days)". The first past peak is a date slider; the
+  rest are typed `+ N days` gaps with live derived dates. Projected peaks get
+  _Spaced N days_ + **Distribute uniformly**. Removing a peak keeps later dates.
+- **Defaults:** projected peaks now every 1460 days through 2040 (2029-07-12,
+  2033-07-11, 2037-07-10), replacing 2029-07-12 / 2033-01-28 / 2039-09-24;
+  `DEFAULT_PEAK_DATES` now holds only the four historical tops.
+- **Tuning notes (from on-device feedback):** per-gap sliders were dropped in
+  favour of typed spacings; a gap box ignores an empty value mid-edit instead of
+  snapping to 1.
+- **Docs:** written afterwards on `claude/data-snapshot` — #66 was merged before
+  its doc gate ran.
+
 ### 2026-10-22 — Price Explorer: wheel picker for period units
 
 - **Added:** `components/WheelPicker.vue` — a generic `v-model` iOS-style wheel.

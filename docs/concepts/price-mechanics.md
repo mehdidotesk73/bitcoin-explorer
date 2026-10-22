@@ -52,8 +52,22 @@ Changing anything here re-fits the model:
 ### Hand-tunable parameters
 
 After fitting you can override the growth constants, the volatility envelope
-constants, and the peak set (add / remove / move peak dates, and a **spread**
-controlling peak width).
+constants, and the cycle peaks (with a **spread** controlling peak width).
+
+### Cycle peaks
+
+Cycle peaks are set by their **spacing**, not by picking dates:
+
+- **Past cycle peaks** — the historical tops. Drag the slider to place the first
+  one; each later peak is "+ N days" after the one before, with its date shown
+  beside it as you type. The header shows the average spacing.
+- **Projected cycle peaks** — the assumed future tops, counted on from the last
+  past peak. By default one every **1460 days** (~4 years) through 2040. Type a
+  spacing into **Spaced N days** and tap **Distribute uniformly** to space them
+  all evenly; or edit any single gap. Dates past the projection horizon are
+  dimmed.
+- **× removes** a peak without moving the ones after it; **↺ Default** restores
+  the defaults; **Clear all** removes every peak.
 
 ## How it works
 

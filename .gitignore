@@ -20,3 +20,6 @@ android/
 .idea/
 .DS_Store
 *.log
+
+# Price snapshot: lives on the `data` branch; builds copy it in (see deploy.yml)
+public/data/btc-daily.json
