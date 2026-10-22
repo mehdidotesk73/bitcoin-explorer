@@ -23,6 +23,13 @@ const scroller = ref<HTMLElement>()
 const scrollTop = ref(0)
 const open = ref(false)
 
+// The closed slot takes its height from the row it sits in (align-self:
+// stretch), i.e. the number input beside it, which differs by platform
+// (iOS renders inputs taller). Measured into --slot for the drum geometry.
+const root = ref<HTMLElement>()
+const slotPx = ref(0)
+let ro: ResizeObserver | undefined
+
 const selectedIndex = computed(() =>
   Math.max(
     0,
@@ -116,10 +123,16 @@ watch(
 )
 
 onMounted(() => {
+  if (root.value) {
+    slotPx.value = root.value.clientHeight
+    ro = new ResizeObserver(() => (slotPx.value = root.value?.clientHeight ?? 0))
+    ro.observe(root.value)
+  }
   scrollToIndex(selectedIndex.value, false)
   scrollTop.value = scroller.value?.scrollTop ?? 0
 })
 onBeforeUnmount(() => {
+  ro?.disconnect()
   clearTimeout(settleTimer)
   clearTimeout(closeTimer)
   cancelAnimationFrame(raf)
@@ -130,7 +143,9 @@ onBeforeUnmount(() => {
   <!-- click.prevent: the picker sits inside a <label>, whose default action
        would otherwise focus the neighbouring number input (popping the keyboard). -->
   <div
+    ref="root"
     class="wheel"
+    :style="slotPx ? { '--slot': `${slotPx}px` } : undefined"
     :class="{ open }"
     role="listbox"
     tabindex="0"
@@ -166,11 +181,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .wheel {
-  --slot: 32px; /* closed height; matches the number input */
+  --slot: 32px; /* fallback; overridden with the measured row height */
   --pitch: 20px; /* ITEM_H */
   --side: 12px; /* how far the drum bulges past the slot when open */
   position: relative;
-  height: var(--slot);
+  align-self: stretch;
+  min-height: 1.6rem;
   width: 5.2rem;
   flex: none;
   outline: none;
