@@ -18,7 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
 // Rows are packed tighter than the one-row slot (PITCH < slot height), so the
 // neighbours sit right against the selection and opening is a small bubble,
 // not a panel. Keep in sync with --pitch below.
-const ITEM_H = 22 // px between row centres (= one scroll/snap step)
+const ITEM_H = 20 // px between row centres (= one scroll/snap step)
 const scroller = ref<HTMLElement>()
 const scrollTop = ref(0)
 const open = ref(false)
@@ -167,8 +167,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .wheel {
   --slot: 32px; /* closed height; matches the number input */
-  --pitch: 22px; /* ITEM_H */
-  --side: 22px; /* how far the drum bulges past the slot when open */
+  --pitch: 20px; /* ITEM_H */
+  --side: 12px; /* how far the drum bulges past the slot when open */
   position: relative;
   height: var(--slot);
   width: 5.2rem;
@@ -219,23 +219,6 @@ onBeforeUnmount(() => {
 }
 .wheel:focus-visible .drum::before {
   border-color: var(--accent-blue);
-}
-/* Selection band, only while open (closed, the frame is the band). */
-.drum::after {
-  content: '';
-  position: absolute;
-  left: 0.3rem;
-  right: 0.3rem;
-  top: var(--side);
-  height: var(--slot);
-  border-top: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-.wheel.open .drum::after {
-  opacity: 1;
 }
 .scroller {
   position: relative;
