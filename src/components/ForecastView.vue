@@ -19,7 +19,16 @@ import {
   type ForecastConfig,
 } from '../lib/forecast'
 import { fmtUSD } from '../lib/format'
-import { scheduleFromDates, scheduleDates, uniformGaps, removeGap, meanGap } from '../lib/peaks'
+import {
+  scheduleFromDates,
+  scheduleDates,
+  uniformGaps,
+  uniformGapsUntil,
+  removeGap,
+  meanGap,
+  DEFAULT_PROJ_SPACING,
+  DEFAULT_PROJ_UNTIL_MS,
+} from '../lib/peaks'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import InfoTip from './InfoTip.vue'
 import Panel from './Panel.vue'
@@ -54,11 +63,19 @@ const powFitGamma = ref(1)
 // Cycle peaks are a spacing schedule (lib/peaks.ts): a first-peak date, then
 // gaps in days. Peaks up to today are "past", later ones "projected". Dates are
 // derived; the forecast only ever sees the resulting list.
-const defaultSchedule = () =>
-  scheduleFromDates(
-    DEFAULT_PEAK_DATES.map((d) => Date.parse(d)),
-    Date.now(),
+// Defaults: the historical tops up to today, then projected peaks every
+// DEFAULT_PROJ_SPACING days through 2040.
+function defaultSchedule() {
+  const now = Date.now()
+  const s = scheduleFromDates(
+    DEFAULT_PEAK_DATES.map((d) => Date.parse(d)).filter((d) => d <= now),
+    now,
   )
+  const past = scheduleDates(s, now).past
+  const from = past.length ? past[past.length - 1] : now
+  s.projGaps = uniformGapsUntil(from, DEFAULT_PROJ_SPACING, DEFAULT_PROJ_UNTIL_MS)
+  return s
+}
 const peaks = reactive(defaultSchedule())
 // Data edge: projected peaks count from here when there are no past peaks.
 const dataEndMs = computed(() => times.value[times.value.length - 1] ?? Date.now())
@@ -216,9 +233,9 @@ function setGap(list: number[], i: number, v: number) {
 }
 
 // Projected spacing: "Distribute uniformly" sets every projected gap to this,
-// i.e. peak k sits k × spacing after the last past peak. Defaults to the mean
-// of the past gaps (≈ the historical rhythm).
-const spacing = ref(meanGap(peaks.pastGaps, 1460))
+// i.e. peak k sits k × spacing after the last past peak. Defaults to 1460 days
+// (≈4 years), matching the default projected peaks.
+const spacing = ref(DEFAULT_PROJ_SPACING)
 
 function distributeUniformly() {
   peaks.projGaps = uniformGaps(peaks.projGaps.length || 1, spacing.value)
@@ -260,7 +277,7 @@ function clearPeaks() {
 
 function resetPeaks() {
   Object.assign(peaks, defaultSchedule())
-  spacing.value = meanGap(peaks.pastGaps, 1460)
+  spacing.value = DEFAULT_PROJ_SPACING
 }
 
 // Numeric x basis for the chart: days since the first plotted sample (≥ 1, so a

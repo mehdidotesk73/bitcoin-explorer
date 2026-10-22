@@ -58,6 +58,17 @@ export function scheduleDates(
   return { past, projected }
 }
 
+// Default projected cycle peaks: every 1460 days (≈4 years) after the last
+// past peak, up to the end of 2040.
+export const DEFAULT_PROJ_SPACING = 1460
+export const DEFAULT_PROJ_UNTIL_MS = Date.UTC(2040, 11, 31)
+
+/** Equal gaps of `spacing` days from `fromMs` for as many peaks as fit by `untilMs`. */
+export function uniformGapsUntil(fromMs: number, spacing: number, untilMs: number): number[] {
+  const count = Math.max(0, Math.floor((untilMs - fromMs) / (spacing * DAY_MS)))
+  return uniformGaps(count, spacing)
+}
+
 /** `count` equal gaps of `spacing` days. */
 export const uniformGaps = (count: number, spacing: number): number[] =>
   Array.from({ length: count }, () => spacing)

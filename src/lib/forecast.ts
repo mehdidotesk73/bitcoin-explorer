@@ -16,17 +16,9 @@ export const DAY_MS = 86_400_000
 export const DEFAULT_DAY_ZERO = '2010-07-13'
 export const DEFAULT_MA_WINDOW = 1460 // 4 years
 
-// Historical cycle tops (used to calibrate the envelope and place peaks) plus
-// projected future tops on the ~4-year halving rhythm.
-export const DEFAULT_PEAK_DATES = [
-  '2013-11-28',
-  '2017-12-17',
-  '2021-03-17',
-  '2025-07-13',
-  '2029-07-12',
-  '2033-01-28',
-  '2039-09-24',
-]
+// Historical cycle tops (used to calibrate the envelope and seed the past
+// peaks). Projected tops default to a uniform spacing — see lib/peaks.ts.
+export const DEFAULT_PEAK_DATES = ['2013-11-28', '2017-12-17', '2021-03-17', '2025-07-13']
 export const DEFAULT_PEAK_SPREAD = 0.008
 // Linear growth: take the Nth-percentile of the trailing MA slopes.
 //   slopeRangeDays  — how far back to gather slope samples (0 = all history).
