@@ -77,15 +77,22 @@ Keep PR comments frugal. **Do not merge** — the user merges.
 
 ## 5. Hand over the preview link — after every push
 
-Every turn that pushes ends with the preview link in a normal message (never inside an
-`AskUserQuestion` question — that field renders plain text, so links arrive dead):
+**Every message after a push includes the preview link and the PR link** in a normal message (never
+inside an `AskUserQuestion` question — that field renders plain text, so links arrive dead). This
+holds **even while the deploy is still building**: the preview URL is fixed per PR
+(`deploy-preview-<n>--bitcoin-1460.netlify.app`), so it's known the moment the PR exists. Never end
+a turn on "I'll send the link when it's ready" — give the links now, say which `build <sha>` the
+footer will show once the new deploy is live, and (if you then wait in-turn) repeat them when it
+lands. Leaving them out has happened more than once; the user called it out.
 
 > **Preview:** https://deploy-preview-64--bitcoin-1460.netlify.app
-> — open on your phone and try <the specific thing to check>.
+> — open on your phone and try <the specific thing to check>. Footer should read `build abc1234`.
+>
+> **PR:** https://github.com/mehdidotesk73/bitcoin-explorer/pull/64
 
 Tell them **what to check**, concretely — what to tap and what should happen.
 
-**Take the URL from the `netlify[bot]` comment on the PR** (`pull_request_read` → `get_comments`),
+**Confirm the URL against the `netlify[bot]` comment on the PR** the first time (`pull_request_read` → `get_comments`),
 which also names the commit it built — don't hand-construct it from memory; the site name has been
 wrong in these docs before.
 

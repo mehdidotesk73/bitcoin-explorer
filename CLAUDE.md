@@ -45,7 +45,10 @@ https://github.com/mehdidotesk73/claude-nocode-netlify-webapp-workflow. In short
 Two rules that hold regardless:
 
 - **Never work on `main`.** It's protected; pushes are rejected.
-- **A turn that pushes ends with the preview link.** They can't test what they can't find.
+- **Every message after a push includes the preview link _and_ the PR link** — even if the deploy
+  is still building and you're about to wait for it. Never end a turn with "I'll send the link when
+  it's ready": the URL is known the moment the PR exists, so give it now and say which `build <sha>`
+  the footer will show once the new deploy is live. They can't test what they can't find.
 
 ### Pre-merge doc gate — run this every time, do not skip
 
