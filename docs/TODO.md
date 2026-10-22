@@ -2,6 +2,12 @@
 
 ## Done
 
+- [x] Wheel picker for period units (`claude/unit-wheel-picker`). The days /
+      weeks / months dropdowns on Moving average, Bollinger bands and Bollinger
+      score are now `WheelPicker.vue`: one row at rest (matches the input
+      beside it), a small bubble overlay while scrolling, y-only scroll, drum
+      perspective on neighbouring rows. Options come from `UNIT_OPTIONS` in
+      `lib/period.ts`.
 - [x] All-native chart interaction model across all three tabs
       (`claude/chart-gestures`). New `lib/useChartSync.ts` composable: joins the
       `connect` group (native crosshair/tooltip — the hand-drawn `graphic`
