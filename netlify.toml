@@ -1,17 +1,22 @@
-# Netlify build config — used for per-branch/PR preview URLs.
-# Deploy Previews verified working from this branch.
+# Netlify build config — preview deploys only.
 #
-# Production stays on GitHub Pages. Netlify only provides preview links:
-# every pull request gets a "Deploy Preview" URL and every branch gets a
-# branch URL, which you can open directly on a phone to test before merging.
+# Production is GitHub Pages (.github/workflows/deploy.yml). Netlify builds a
+# Deploy Preview for every pull request (deploy-preview-<n>--bitcoin-1460.netlify.app);
+# branch deploys are off in the Netlify UI, and the `data` branch is ignored
+# below as a second guard.
 #
 # Note: BASE_PATH is intentionally NOT set here. GitHub Pages serves this app
-# from /test-git-claude-project/, but Netlify serves it from the site root, so
-# the Vite `base` must stay "/" (its default when BASE_PATH is unset).
+# from /<repo-name>/, but Netlify serves it from the site root, so the Vite
+# `base` must stay "/" (its default when BASE_PATH is unset).
 
 [build]
-  command = "npm run build"
+  # Pull the app-owned price snapshot from the `data` branch (maintained by
+  # .github/workflows/data-refresh.yml) so previews have fresh data too. Never
+  # fatal: without it the app falls back to the CSV + full live fetch.
+  command = '(curl -fsSL --max-time 30 -o public/data/btc-daily.json https://raw.githubusercontent.com/mehdidotesk73/bitcoin-explorer/data/btc-daily.json || (rm -f public/data/btc-daily.json; echo "no data snapshot: building without it")) && npm run build'
   publish = "dist"
+  # Exit 0 = skip the build: never build the data branch itself.
+  ignore = '[ "$BRANCH" = "data" ]'
 
 [build.environment]
   NODE_VERSION = "20"

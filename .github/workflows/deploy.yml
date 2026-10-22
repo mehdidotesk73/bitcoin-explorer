@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Called by data-refresh.yml after it updates the data branch.
+  workflow_call:
 
 # Allow this workflow to publish to GitHub Pages.
 permissions:
@@ -26,12 +28,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Bundle the app-owned price snapshot from the data branch (kept off main
+      # by data-refresh.yml). Missing branch → build without it; the app then
+      # falls back to the CSV + full live fetch.
+      - name: Add data snapshot
+        run: |
+          if git fetch --depth=1 origin data; then
+            git show FETCH_HEAD:btc-daily.json > public/data/btc-daily.json
+            echo "snapshot: $(grep -c '"t"' public/data/btc-daily.json) days"
+          else
+            echo "no data branch yet: building without a snapshot"
+          fi
       # GitHub project pages are served from /<repo-name>/, so the built
-      # assets must use that base path.
+      # assets must use that base path. Taken from GITHUB_REPOSITORY (owner/repo)
+      # rather than the event payload: a scheduled run (via data-refresh.yml)
+      # has no `repository` in its event, which would yield "//".
       - name: Build
-        run: npm run build
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+        run: BASE_PATH="/${GITHUB_REPOSITORY#*/}/" npm run build
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist

@@ -1,0 +1,66 @@
+name: Refresh BTC data
+
+# Nightly: fetch the Binance days missing from the app-owned snapshot, commit
+# them to the `data` branch (never main, no PR), then redeploy GitHub Pages so
+# production serves the new snapshot. "Run workflow" in the Actions tab runs it
+# on demand. See src/lib/btcSnapshot.ts and scripts/update-btc-data.ts.
+
+on:
+  schedule:
+    - cron: '17 1 * * *' # 01:17 UTC daily, after the 00:00 UTC daily close
+  workflow_dispatch:
+
+permissions:
+  contents: write # push to the data branch
+  pages: write # passed through to the deploy
+  id-token: write
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      # Work on the data branch in its own directory; create it (orphan, no
+      # main history) on the very first run.
+      - name: Check out data branch
+        run: |
+          if git fetch --depth=1 origin data; then
+            git worktree add --detach data-branch FETCH_HEAD
+          else
+            echo "No data branch yet: creating it."
+            git worktree add --detach data-branch
+            git -C data-branch checkout --orphan data
+            git -C data-branch rm -rfq .
+          fi
+      - name: Update snapshot
+        id: update
+        run: node --experimental-strip-types scripts/update-btc-data.ts data-branch/btc-daily.json
+      - name: Commit to data branch
+        if: steps.update.outputs.changed == 'true'
+        working-directory: data-branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add btc-daily.json
+          git commit -m "data: btc-daily through ${{ steps.update.outputs.last_day }}"
+          git push origin HEAD:refs/heads/data
+
+  # A push made with the workflow token doesn't trigger other workflows, so
+  # call the production deploy directly.
+  deploy:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
