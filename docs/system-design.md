@@ -38,7 +38,8 @@ PriceExplorer   ForecastView           HodlExplorer
    pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
    shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts
    composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
-   shared UI:        Panel.vue (container) · InfoTip.vue (glossary tooltip)
+   shared UI:        Panel.vue (container) · InfoTip.vue (glossary tooltip) ·
+                     WheelPicker.vue (unit wheel)
 ```
 
 **Dependency direction.** `api/*` → `useBitcoinData` → `App.vue` → the three
@@ -129,7 +130,8 @@ break runs. `k = N/10`, and σ is floored at `sigmaFloorFrac`·(mean price).
 - `chartTheme.ts` — shared ECharts colour tokens (`AXIS`, `SPLIT`, `ORANGE`,
   `BLUE`, `PURPLE`, `AMBER`, the run/direction `UP`/`DOWN`/`UP_RUN`/`DOWN_RUN`,
   and `BAND_FILL`).
-- `period.ts` — period-unit helpers: `toDays(period, unit)`, `UNIT_ABBR`, and
+- `period.ts` — period-unit helpers: `toDays(period, unit)`, `UNIT_ABBR`,
+  `UNIT_OPTIONS` (the choices for the unit wheel pickers), and
   `namedScaleLabel(days)` (snaps a day-count to the nearest named horizon —
   daily…multi-year — by log-distance).
 - `glossary.ts` — the `GLOSSARY` map (term → 1–3-sentence plain-English `def`)
@@ -188,6 +190,17 @@ _UI component framework_) live in `src/components/`:
   controls inside are unchanged.
 - **`InfoTip.vue`** — the glossary `?` tooltip (see §3): a tap-to-toggle popover,
   viewport-clamped on open with an `overflow-x: clip` root guard.
+- **`WheelPicker.vue`** — a generic `v-model` vertical wheel (`options:
+{ value, label }[]`), used for the days / weeks / months period units in the
+  Price Explorer metric cards. Native scroll + `scroll-snap` does momentum and
+  snapping; the centred row is emitted once scrolling settles. Closed it's one
+  row tall, stretched to its flex row (the number input) and measured into
+  `--slot`; while held or scrolling it bulges into a slightly taller drum drawn
+  as an overlay. Only the drum's `clip-path` animates, so the scroll geometry is
+  constant mid-gesture. Rows tilt/shrink/fade with distance from centre (a
+  per-row `perspective()` transform — not a 3D context on the scroller, which is
+  flaky in Safari). Scroll is y-only. Uses `click.prevent` because it sits inside
+  a `<label>` whose default action would focus the neighbouring input.
 
 `App.vue` also surfaces a top-bar **Update available** button (shown when
 `useVersionCheck` reports `update-ready`) that opens a popover with the current

@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays } from '../lib/period'
+import { type PeriodUnit, UNIT_ABBR, UNIT_OPTIONS, toDays } from '../lib/period'
+import WheelPicker from './WheelPicker.vue'
 import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
@@ -265,11 +266,7 @@ function downloadCsv() {
               Period
               <span class="period">
                 <input type="number" v-model.number="maPeriod" min="1" max="400" />
-                <select v-model="maUnit">
-                  <option value="day">days</option>
-                  <option value="week">weeks</option>
-                  <option value="month">months</option>
-                </select>
+                <WheelPicker v-model="maUnit" :options="UNIT_OPTIONS" />
               </span>
             </label>
           </div>
@@ -293,11 +290,7 @@ function downloadCsv() {
               Period
               <span class="period">
                 <input type="number" v-model.number="bbPeriod" min="1" max="400" />
-                <select v-model="bbUnit">
-                  <option value="day">days</option>
-                  <option value="week">weeks</option>
-                  <option value="month">months</option>
-                </select>
+                <WheelPicker v-model="bbUnit" :options="UNIT_OPTIONS" />
               </span>
             </label>
             <label>
@@ -378,11 +371,7 @@ function downloadCsv() {
               <span>Period <InfoTip term="period" /></span>
               <span class="period">
                 <input type="number" v-model.number="bandPeriod" min="2" max="3000" />
-                <select v-model="bandUnit">
-                  <option value="day">days</option>
-                  <option value="week">weeks</option>
-                  <option value="month">months</option>
-                </select>
+                <WheelPicker v-model="bandUnit" :options="UNIT_OPTIONS" />
               </span>
             </label>
             <label>
@@ -585,6 +574,7 @@ function downloadCsv() {
 }
 .period {
   display: flex;
+  align-items: center;
   gap: 0.3rem;
 }
 .period input {

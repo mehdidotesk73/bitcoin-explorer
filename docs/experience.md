@@ -210,6 +210,28 @@ built.
 
 ## Version history
 
+### 2026-10-22 — Price Explorer: wheel picker for period units
+
+- **Added:** `components/WheelPicker.vue` — a generic `v-model` iOS-style wheel.
+  Native scroll + CSS `scroll-snap` gives momentum and snapping; the centred row
+  commits once scrolling settles (debounced `scroll`, since older Safari lacks
+  `scrollend`). Closed it's one row, stretched to the height of the input beside
+  it (measured via `ResizeObserver`); held or scrolled it bulges 12px each way as
+  an overlay (only a `clip-path` animates, so scroll geometry never changes
+  mid-gesture). Off-centre rows get a per-row `perspective()` + `rotateX` +
+  narrowing, and fade. Scrolling is y-only (`overflow-x: hidden`,
+  `touch-action: pan-y`). `UNIT_OPTIONS` added to `lib/period.ts`.
+- **Changed:** the days / weeks / months `<select>`s on Moving average, Bollinger
+  bands and Bollinger score are now `WheelPicker`s.
+- **Removed:** nothing.
+- **Defaults:** unchanged (all units default to days).
+- **Docs:** system-design system map + component list; TODO Done entry.
+- **Tuning notes (from on-device feedback):** a 3-row-tall wheel ate layout
+  space; a 5-row overlay felt like a panel opening; selection lines were
+  redundant. What stuck: tight 20px row pitch, one neighbour per side, no lines.
+  The picker sits inside a `<label>`, so it uses `click.prevent` to stop the
+  label focusing the number input and popping the keyboard.
+
 ### 2026-06-09 — All-native chart interaction (pan / crosshair / zoom) across all tabs
 
 - **Added:** `lib/useChartSync.ts` — shared chart wiring: optional `connect`
