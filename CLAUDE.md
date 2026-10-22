@@ -22,71 +22,60 @@ layouts and remember there's no dev console on device — see Debugging below.
 
 ## Development lifecycle (follow this every time)
 
-1. **Branch.** Start every feature on its own branch off the latest `main`:
+Every change — feature, fix, or tweak — goes through the **`ship-feature`** skill
+(`.claude/skills/ship-feature/SKILL.md`). It's adapted from the template workflow at
+https://github.com/mehdidotesk73/claude-nocode-netlify-webapp-workflow. In short:
 
-   ```
-   git checkout main && git pull --ff-only origin main
-   git checkout -b claude/<short-feature-name>
-   ```
+1. **Branch** off the latest `main` as `claude/<feature>` (descriptive, not auto-generated) and
+   verify the base (`git log --oneline origin/main..HEAD` empty).
+2. **Small commits**, each preceded by the same checks CI runs: `npm run format:check`,
+   `npm run test:run`, `npm run build`.
+3. **Push, then open the PR immediately** — on the first push of the branch, not when the feature
+   is finished. The PR is what makes Netlify build the Deploy Preview, and the preview is the only
+   way the user (on their phone) sees the change.
+4. **Give the user the preview link after every push**:
+   `https://deploy-preview-<PR number>--bitcoin-analysis.netlify.app`, in a normal message (never
+   inside an `AskUserQuestion` question — links arrive dead there), with what to check. Poll the
+   PR's checks in-turn until the Netlify deploy resolves rather than scheduling a check-in.
+5. **Pre-merge doc gate** when the branch is ready — see below.
+6. **Hand over three links:** preview, live site (unchanged until merge), and the PR page to merge.
+7. **The user merges**, never you. Merging to `main` runs the GitHub Pages production deploy; watch
+   it and confirm the live site.
 
-   - Branches are named `claude/<feature>`. Pick a name that describes what the
-     branch _does_ — e.g. `claude/hodl-explorer`, `claude/metric-registry`,
-     `claude/run-scale-slider`. Avoid auto-generated names like
-     `claude/inspiring-bardeen-lHExI`.
-   - **Always verify the base after branching** (this has bitten us): confirm
-     `git log --oneline origin/main..HEAD` is empty and the expected files are
-     present. A stale/pre-existing branch can fork from an old commit.
+Two rules that hold regardless:
 
-2. **Edit in small, reviewable commits.** Keep changes focused. After each
-   logical change, **build before committing** — see Build & verify.
+- **Never work on `main`.** It's protected; pushes are rejected.
+- **A turn that pushes ends with the preview link.** They can't test what they can't find.
 
-3. **Commit + push.** Conventional, descriptive messages. Push to the feature
-   branch (never straight to `main`): `git push -u origin claude/<feature>`.
-   Network can be flaky; retry pushes with backoff.
+### Pre-merge doc gate — run this every time, do not skip
 
-4. **Preview via Netlify.** Each PR/branch gets a **Deploy Preview** URL
-   (`deploy-preview-<n>--bitcoin-analysis.netlify.app`). The user tests there on
-   their phone. The footer shows the live `build <sha>`; confirm it matches the
-   commit you pushed.
-   - **Service-worker cache caveat:** this is a PWA, so an old bundle can keep
-     serving. If a change "doesn't show," it's almost always the cache — have
-     the user tap **Reload latest** in the footer, or open the URL in a
-     **private/incognito tab**.
+Four surfaces are the project's memory — keep the ones a branch touches current:
 
-5. **PR via GitHub.** Open a PR into `main` with a what/why/testing summary.
-   - **First run the pre-merge doc gate** (step 7) — the multi-select question
-     asking which docs to update before merge.
-   - Use the GitHub MCP tools (`mcp__github__*`) — there is **no `gh` CLI** and
-     no direct API. Prefer MCP for PRs/branches/files when local pushes fail.
-   - Do **not** merge — the user merges. Keep PR comments frugal.
+- **`docs/TODO.md`:** move finished items to Done (one-paragraph summary + key function names);
+  queue follow-ups; record new placeholders/backlog.
+- **`docs/experience.md`:** on every **merge**, a Version-history entry summarising the changes vs
+  the previous version (added / removed / defaults / docs). On every **branch removal /
+  abandonment**, a "What didn't work" entry — what was tried, whether we know _why_ it didn't work,
+  and the reason (or honestly "direction felt unideal").
+- **`docs/system-design.md`** (developer/system docs): if the branch changed architecture, a
+  `lib`/module, a feature's design, or a convention, update the relevant section **and** the system
+  map.
+- **`docs/concepts/*.md`** (user/help docs, rendered in the Help modal): if the branch changed a
+  page's UI or behaviour, update that page's doc.
 
-6. **Merge + test production.** The user merges in the GitHub UI. Merging to
-   `main` triggers the **GitHub Pages** production deploy (see Deploys).
+When you judge a branch **ready to merge**, pose an `AskUserQuestion` with **`multiSelect: true`**
+listing those four surfaces. **Recommend, don't quiz:** read the diff first, put the surfaces this
+branch actually needs first with **(Recommended)**, and make each description name the specific
+change that triggers it (or say plainly why it isn't needed). Selecting none = "keep working /
+skip docs." Update exactly the selected docs, re-run the checks, push, then hand over the links.
+Never declare a branch merge-ready without running this gate.
 
-7. **Checkpoint the docs (every merge / branch removal).** Four surfaces are the
-   project's memory — keep the ones a branch touches current:
-   - **`docs/TODO.md`:** move finished items to Done (one-paragraph summary + key
-     function names); queue follow-ups; record new placeholders/backlog.
-   - **`docs/experience.md`:** on every **merge**, add a Version-history entry
-     summarising the changes vs the previous version (added / removed / defaults
-     / docs). On every **branch removal / abandonment**, add a "What didn't
-     work" entry — what was tried, whether we know _why_ it didn't work, and the
-     reason (or honestly "direction felt unideal"). This is how we avoid
-     re-walking dead ends.
-   - **`docs/system-design.md`** (developer/system docs): if the branch changed
-     architecture, a `lib`/module, a feature's design, or a convention, update
-     the relevant section **and** the system map; flesh out / adjust any
-     placeholder it touched.
-   - **`docs/concepts/*.md`** (user/help docs, rendered in the Help modal): if
-     the branch changed a page's UI or behaviour, update that page's doc.
+### Guided steps and gates
 
-   **Pre-merge doc gate — run this every time, do not skip.** When you judge a
-   branch **ready to merge**, _before_ opening/finalising the PR you MUST pose an
-   `AskUserQuestion` with **`multiSelect: true`** listing the four doc surfaces
-   above (Developer docs · Content/help docs · TODO · experience), asking which
-   to **update now, before merge**. Selecting none = "keep working on the branch
-   / skip docs." Update exactly the selected docs, rebuild, then proceed to the
-   PR/merge. Never declare a branch merge-ready without running this gate.
+- When the user has to do something you can't see (test on the phone, merge, a settings page), say
+  exactly what to tap and what success looks like, then end the turn on an `AskUserQuestion` with a
+  one-line question — the instructions and links stay in the message body.
+- Don't end a turn on "I'll check back in a few minutes" for a deploy that takes two; poll in-turn.
 
 ### Reverts / fixing main
 
@@ -99,12 +88,14 @@ layouts and remember there's no dev console on device — see Debugging below.
 
 ## Build & verify
 
-- **Type-check + build:** `npm run build` (runs `vue-tsc -b && vite build`).
-  This is the gate — it catches TS errors _and_ Vue template parse errors.
-  **Run it before every commit.** A broken build has reached history before
-  because nothing ran it; don't let that happen.
-- There is **no test suite and no CI build gate** on PRs yet (a known gap — see
-  `docs/TODO.md`). `npm run build` passing locally is the bar.
+- **Before every commit, run what CI runs:** `npm run format:check` (Prettier; `npm run format`
+  fixes it), `npm run test:run` (Vitest, `src/lib/*.test.ts`), and `npm run build` (`vue-tsc -b &&
+vite build` — catches TS errors _and_ Vue template parse errors). In a fresh container run
+  `npm ci` first.
+- **CI** (`.github/workflows/ci.yml`, job `build`) runs those same three on every PR into `main`.
+  It's a backstop, not a substitute — a red check on the user's PR is noise they have to interpret.
+- **Unit tests are added when a change earns them** — pure `src/lib/` logic that later features
+  build on. See `ship-feature` step 3.
 - The price API is **not reachable from this sandbox** (host allowlist), so you
   cannot run the live app or reproduce data-dependent results here. Reason about
   algorithms from the code, and lean on the user's on-device screenshots/logs to
@@ -112,10 +103,11 @@ layouts and remember there's no dev console on device — see Debugging below.
 
 ## Deploys
 
-- **Production = GitHub Pages**, built by `.github/workflows/deploy.yml` on push
-  to `main`. It bakes the repo name into the asset base path, so a repo rename
-  needs a fresh deploy. URL: `https://<owner>.github.io/<repo-name>/`.
-- **Netlify = preview only** (`netlify.toml`) — per-PR/branch Deploy Previews.
+- **Production = GitHub Pages** (`https://mehdidotesk73.github.io/bitcoin-explorer/`), built by
+  `.github/workflows/deploy.yml` on push to `main`. It bakes the repo name into the asset base
+  path, so a repo rename needs a fresh deploy.
+- **Netlify = preview only** (`netlify.toml`, site `bitcoin-analysis`) — every PR gets a Deploy
+  Preview at `https://deploy-preview-<n>--bitcoin-analysis.netlify.app`. No PR, no preview.
 
 ## Repo structure
 
@@ -175,6 +167,7 @@ netlify.toml                   preview-deploy config
 
 ## Reference docs
 
+- `.claude/skills/ship-feature/SKILL.md` — the loop for every change.
 - `docs/TODO.md` — current backlog and what's been done.
 - `docs/experience.md` — dead ends (with reasons) + version history.
 - `docs/system-design.md` — developer/system documentation; the forecast-model
