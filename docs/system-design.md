@@ -113,16 +113,24 @@ itself (`ignore`, plus branch deploys off in the Netlify UI). `deploy.yml` takes
 `BASE_PATH` from `GITHUB_REPOSITORY`, because a scheduled run's event has no
 `repository` payload.
 
-**`lib/useBitcoinData.ts` — load, top up, cache.** `init()` shows the
+**`lib/useBitcoinData.ts` — load, top up, cache, keep live.** `init()` shows the
 `localStorage["btc-daily-v1"]` cache **instantly** (works offline), then
 `refresh()` loads the snapshot, shows it at once, and fetches only the Binance
-days from `topUpStart` (usually one request), merging with `mergeDaily`. **Without
-a snapshot** (local dev, or before the first nightly run) it falls back to the CSV
+days from `topUpStart` (usually one request), merging with `mergeDaily`. Without
+a snapshot (local dev, or before the first nightly run) it falls back to the CSV
+plus the full Binance history. The result updates `raw` + `lastUpdated` and
+rewrites the cache. Errors surface in `error` and the on-screen debug log; a
+corrupt cache is ignored.
 
-- full Binance history. The result updates `raw` + `lastUpdated` and rewrites the
-  cache. Errors surface in `error` and the on-screen debug log; a corrupt cache is
-  ignored. The sandbox **can't reach** Binance (host allowlist), so data-dependent
-  behaviour is device-validated.
+**Live tick.** After the initial load, `liveTick()` re-fetches from the last stored
+day — today's still-moving daily bar, plus the new day after 00:00 UTC — and
+merges it in: every **60 s while the page is visible** (`LIVE_MS`), and
+**immediately on `visibilitychange` → visible** (returning to the app). It's
+skipped while hidden, while a full refresh runs, or while a tick is in flight; it
+fails quietly (debug log only, retried next tick) and doesn't rewrite the cache.
+Once a minute matches the daily analysis — a per-second feed would re-run every
+indicator and redraw every chart for no daily-scale change. The sandbox **can't
+reach** Binance (host allowlist), so data-dependent behaviour is device-validated.
 
 ---
 

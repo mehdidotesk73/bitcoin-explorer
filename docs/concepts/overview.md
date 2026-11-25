@@ -27,6 +27,9 @@ already-fetched price array, so every knob recomputes instantly with no refetch.
   refreshed every night, so on open it only fetches the last day or so from
   Binance. It still works if Binance is unreachable (showing data up to the last
   nightly update).
+- **Live today:** while the app is open, today's price updates about **once a
+  minute** (and straight away when you come back to the app). It pauses while
+  the app is in the background.
 - **Caching:** the series is also cached on your device, so the app opens
   instantly (and offline) on the last-known data, then refreshes in the
   background.

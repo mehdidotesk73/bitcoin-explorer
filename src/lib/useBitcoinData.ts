@@ -2,10 +2,14 @@ import { ref, shallowRef } from 'vue'
 import { fetchDailyPrices, EARLIEST_MS, type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { loadSupplemental } from '../api/supplemental'
 import { loadSnapshot } from '../api/snapshot'
-import { mergeDaily, topUpStart } from './btcSnapshot'
+import { mergeDaily, topUpStart, utcDayStart } from './btcSnapshot'
 import { logDebug } from '../debug'
 
 const CACHE_KEY = 'btc-daily-v1'
+// Live refresh of today's still-moving daily bar while the app is visible. The
+// analysis is daily, so once a minute keeps "today" current without re-running
+// every indicator per tick; returning to the app refreshes at once.
+const LIVE_MS = 60_000
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
 /**
@@ -16,6 +20,10 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
  * branch, else the copy bundled in this build) and fetches only the Binance days
  * after it ends — usually one request.
  * Without a snapshot it falls back to the CSV + full Binance history.
+ *
+ * After that, `liveTick` re-fetches from the last stored day (today's bar, plus
+ * a new day after 00:00 UTC) every LIVE_MS while the page is visible, and
+ * immediately when it becomes visible again. Paused in the background.
  */
 export function useBitcoinData() {
   const raw = shallowRef<PricePoint[]>([])
@@ -68,9 +76,38 @@ export function useBitcoinData() {
     }
   }
 
+  // One small request: re-fetch from the last stored day onward and merge, so
+  // today's close moves and a new day appears after midnight UTC. Quiet on
+  // failure — the next tick (or a return to the app) tries again.
+  let ticking = false
+  async function liveTick() {
+    const pts = raw.value
+    if (ticking || loading.value || !pts.length || document.visibilityState !== 'visible') return
+    ticking = true
+    try {
+      const fresh = await fetchDailyPrices(utcDayStart(pts[pts.length - 1].time))
+      if (fresh.length) {
+        raw.value = mergeDaily(raw.value, fresh)
+        lastUpdated.value = Date.now()
+      }
+    } catch (e) {
+      logDebug(`live refresh failed: ${e instanceof Error ? e.message : e}`, 'error')
+    } finally {
+      ticking = false
+    }
+  }
+
+  function startLive() {
+    window.setInterval(() => void liveTick(), LIVE_MS)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void liveTick()
+    })
+  }
+
   function init() {
     loadCache()
     refresh()
+    startLive()
   }
 
   return { raw, loading, error, progress, lastUpdated, refresh, init }
