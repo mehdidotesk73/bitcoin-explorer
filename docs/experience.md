@@ -210,6 +210,24 @@ built.
 
 ## Version history
 
+### 2026-11-25 — App-like inputs + remembered settings per tab (`claude/app-feel-persist-metrics`)
+
+- **Added:** `lib/storedRef.ts` — a drop-in `ref()` that persists to
+  `localStorage` (`btc-explorer:v1:<key>`, one key per setting, validated on
+  read, plain ref without storage). `UNITS` in `period.ts`.
+- **Changed:** Price Explorer metric toggles + params persist under `explorer.*`;
+  the Hodl driver setup under `hodl.*` (independent — the two tabs never share
+  settings). `useBandScore` takes an optional `storageKey`. Hodl's budget is only
+  stored once the user sets it, else it follows the current price (storing the
+  auto-default would have frozen it at the first visit's price). Viewport
+  `maximum-scale=1` stops iOS zooming onto focused inputs.
+- **Defaults:** unchanged.
+- **Why not the metric registry:** the earlier spec/blob/URL registry (see
+  "What didn't work") was rejected as too much indirection; replacing each `ref`
+  with a `storedRef` keeps the plain-ref components and adds one small helper.
+- **Not persisted (on purpose):** panel open/closed state, chart zoom, Hodl
+  comparison dates, manual dates and layers.
+
 ### 2026-10-22 — Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`)
 
 - **Changed:** `api/snapshot.ts` fetches `btc-daily.json` from

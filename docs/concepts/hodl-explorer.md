@@ -48,12 +48,20 @@ changes the live preview. Manual dates are stored as-is.
 - **Comparison window** — a toggle flips between **trailing** N days from today
   (default 3000) and an explicit **from → to** date range. The baseline and all
   layers operate inside this window.
-- **Total budget** — a cash amount (defaults to the current BTC price). Each buy
+- **Total budget** — a cash amount (defaults to the current BTC price; once you
+  type your own, it's remembered). Each buy
   day gets `budget ÷ (unique strategy days)`; the baseline spreads the same total
   across every day in the window.
 - **Out-of-window dates** — manual dates outside the window are kept on the layer
   but **ignored in the totals** (flagged, not blocking) until the window covers
   them.
+
+## Your setup is remembered
+
+The driver you picked and its settings (bands, Bollinger-score params, MA window,
+uniform spacing, trailing window, and a budget you've typed) are saved **on this
+device** and come back next time — independently of the Price Explorer's
+settings. The comparison dates, manual dates and layers start fresh each visit.
 
 ## What it reports
 

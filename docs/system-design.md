@@ -38,7 +38,7 @@ PriceExplorer   ForecastView           HodlExplorer
   MetricsPanel)
             │
    pure analytics:   indicators.ts · runs.ts · forecast.ts · hodl.ts
-   shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts ·
+   shared helpers:   format.ts · chartTheme.ts · period.ts · glossary.ts · storedRef.ts ·
                      peaks.ts (cycle-peak schedule) · btcSnapshot.ts (data snapshot)
    composables:      usePriceSeries.ts · useBandScore.ts · useBitcoinData.ts
    shared UI:        Panel.vue (container) · InfoTip.vue (glossary tooltip) ·
@@ -201,10 +201,11 @@ and recompute over the shared arrays.
 - **`usePriceSeries(raw)`** → `{ prices, dates }` — splits the raw
   `PricePoint[]` into aligned number / ISO-date arrays (accepts a ref or getter).
   The companion `toDateInput(ms)` gives the `YYYY-MM-DD` (UTC) label.
-- **`useBandScore(prices)`** → the Bollinger-score state: `smooth` / `period` /
-  `unit` / `k` refs, the derived `windowDays`, `label` / `smoothLabel`, and the
-  `series` (a `bandPosition` call). **Each call owns its own params**, so the
-  Price Explorer curve and the Hodl `bscore` driver tune independently. Defaults
+- **`useBandScore(prices, storageKey?)`** → the Bollinger-score state: `smooth` /
+  `period` / `unit` / `k` refs, the derived `windowDays`, `label` /
+  `smoothLabel`, and the `series` (a `bandPosition` call). **Each call owns its
+  own params**, so the Price Explorer curve and the Hodl `bscore` driver tune
+  independently; with a `storageKey` the params are remembered (`storedRef`, §7). Defaults
   reproduce the canonical look: 20 months · 2σ · 31-day EMA.
 - **`useBitcoinData()`** — the shared data loader (detailed in §2): shows the
   cache instantly then refreshes in the background, exposed once and handed to
@@ -568,15 +569,31 @@ supplies only the pan/crosshair gesture on each Hodl chart, not its zoom.
   **Update available** button (opposite Help) whose popover mirrors this footer
   info — build, new published commit, and the reload button — so the prompt is
   reachable without scrolling to the footer.
-- **Per-tab tuning is independent.** `useBandScore` (and the per-tab long-MA
-  refs) give each tab its own params — nothing is shared implicitly between the
-  Price Explorer and Hodl Explorer.
-- **No metric persistence or URL sharing.** The Price Explorer's metric toggles
-  (`showMa`, `showBb`, …) and their per-metric configs are plain in-memory `ref`s
-  in `PriceExplorer.vue`; they reset on reload and aren't encoded in the URL. A
-  spec-driven registry with localStorage/URL persistence was prototyped but
-  **never merged** (see `experience.md`, and the backlog note in `TODO.md` →
-  Later / ideas).
+- **Tabs are independent operations on the same data (convention).** Every tab
+  receives the same `raw` series and shares the pure helpers (`indicators.ts`,
+  `useBandScore`, `usePriceSeries`, …), but **never settings**: each tab owns its
+  own params (e.g. the Price Explorer's Bollinger score and the Hodl `bscore`
+  driver are separate `useBandScore` calls, with separate saved keys). New tabs
+  and features follow the same rule.
+- **Remembered settings (`lib/storedRef.ts`).** `storedRef(key, initial,
+allowed?)` is a drop-in for `ref(initial)` that saves to `localStorage` under
+  `btc-explorer:v1:<key>` — **one key per setting**, no state blob or registry.
+  Values are validated on read (same type as the default, finite numbers, or one
+  of `allowed`), so a stale or corrupt value falls back to the default; without
+  storage it's a plain ref. Keys are namespaced per tab: **`explorer.*`** — the
+  Price Explorer's metric toggles and params (MA, Bollinger, runs, price ÷ MA,
+  and the Bollinger score via `useBandScore(prices, 'explorer.band')`);
+  **`hodl.*`** — the Hodl driver setup (driver, window mode + trailing days,
+  ratio / b bands, `hodl.band` params, uniform spacing, MA window, and a
+  **user-set** budget only — until then it follows the current price). Not
+  remembered: panel open/closed state, chart zoom, Hodl comparison dates, manual
+  dates and layers. Bump the `v1` prefix if a setting's meaning changes. There is
+  still **no URL sharing**; the spec-driven registry with URL encoding was
+  prototyped but **never merged** (see `experience.md`).
+- **App-like inputs.** The viewport meta sets `maximum-scale=1`, so iOS Safari
+  doesn't zoom onto focused inputs (it does for fonts < 16 px — all of ours). iOS
+  still allows a deliberate pinch-zoom for accessibility; charts keep their own
+  pinch-to-zoom.
 
 ---
 
