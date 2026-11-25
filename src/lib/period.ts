@@ -3,6 +3,8 @@
 
 export type PeriodUnit = 'day' | 'week' | 'month'
 
+export const UNITS: readonly PeriodUnit[] = ['day', 'week', 'month']
+
 export const UNIT_DAYS: Record<PeriodUnit, number> = { day: 1, week: 7, month: 30 }
 export const UNIT_ABBR: Record<PeriodUnit, string> = { day: 'd', week: 'w', month: 'mo' }
 

@@ -5,6 +5,11 @@
 - [x] Live price refresh (`claude/live-price-refresh`). `useBitcoinData`'s
       `liveTick()` re-fetches today's bar every 60 s while visible and on return
       to the app; paused in the background.
+- [x] App-like inputs + remembered settings per tab
+      (`claude/app-feel-persist-metrics`). `lib/storedRef.ts` persists the Price
+      Explorer's metric toggles/params (`explorer.*`) and the Hodl driver setup
+      (`hodl.*`, budget only once user-set); viewport `maximum-scale=1` stops
+      iOS input zoom.
 - [x] Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`).
       `loadSnapshot()` (`api/snapshot.ts`) tries
       `raw.githubusercontent.com/…/data/btc-daily.json`, then the bundled copy,
@@ -195,13 +200,13 @@ Single-source-of-truth pass — concrete duplication removed across components:
   bridge. It hasn't been seen to misbehave (the per-group suppress guard helps),
   but if it ever does, port Hodl's explicit-mirror approach (or have the bridge
   dispatch to siblings via a group registry). See `experience.md`.
-- **Metric registry + persistence (prototyped, not merged).** A spec-driven
-  metric system (`lib/metricRegistry.ts`: `MetricSpec`/`MetricState`, data-driven
-  toggle rendering, localStorage + URL-encoded persistence for shareable views)
-  was built on `claude/inspiring-bardeen-lHExI` (commit `cec9ac2`) but **never
-  merged** — on `main` the toggles are plain in-memory refs with no persistence.
-  Was previously (incorrectly) marked Done. Revive only if the indirection earns
-  its keep; see the "Metric registry … never merged" entry in `experience.md`.
+- **Reset settings button.** Settings are now sticky (`storedRef`); a small
+  "↺ Reset" per tab (clear that tab's `explorer.*` / `hodl.*` keys) would make
+  getting back to defaults easy.
+- **Shareable views (URL encoding).** Persistence landed via plain `storedRef`
+  keys; URL-encoded settings for sharing a view are still open. The spec-driven
+  metric registry prototype (`claude/inspiring-bardeen-lHExI`, `cec9ac2`) did
+  both but was **never merged** — see `experience.md` before reviving it.
 - **Buy/Hodl indicator — pooled score.** Widen beyond the two band patterns into
   a collection of market/macro patterns and pool them into one explainable
   buy-vs-hodl score (weighting, agreement, regime awareness). Heuristic, not

@@ -16,6 +16,7 @@ import { sma } from '../lib/indicators'
 import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
 import { useBandScore } from '../lib/useBandScore'
+import { storedRef } from '../lib/storedRef'
 import { AXIS, SPLIT, UP, AMBER, BAND_FILL } from '../lib/chartTheme'
 import {
   type Band,
@@ -56,23 +57,29 @@ const props = defineProps<{
 const emit = defineEmits<{ refresh: [] }>()
 
 // --- Builder controls -------------------------------------------------------
-const driver = ref<SeedKind>('ratio')
+// The driver setup is remembered across reloads under this tab's own `hodl.*`
+// keys (storedRef) — independent of the Price Explorer's. The comparison dates,
+// manual dates and layers are per-session.
+const driver = storedRef<SeedKind>('hodl.driver', 'ratio', ['ratio', 'bscore', 'manual', 'uniform'])
 
 // Comparison window: either trailing-X-days-from-today, or an explicit from/to.
-const windowMode = ref<'trailing' | 'range'>('trailing')
-const baselineDays = ref(3000) // trailing comparison window
+const windowMode = storedRef<'trailing' | 'range'>('hodl.windowMode', 'trailing', [
+  'trailing',
+  'range',
+])
+const baselineDays = storedRef('hodl.baselineDays', 3000) // trailing comparison window
 const fromDate = ref('')
 const toDate = ref('')
 
 // Each indicator driver carries its own buy band [lower, upper].
-const ratioLower = ref(0)
-const ratioUpper = ref(1.5)
-const bLower = ref(-2)
-const bUpper = ref(0)
+const ratioLower = storedRef('hodl.ratioLower', 0)
+const ratioUpper = storedRef('hodl.ratioUpper', 1.5)
+const bLower = storedRef('hodl.bLower', -2)
+const bUpper = storedRef('hodl.bUpper', 0)
 
 // Uniform-spaced driver: buy every X days on a phase offset from today.
-const uniformEveryX = ref(7)
-const uniformOffset = ref(0)
+const uniformEveryX = storedRef('hodl.uniformEveryX', 7)
+const uniformOffset = storedRef('hodl.uniformOffset', 0)
 
 // Manual driver: a working list of dates being assembled before "Add layer".
 const manualDates = ref<string[]>([])
@@ -81,12 +88,18 @@ const manualDateInput = ref('')
 // The seed combinator: stored layers, unioned into the final strategy.
 const layers = ref<SeedLayer[]>([])
 
-// Total purchase budget in cash; defaults to the current BTC price once known.
-const totalBudget = ref(0)
+// Total purchase budget in cash. Follows the current BTC price until the user
+// sets one; only a user-set budget is remembered (0 = none saved).
+const savedBudget = storedRef('hodl.totalBudget', 0)
+const autoBudget = ref(0)
+const totalBudget = computed({
+  get: () => savedBudget.value || autoBudget.value,
+  set: (v: number) => (savedBudget.value = v),
+})
 let budgetInitialised = false
 
 // MA window for the price ÷ MA driver (independent of the Price Explorer).
-const localMaDays = ref(1460)
+const localMaDays = storedRef('hodl.maDays', 1460)
 
 // --- Derived data -----------------------------------------------------------
 const { prices, dates } = usePriceSeries(() => props.raw)
@@ -107,7 +120,7 @@ const {
   label: bandLabel,
   smoothLabel: bandSmoothLabel,
   series: bScore,
-} = useBandScore(prices)
+} = useBandScore(prices, 'hodl.band')
 
 // Comparison window — baseline + all layers operate within [start, end] (incl.).
 const windowRange = computed<{ start: number; end: number }>(() => {
@@ -140,7 +153,7 @@ watch(
   latestPrice,
   (p) => {
     if (!budgetInitialised && p) {
-      totalBudget.value = Math.round(p)
+      autoBudget.value = Math.round(p)
       const n = prices.value.length
       if (n) {
         fromDate.value = dates.value[Math.max(0, n - baselineDays.value)]

@@ -81,6 +81,13 @@ crosshair all line up on the same date across graphs.
   stays put when you lift, until you pan or tap away. On desktop the crosshair
   just follows the mouse.
 
+## Your settings are remembered
+
+Which metrics are on and their settings (periods, units, σ, scale, sensitivity,
+the Price ÷ MA window) are saved **on this device** and come back when you reopen
+the app. They're separate from the Hodl Explorer's settings. Clearing the site's
+data in your browser resets them.
+
 ## Assumptions & caveats
 
 - Indicators are **descriptive heuristics**, not signals or advice.
