@@ -2,6 +2,9 @@
 
 ## Done
 
+- [x] Live price refresh (`claude/live-price-refresh`). `useBitcoinData`'s
+      `liveTick()` re-fetches today's bar every 60 s while visible and on return
+      to the app; paused in the background.
 - [x] Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`).
       `loadSnapshot()` (`api/snapshot.ts`) tries
       `raw.githubusercontent.com/…/data/btc-daily.json`, then the bundled copy,
@@ -176,6 +179,9 @@ Single-source-of-truth pass — concrete duplication removed across components:
 - [ ] **Drop the CSV from the service-worker precache** (`vite.config.ts`
       `globPatterns` includes `csv`, ~620 KB on every update) once the snapshot
       is live — it's only a fallback now.
+- [ ] **Real-time ticker (optional).** A Binance WebSocket stream updating only
+      the "Latest close" figure (charts stay on the 60 s tick). Offered with the
+      live refresh, not chosen.
 - [ ] **Data freshness indicator** — show "data through <date>" (snapshot end vs
       live top-up) somewhere unobtrusive.
 - [ ] **IndexedDB instead of `localStorage`** for the on-device cache (optional

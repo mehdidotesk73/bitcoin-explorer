@@ -210,6 +210,19 @@ built.
 
 ## Version history
 
+### 2026-11-25 — Today's price refreshes every minute (`claude/live-price-refresh`)
+
+- **Added:** a live tick in `useBitcoinData`: re-fetch from the last stored day
+  every 60 s while the page is visible and immediately on returning to the app;
+  paused in the background; quiet on failure.
+- **Before:** prices were fetched once on open, so an open app's "today" froze.
+- **Why once a minute, not real-time:** the analysis is daily; a per-second feed
+  would recompute every indicator and redraw every chart (battery/CPU on a phone)
+  with no daily-scale benefit. A Binance stream for a ticking "Latest close" alone
+  was offered and not chosen (kept as an idea in `TODO.md`).
+- **Docs:** also fixed a §2 paragraph in `system-design.md` that a leading "+"
+  had turned into a stray list item.
+
 ### 2026-10-22 — Snapshot loaded live from the `data` branch (`claude/snapshot-live-fetch`)
 
 - **Changed:** `api/snapshot.ts` fetches `btc-daily.json` from
