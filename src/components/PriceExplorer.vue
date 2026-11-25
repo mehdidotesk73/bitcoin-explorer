@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { type PricePoint, type FetchProgress } from '../api/bitcoin'
 import { sma, bollinger } from '../lib/indicators'
-import { type PeriodUnit, UNIT_ABBR, UNIT_OPTIONS, toDays } from '../lib/period'
+import { type PeriodUnit, UNIT_ABBR, UNIT_OPTIONS, UNITS, toDays } from '../lib/period'
+import { storedRef } from '../lib/storedRef'
 import WheelPicker from './WheelPicker.vue'
 import { fmtUSD } from '../lib/format'
 import { usePriceSeries } from '../lib/usePriceSeries'
@@ -24,11 +25,13 @@ const props = defineProps<{
 const emit = defineEmits<{ refresh: [] }>()
 
 // --- Metric toggles (default view = price only) -----------------------------
-const showMa = ref(false) // MA overlay
-const showBb = ref(false) // Bollinger overlay
-const showRunDetection = ref(false) // runs overlay (price) + run-slope graph
-const showRatio = ref(false) // price ÷ MA curve
-const showBand = ref(false) // band position (smoothed-%B / Bollinger-score family)
+// Toggles and parameters are remembered across reloads (storedRef →
+// localStorage); disclosure/zoom UI state is not.
+const showMa = storedRef('explorer.showMa', false) // MA overlay
+const showBb = storedRef('explorer.showBb', false) // Bollinger overlay
+const showRunDetection = storedRef('explorer.showRuns', false) // runs overlay (price) + run-slope graph
+const showRatio = storedRef('explorer.showRatio', false) // price ÷ MA curve
+const showBand = storedRef('explorer.showBand', false) // band position (smoothed-%B / Bollinger-score family)
 
 // Per-metric config disclosure state.
 const cfgMa = ref(false)
@@ -57,14 +60,14 @@ const activeMetricLabels = computed(() => {
 
 // --- Metric parameters ------------------------------------------------------
 // MA overlay.
-const maPeriod = ref(20)
-const maUnit = ref<PeriodUnit>('day')
+const maPeriod = storedRef('explorer.maPeriod', 20)
+const maUnit = storedRef<PeriodUnit>('explorer.maUnit', 'day', UNITS)
 // Bollinger overlay.
-const bbPeriod = ref(20)
-const bbUnit = ref<PeriodUnit>('day')
-const bbK = ref(2)
+const bbPeriod = storedRef('explorer.bbPeriod', 20)
+const bbUnit = storedRef<PeriodUnit>('explorer.bbUnit', 'day', UNITS)
+const bbK = storedRef('explorer.bbK', 2)
 // Price ÷ MA: its own long baseline (independent of the Hodl Explorer).
-const ratioMaDays = ref(1460)
+const ratioMaDays = storedRef('explorer.ratioMaDays', 1460)
 
 // Shared run params. Scale is a continuous (log) window in days: the slider
 // position 0–100 maps to hd ∈ [1, 1500] and the label snaps to the nearest
@@ -79,7 +82,7 @@ const RUN_SCALES = [
 ]
 const RUN_SCALE_MAX = 1500
 const tForHd = (hd: number) => Math.round((100 * Math.log(hd)) / Math.log(RUN_SCALE_MAX))
-const runScaleT = ref(tForHd(3)) // default scale ≈ 3d
+const runScaleT = storedRef('explorer.runScaleT', tForHd(3)) // default scale ≈ 3d
 const runScaleDays = computed(() =>
   Math.max(1, Math.round(Math.exp((Math.log(RUN_SCALE_MAX) * runScaleT.value) / 100))),
 )
@@ -98,7 +101,7 @@ const runScaleLabel = computed(() => {
 })
 // Sustainment gate a run must clear. Presented as sensitivity (higher = more /
 // longer runs), so sensitivity = 0.9 − gate. Default sensitivity 0.75 → gate 0.15.
-const sustThresh = ref(0.15)
+const sustThresh = storedRef('explorer.sustThresh', 0.15)
 const runSensitivity = computed({
   get: () => +(0.9 - sustThresh.value).toFixed(2),
   set: (v) => (sustThresh.value = Math.max(0, Math.min(0.9, +(0.9 - v).toFixed(2)))),
@@ -131,7 +134,7 @@ const {
   label: bandLabel,
   smoothLabel: bandSmoothLabel,
   series: bandSeries,
-} = useBandScore(prices)
+} = useBandScore(prices, 'explorer.band')
 
 // Runs/metrics at the selected continuous scale.
 const runDiag = computed(() =>
