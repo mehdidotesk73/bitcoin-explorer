@@ -1,6 +1,7 @@
 import { ref, computed, toValue, type MaybeRefOrGetter } from 'vue'
+import { storedRef } from './storedRef'
 import { bandPosition } from './indicators'
-import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from './period'
+import { type PeriodUnit, UNIT_ABBR, UNITS, toDays, namedScaleLabel } from './period'
 
 /**
  * The tunable "Bollinger score" band-position metric, shared by the Price
@@ -10,12 +11,18 @@ import { type PeriodUnit, UNIT_ABBR, toDays, namedScaleLabel } from './period'
  * `series[i] = (EMA_smooth(price) − SMA_window) / (k · STD_window)`, centered at
  * 0 with ±1 on the ±kσ bands. Defaults reproduce the canonical look (20 months,
  * 2σ, 31-day EMA).
+ *
+ * Pass `storageKey` to remember the params across reloads (see storedRef).
  */
-export function useBandScore(prices: MaybeRefOrGetter<number[]>) {
-  const smooth = ref(31) // EMA span (days) on the price
-  const period = ref(20) // mean + std period (in `unit`)
-  const unit = ref<PeriodUnit>('month')
-  const k = ref(2) // σ-multiplier; ±1 = the ±kσ bands
+export function useBandScore(prices: MaybeRefOrGetter<number[]>, storageKey?: string) {
+  const keep = <T extends number | string>(name: string, initial: T, allowed?: readonly T[]) =>
+    storageKey
+      ? storedRef(`${storageKey}.${name}`, initial, allowed)
+      : (ref(initial) as ReturnType<typeof storedRef<T>>)
+  const smooth = keep('smooth', 31) // EMA span (days) on the price
+  const period = keep('period', 20) // mean + std period (in `unit`)
+  const unit = keep<PeriodUnit>('unit', 'month', UNITS)
+  const k = keep('k', 2) // σ-multiplier; ±1 = the ±kσ bands
 
   const windowDays = computed(() => toDays(period.value, unit.value))
   const label = computed(
